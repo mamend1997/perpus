@@ -8,6 +8,17 @@ import {
 
 const pageSize = 25;
 
+function normalizePagination(value) {
+  const page = Number(value?.page);
+  const total = Number(value?.total);
+  const totalPages = Number(value?.totalPages);
+  return {
+    page: Number.isSafeInteger(page) && page > 0 ? page : 1,
+    total: Number.isSafeInteger(total) && total >= 0 ? total : 0,
+    totalPages: Number.isSafeInteger(totalPages) && totalPages >= 0 ? totalPages : 0
+  };
+}
+
 function MemberDialog({ children, onClose, className = '' }) {
   return createPortal(
     <div className="master-modal-backdrop member-modal-backdrop" onMouseDown={(event) => {
@@ -208,7 +219,7 @@ export default function SchoolMembersPage({ rights }) {
       .then((result) => {
         if (controller.signal.aborted) return;
         setMembers(result.members || []);
-        setPagination(result.pagination || { page: 1, total: 0, totalPages: 0 });
+        setPagination(normalizePagination(result.pagination));
       })
       .catch((loadError) => { if (!controller.signal.aborted) setError(loadError.message); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
