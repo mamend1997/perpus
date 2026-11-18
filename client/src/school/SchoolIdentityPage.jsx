@@ -211,7 +211,7 @@ export default function SchoolIdentityPage({ rights, onSaved, mode = 'identity' 
             <option value="manual">Isi kop secara manual</option>
           </select>
         </label>}
-        {(!isLetterhead || letterhead.mode === 'identity') && <>
+        {!isLetterhead && <>
         <div className="school-identity-section-heading">
           <span className="school-identity-section-icon"><Building2 size={18} /></span>
           <div><h2>Informasi Sekolah</h2><p>Data ini akan digunakan sebagai identitas perpustakaan sekolah.</p></div>
@@ -258,6 +258,12 @@ export default function SchoolIdentityPage({ rights, onSaved, mode = 'identity' 
           </label>
         </div>
         </>}
+
+        {isLetterhead && letterhead.mode === 'identity' && (
+          <p className="school-letterhead-identity-note">
+            Kop surat otomatis menggunakan nama, NPSN, alamat, kontak, dan logo dari menu Identitas Sekolah.
+          </p>
+        )}
 
         {isLetterhead && letterhead.mode === 'manual' && <section className="school-letterhead-manual-editor">
           <div className="school-identity-section-heading">
@@ -320,7 +326,7 @@ export default function SchoolIdentityPage({ rights, onSaved, mode = 'identity' 
           </div>}
         </section>}
 
-        <section className="school-identity-logo-section">
+        {!isLetterhead && <section className="school-identity-logo-section">
           <div className="school-identity-section-heading">
             <span className="school-identity-section-icon"><Camera size={18} /></span>
             <div><h2>Logo Sekolah</h2><p>Format JPG, PNG, atau WebP. File akan diperkecil otomatis.</p></div>
@@ -340,7 +346,7 @@ export default function SchoolIdentityPage({ rights, onSaved, mode = 'identity' 
               {logoError && <p className="school-identity-logo-error" role="alert">{logoError}</p>}
             </div>}
           </div>
-        </section>
+        </section>}
 
         {error && <p className="master-form-error" role="alert">{error}</p>}
         {canEdit && <footer className="school-identity-savebar">

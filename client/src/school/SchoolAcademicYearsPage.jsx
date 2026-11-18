@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { CalendarDays, Check, GraduationCap, LoaderCircle, Pencil, Plus, RefreshCw, Trash2, X } from 'lucide-react';
 import SchoolConfirmDialog from './SchoolConfirmDialog.jsx';
 import {
@@ -243,7 +244,7 @@ export default function SchoolAcademicYearsPage({ rights }) {
         </div>
       </section>
 
-      {formOpen && <div className="master-modal-backdrop" onMouseDown={(event) => {
+      {formOpen && createPortal(<div className="master-modal-backdrop academic-year-form-backdrop" onMouseDown={(event) => {
         if (event.target === event.currentTarget) closeForm();
       }}>
         <section className="master-modal academic-year-form-modal" role="dialog" aria-modal="true" aria-labelledby="academic-year-form-title">
@@ -294,9 +295,9 @@ export default function SchoolAcademicYearsPage({ rights }) {
             </footer>
           </form>
         </section>
-      </div>}
+      </div>, document.body)}
 
-      {promotionPreviewOpen && promotionPreview && <div className="master-modal-backdrop" onMouseDown={(event) => {
+      {promotionPreviewOpen && promotionPreview && createPortal(<div className="master-modal-backdrop academic-year-form-backdrop" onMouseDown={(event) => {
         if (event.target === event.currentTarget && !saving) setPromotionPreviewOpen(false);
       }}>
         <section className="master-modal academic-year-promotion-modal" role="dialog" aria-modal="true" aria-labelledby="academic-year-promotion-title">
@@ -340,7 +341,7 @@ export default function SchoolAcademicYearsPage({ rights }) {
             </button>
           </footer>
         </section>
-      </div>}
+      </div>, document.body)}
 
       {deleteTarget && <SchoolConfirmDialog
         title="Hapus tahun pelajaran?"

@@ -994,6 +994,9 @@
   animation: master-fade-in 140ms ease-out;
 }
 
+.student-form-backdrop,
+.academic-year-form-backdrop { z-index: 1400; }
+
 .master-modal {
   width: min(500px, 100%);
   max-height: calc(100vh - 36px);
@@ -2307,6 +2310,7 @@
 .school-letterhead-preview b { color: #1f2937; font-size: 18px; text-transform: uppercase; }
 .school-letterhead-mode-select { display: grid; max-width: 460px; gap: 7px; color: #59657b; font-size: 13px; font-weight: 700; }
 .school-letterhead-mode-select select { min-height: 42px; padding: 8px 10px; border: 1px solid #dfe5ec; border-radius: 8px; background: #fff; color: #35415a; font: inherit; }
+.school-letterhead-identity-note { margin: 14px 0 0; padding: 11px 13px; border: 1px solid #fed7aa; border-radius: 8px; background: #fff7ed; color: #9a3412; font-size: 12px; line-height: 1.5; }
 .school-letterhead-manual-editor { display: grid; gap: 14px; padding-top: 16px; }
 .school-letterhead-lines { display: grid; gap: 10px; }
 .school-letterhead-line-editor { display: grid; grid-template-columns: minmax(180px, 1fr) 92px 74px 78px 115px; align-items: end; gap: 9px; padding: 10px; border: 1px solid #e8edf4; border-radius: 9px; background: #fafbfd; }

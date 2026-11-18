@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import ExcelJS from 'exceljs';
 import {
   Download, FileSpreadsheet, LoaderCircle, Pencil, Plus, Printer, Search, Trash2, Upload, Users
@@ -58,8 +59,8 @@ function StudentForm({ student, onClose, onSave }) {
     }
   }
 
-  return (
-    <div className="master-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) onClose(); }}>
+  return createPortal((
+    <div className="master-modal-backdrop student-form-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) onClose(); }}>
       <section className="master-modal student-form-modal" role="dialog" aria-modal="true" aria-labelledby="student-form-title">
         <header className="master-modal-heading"><div><span className="library-eyebrow">DATA ANGGOTA</span><h2 id="student-form-title">{student ? 'Edit Data Siswa' : 'Tambah Siswa'}</h2></div><button type="button" className="master-icon-button" onClick={onClose} disabled={saving} aria-label="Tutup form">×</button></header>
         {error && <div className="library-error" role="alert">{error}</div>}
@@ -82,7 +83,7 @@ function StudentForm({ student, onClose, onSave }) {
         </form>
       </section>
     </div>
-  );
+  ), document.body);
 }
 
 function ImportStudentsModal({ onClose, onImport }) {

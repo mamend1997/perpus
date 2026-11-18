@@ -519,6 +519,20 @@ router.patch('/identity', requireSchoolPermission('master.identity', 'edit'), as
         identity.librarian_name, identity.librarian_nip, logo, req.school.id
       ]
       );
+      const [savedRows] = await connection.execute(
+        `SELECT name, npsn, education_level, phone, email, website, address,
+                principal_name, principal_nip, librarian_name, librarian_nip, logo
+         FROM tenants_schools WHERE id = ? LIMIT 1`,
+        [req.school.id]
+      );
+      const savedIdentity = savedRows[0];
+      const persisted = savedIdentity
+        && fields.every((field) => (savedIdentity[field] ?? null) === (identity[field] ?? null))
+        && (savedIdentity.logo ?? null) === logo;
+      if (!persisted) {
+        await connection.rollback();
+        return res.status(409).json({ message: 'Data identitas sekolah tidak berhasil dipastikan tersimpan. Silakan coba lagi.' });
+      }
       if (letterhead) {
         await connection.execute(
           `INSERT INTO school_settings (school_id, \`key\`, \`value\`)
@@ -529,7 +543,7 @@ router.patch('/identity', requireSchoolPermission('master.identity', 'edit'), as
       }
       await connection.commit();
       return res.json({
-        identity: { ...identity, logo, ...(letterhead ? { letterhead } : {}) },
+        identity: { ...savedIdentity, ...(letterhead ? { letterhead } : {}) },
         message: 'Identitas sekolah berhasil disimpan.'
       });
     } catch (error) {
