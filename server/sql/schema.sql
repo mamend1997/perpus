@@ -93,14 +93,21 @@ CREATE TABLE IF NOT EXISTS books (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   school_id BIGINT UNSIGNED NOT NULL,
   no_terima VARCHAR(60) NULL,
+  received_date DATE NULL,
   nomor_induk VARCHAR(60) NULL,
   kode_buku VARCHAR(80) NULL,
   title VARCHAR(255) NOT NULL,
+  physical_description TEXT NULL,
   author_id BIGINT UNSIGNED NULL,
   publisher_id BIGINT UNSIGNED NULL,
+  agent_id BIGINT UNSIGNED NULL,
+  topic_id BIGINT UNSIGNED NULL,
   collection_id BIGINT UNSIGNED NULL,
+  type_id BIGINT UNSIGNED NULL,
+  language_id BIGINT UNSIGNED NULL,
+  gmd VARCHAR(100) NULL,
   isbn VARCHAR(20) NULL,
-  `year` YEAR NULL,
+  `year` SMALLINT UNSIGNED NULL,
   city VARCHAR(120) NULL,
   source VARCHAR(120) NULL,
   price DECIMAL(12,2) NOT NULL DEFAULT 0,
@@ -109,6 +116,7 @@ CREATE TABLE IF NOT EXISTS books (
   rack_id BIGINT UNSIGNED NULL,
   description TEXT NULL,
   synopsis TEXT NULL,
+  cover_image VARCHAR(100) NULL,
   file_digital VARCHAR(500) NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
@@ -119,6 +127,10 @@ CREATE TABLE IF NOT EXISTS books (
   KEY idx_books_author (author_id),
   KEY idx_books_publisher (publisher_id),
   KEY idx_books_collection (school_id, collection_id),
+  KEY idx_books_agent (school_id, agent_id),
+  KEY idx_books_topic (school_id, topic_id),
+  KEY idx_books_type (school_id, type_id),
+  KEY idx_books_language (school_id, language_id),
   KEY idx_books_rack (rack_id),
   CONSTRAINT fk_books_school FOREIGN KEY (school_id) REFERENCES tenants_schools (id)
     ON DELETE CASCADE,
@@ -127,6 +139,14 @@ CREATE TABLE IF NOT EXISTS books (
   CONSTRAINT fk_books_publisher FOREIGN KEY (school_id, publisher_id) REFERENCES master_categories (school_id, id)
     ON DELETE RESTRICT,
   CONSTRAINT fk_books_collection FOREIGN KEY (school_id, collection_id) REFERENCES master_categories (school_id, id)
+    ON DELETE RESTRICT,
+  CONSTRAINT fk_books_agent FOREIGN KEY (school_id, agent_id) REFERENCES master_categories (school_id, id)
+    ON DELETE RESTRICT,
+  CONSTRAINT fk_books_topic FOREIGN KEY (school_id, topic_id) REFERENCES master_categories (school_id, id)
+    ON DELETE RESTRICT,
+  CONSTRAINT fk_books_type FOREIGN KEY (school_id, type_id) REFERENCES master_categories (school_id, id)
+    ON DELETE RESTRICT,
+  CONSTRAINT fk_books_language FOREIGN KEY (school_id, language_id) REFERENCES master_categories (school_id, id)
     ON DELETE RESTRICT,
   CONSTRAINT fk_books_rack FOREIGN KEY (school_id, rack_id) REFERENCES master_categories (school_id, id)
     ON DELETE RESTRICT

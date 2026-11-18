@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   AlertCircle, Check, Plus, Save, ShieldCheck, UserPlus, Users, X
 } from 'lucide-react';
@@ -42,7 +43,7 @@ function AccountModal({ onClose, onCreated }) {
     }
   }
 
-  return (
+  return createPortal(
     <div className="master-modal-backdrop" onMouseDown={(event) => {
       if (event.target === event.currentTarget && !saving) onClose();
     }}>
@@ -91,7 +92,8 @@ function AccountModal({ onClose, onCreated }) {
           </footer>
         </form>
       </section>
-    </div>
+    </div>,
+    document.body
   );
 }
 

@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import { pool } from '../config/database.js';
 import { requireSchool } from '../middleware/require-school.js';
 import { requireSchoolPermission } from '../middleware/require-school-permission.js';
+import schoolBookRoutes from './school-books.routes.js';
 import {
   defaultSchoolPermissions, schoolPermissionFeatureKeys, schoolPermissionFeatures,
   schoolPermissionRoles
@@ -15,6 +16,7 @@ const masterCategoryTypes = new Set([
 ]);
 
 router.use(requireSchool);
+router.use('/books', schoolBookRoutes);
 
 function requireSchoolAdmin(req, res, next) {
   if (req.school.role !== 'admin') {
@@ -234,10 +236,11 @@ router.post('/users', requireSchoolAdmin, async (req, res, next) => {
   const phone = typeof body.phone === 'string' ? body.phone.trim() : '';
   const nisNisn = typeof body.nis_nisn === 'string' ? body.nis_nisn.trim() : '';
   const rombel = typeof body.rombel === 'string' ? body.rombel.trim() : '';
-  const gender = body.gender || null;
+  const gender = body.gender === undefined || body.gender === null || body.gender === '' ? null : body.gender;
   const password = body.password;
 
   if (!validRole(role)
+      || ['phone', 'nis_nisn', 'rombel'].some((field) => body[field] != null && typeof body[field] !== 'string')
       || name.length < 2 || name.length > 180
       || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 190
       || phone.length > 30 || nisNisn.length > 40 || rombel.length > 80

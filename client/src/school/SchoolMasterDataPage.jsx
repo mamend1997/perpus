@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
-  AlertCircle, Download, FileSpreadsheet, MoreHorizontal, Pencil, Plus,
+  AlertCircle, CheckCircle2, CircleX, Download, FileSpreadsheet, List, MoreHorizontal, Pencil, Plus,
   Search, Trash2, Upload, X
 } from 'lucide-react';
 import {
@@ -54,7 +55,7 @@ function MasterCategoryModal({ type, category, onClose, onSave }) {
     }
   }
 
-  return (
+  return createPortal(
     <div className="master-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) onClose(); }}>
       <section className="master-modal" role="dialog" aria-modal="true" aria-labelledby="master-modal-title">
         <header className="master-modal-heading">
@@ -114,7 +115,8 @@ function MasterCategoryModal({ type, category, onClose, onSave }) {
           </footer>
         </form>
       </section>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -128,6 +130,7 @@ export default function SchoolMasterDataPage({ active, type, rights }) {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [menuId, setMenuId] = useState(null);
   const [editingCategory, setEditingCategory] = useState(null);
@@ -156,15 +159,20 @@ export default function SchoolMasterDataPage({ active, type, rights }) {
 
   const filteredCategories = useMemo(() => {
     const query = search.trim().toLocaleLowerCase('id-ID');
-    if (!query) return categories;
-    return categories.filter((category) => [
-      category.code, category.name, category.description,
-      category.email, category.phone, category.address
-    ].some((value) => String(value || '').toLocaleLowerCase('id-ID').includes(query)));
-  }, [categories, search]);
+    return categories.filter((category) => {
+      if (statusFilter !== 'all' && category.status !== statusFilter) return false;
+      if (!query) return true;
+      return [
+        category.code, category.name, category.description,
+        category.email, category.phone, category.address
+      ].some((value) => String(value || '').toLocaleLowerCase('id-ID').includes(query));
+    });
+  }, [categories, search, statusFilter]);
 
   const visibleIds = filteredCategories.map((category) => String(category.id));
   const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
+  const activeCount = categories.filter((category) => category.status === 'active').length;
+  const inactiveCount = categories.length - activeCount;
 
   async function saveCategory(form) {
     await saveMasterCategory(type, form, editingCategory?.id);
@@ -262,6 +270,40 @@ export default function SchoolMasterDataPage({ active, type, rights }) {
             : `Kelola data referensi ${active.toLocaleLowerCase('id-ID')} perpustakaan.`}</p>
       </header>
 
+      <section className="master-summary-grid" aria-label="Ringkasan data">
+        <article className="master-summary-card">
+          <span className="master-summary-icon"><List size={18} /></span>
+          <div><small>Total Data</small><b>{loading ? '—' : categories.length}</b></div>
+        </article>
+        <article className="master-summary-card is-active">
+          <span className="master-summary-icon"><CheckCircle2 size={18} /></span>
+          <div><small>Aktif</small><b>{loading ? '—' : activeCount}</b></div>
+        </article>
+        <article className="master-summary-card is-inactive">
+          <span className="master-summary-icon"><CircleX size={18} /></span>
+          <div><small>Nonaktif</small><b>{loading ? '—' : inactiveCount}</b></div>
+        </article>
+      </section>
+
+      <div className="master-status-tabs" role="tablist" aria-label="Filter status data">
+        {[
+          { key: 'all', label: 'Semua', count: categories.length },
+          { key: 'active', label: 'Aktif', count: activeCount },
+          { key: 'inactive', label: 'Nonaktif', count: inactiveCount }
+        ].map(({ key, label, count }) => (
+          <button
+            type="button"
+            role="tab"
+            aria-selected={statusFilter === key}
+            className={statusFilter === key ? 'selected' : ''}
+            key={key}
+            onClick={() => setStatusFilter(key)}
+          >
+            {label}<span>{loading ? '—' : count}</span>
+          </button>
+        ))}
+      </div>
+
       <section className="master-data-panel">
         <div className="master-toolbar">
           <label className="master-search">
@@ -313,7 +355,7 @@ export default function SchoolMasterDataPage({ active, type, rights }) {
               ) : error && categories.length === 0 ? (
                 <tr><td className="master-empty-cell" colSpan={isAgent ? 7 : isAuthor ? 5 : 6}>Data belum dapat dimuat.</td></tr>
               ) : filteredCategories.length === 0 ? (
-                <tr><td className="master-empty-cell" colSpan={isAgent ? 7 : isAuthor ? 5 : 6}>{search ? 'Data tidak ditemukan.' : 'Belum ada data. Tambahkan data pertama Anda.'}</td></tr>
+                <tr><td className="master-empty-cell" colSpan={isAgent ? 7 : isAuthor ? 5 : 6}>{search || statusFilter !== 'all' ? 'Data tidak ditemukan.' : 'Belum ada data. Tambahkan data pertama Anda.'}</td></tr>
               ) : filteredCategories.map((category, index) => (
                 <tr key={category.id}>
                   {isAgent ? (

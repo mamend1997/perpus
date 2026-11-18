@@ -69,6 +69,28 @@ try {
       'ALTER TABLE books ADD COLUMN collection_id BIGINT UNSIGNED NULL AFTER publisher_id'
     );
   }
+  const catalogColumns = [
+    ['received_date', 'DATE NULL AFTER no_terima'],
+    ['physical_description', 'TEXT NULL AFTER title'],
+    ['agent_id', 'BIGINT UNSIGNED NULL AFTER publisher_id'],
+    ['topic_id', 'BIGINT UNSIGNED NULL AFTER agent_id'],
+    ['type_id', 'BIGINT UNSIGNED NULL AFTER collection_id'],
+    ['language_id', 'BIGINT UNSIGNED NULL AFTER type_id'],
+    ['gmd', 'VARCHAR(100) NULL AFTER language_id'],
+    ['cover_image', 'VARCHAR(100) NULL AFTER synopsis']
+  ];
+  for (const [columnName, definition] of catalogColumns) {
+    if (!bookColumnNames.has(columnName)) {
+      await connection.query(`ALTER TABLE books ADD COLUMN ${columnName} ${definition}`);
+    }
+  }
+  const [bookYearType] = await connection.execute(
+    `SELECT DATA_TYPE FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'books' AND COLUMN_NAME = 'year'`
+  );
+  if (bookYearType[0]?.DATA_TYPE === 'year') {
+    await connection.query('ALTER TABLE books MODIFY `year` SMALLINT UNSIGNED NULL');
+  }
   const [bookIndexes] = await connection.execute(
     `SELECT INDEX_NAME FROM information_schema.STATISTICS
      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'books'
@@ -90,6 +112,34 @@ try {
        FOREIGN KEY (school_id, collection_id) REFERENCES master_categories (school_id, id)
        ON DELETE RESTRICT`
     );
+  }
+  const catalogReferences = [
+    ['agent_id', 'idx_books_agent', 'fk_books_agent'],
+    ['topic_id', 'idx_books_topic', 'fk_books_topic'],
+    ['type_id', 'idx_books_type', 'fk_books_type'],
+    ['language_id', 'idx_books_language', 'fk_books_language']
+  ];
+  for (const [columnName, indexName, constraintName] of catalogReferences) {
+    const [indexes] = await connection.execute(
+      `SELECT INDEX_NAME FROM information_schema.STATISTICS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'books' AND INDEX_NAME = ?`,
+      [indexName]
+    );
+    if (indexes.length === 0) {
+      await connection.query(`ALTER TABLE books ADD KEY ${indexName} (school_id, ${columnName})`);
+    }
+    const [constraints] = await connection.execute(
+      `SELECT CONSTRAINT_NAME FROM information_schema.REFERENTIAL_CONSTRAINTS
+       WHERE CONSTRAINT_SCHEMA = DATABASE() AND TABLE_NAME = 'books' AND CONSTRAINT_NAME = ?`,
+      [constraintName]
+    );
+    if (constraints.length === 0) {
+      await connection.query(
+        `ALTER TABLE books ADD CONSTRAINT ${constraintName}
+         FOREIGN KEY (school_id, ${columnName}) REFERENCES master_categories (school_id, id)
+         ON DELETE RESTRICT`
+      );
+    }
   }
 
   const [loanColumns] = await connection.execute(

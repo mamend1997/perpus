@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { BookOpen, ChevronDown, ChevronRight, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Users } from 'lucide-react';
+import { BookOpen, ChevronDown, ChevronRight, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Pencil } from 'lucide-react';
 import SchoolDashboard from './SchoolDashboard.jsx';
 import SchoolModulePage from './SchoolModulePage.jsx';
 import SchoolMasterDataPage from './SchoolMasterDataPage.jsx';
+import SchoolBookCatalogPage from './SchoolBookCatalogPage.jsx';
 import SchoolProfileEditor from './SchoolProfileEditor.jsx';
 import SchoolSettingsPage from './SchoolSettingsPage.jsx';
 import { fetchSchoolProfile } from './schoolAccountApi.js';
@@ -103,7 +104,6 @@ export default function SchoolPortal({ account, onLogout, onAccountUpdated }) {
         if (!activeRequest) return;
         setProfile(currentProfile);
         setProfileLoaded(true);
-        onAccountUpdated?.({ ...account, ...currentProfile });
       })
       .catch((error) => {
         if (activeRequest) setProfileError(error.message);
@@ -112,7 +112,7 @@ export default function SchoolPortal({ account, onLogout, onAccountUpdated }) {
         if (activeRequest) setProfileLoading(false);
       });
     return () => { activeRequest = false; };
-  }, [account, onAccountUpdated, profileLoaded, profileOpen]);
+  }, [profileLoaded, profileOpen]);
 
   function selectMenu(label) {
     setActive(label);
@@ -202,7 +202,7 @@ export default function SchoolPortal({ account, onLogout, onAccountUpdated }) {
               <div><b>{profile.name}</b><span>{profile.email}</span></div>
               {profileLoading && <small className="school-profile-loading">Memuat profil...</small>}
               {profileError && <p className="school-profile-error" role="alert">{profileError}</p>}
-              <button type="button" role="menuitem" onClick={() => { setProfileOpen(false); setProfileEditorOpen(true); }}><Users size={15} />Edit Profil</button>
+              <button type="button" role="menuitem" onClick={() => { setProfileOpen(false); setProfileEditorOpen(true); }}><Pencil size={15} />Edit Profil</button>
               <button type="button" role="menuitem" onClick={() => { setProfileOpen(false); onLogout(); }}><LogOut size={15} />Keluar</button>
             </div>}
           </div>
@@ -220,6 +220,8 @@ export default function SchoolPortal({ account, onLogout, onAccountUpdated }) {
               <div className="library-error" role="alert">Anda tidak memiliki izin untuk membuka halaman ini.</div>
             ) : active === 'Dashboard' ? (
               <SchoolDashboard account={profile} />
+            ) : active === 'Daftar Pustaka' ? (
+              <SchoolBookCatalogPage rights={activeRights} />
             ) : activeMasterType ? (
               <SchoolMasterDataPage active={active} type={activeMasterType} rights={activeRights} />
             ) : (

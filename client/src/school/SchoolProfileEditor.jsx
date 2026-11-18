@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { AlertCircle, Camera, LockKeyhole, X } from 'lucide-react';
 import {
   changeSchoolPassword, updateSchoolProfile
@@ -125,7 +126,7 @@ export default function SchoolProfileEditor({ profile, onClose, onProfileUpdated
     }
   }
 
-  return (
+  return createPortal(
     <div className="school-profile-modal-backdrop" onMouseDown={(event) => {
       if (event.target === event.currentTarget && !savingProfile && !savingPassword) onClose();
     }}>
@@ -186,6 +187,7 @@ export default function SchoolProfileEditor({ profile, onClose, onProfileUpdated
           </footer>
         </form>
       </section>
-    </div>
+    </div>,
+    document.body
   );
 }
