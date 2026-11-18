@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Check, ChevronLeft, ChevronRight, ClipboardList, LoaderCircle, Plus, Search, X
+  Check, ChevronLeft, ChevronRight, ClipboardList, LoaderCircle, Plus, Search, Trash2, X
 } from 'lucide-react';
-import { createProcurement, fetchProcurements, updateProcurement } from './schoolProcurementApi.js';
+import SchoolConfirmDialog from './SchoolConfirmDialog.jsx';
+import { createProcurement, deleteProcurements, fetchProcurements, updateProcurement } from './schoolProcurementApi.js';
 
 const pageSize = 10;
 
@@ -13,8 +14,29 @@ function formatRequestDate(value) {
   return Number.isNaN(date.getTime()) ? '—' : new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium' }).format(date);
 }
 
-function RequestFormModal({ onClose, onSave }) {
-  const [form, setForm] = useState({ title: '', author: '', publisher: '' });
+function formatCurrency(value) {
+  if (value == null || value === '') return '—';
+  return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 2 }).format(Number(value) || 0);
+}
+
+function todayDate() {
+  const date = new Date();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
+function RequestFormModal({ requester, onClose, onSave }) {
+  const [form, setForm] = useState(() => ({
+    title: '',
+    author: '',
+    publisher: '',
+    year: '',
+    quantityNeeded: '1',
+    estimatedPrice: '',
+    requestDate: todayDate(),
+    notes: ''
+  }));
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -57,11 +79,30 @@ function RequestFormModal({ onClose, onSave }) {
           <label>Judul Buku
             <input name="title" value={form.title} onChange={update} maxLength={255} required autoFocus placeholder="Masukkan judul buku yang diusulkan" />
           </label>
-          <label>Pengarang
+          <label>Pengarang / Penulis
             <input name="author" value={form.author} onChange={update} maxLength={180} placeholder="Nama pengarang (opsional)" />
           </label>
           <label>Penerbit
             <input name="publisher" value={form.publisher} onChange={update} maxLength={180} placeholder="Nama penerbit (opsional)" />
+          </label>
+          <label>Tahun Terbit
+            <input name="year" type="number" min="1000" max="9999" step="1" value={form.year} onChange={update} placeholder="Contoh: 2026" />
+          </label>
+          <label>Jumlah Kebutuhan (Eksemplar)
+            <input name="quantityNeeded" type="number" min="1" max="10000" step="1" value={form.quantityNeeded} onChange={update} required />
+          </label>
+          <label>Estimasi Harga (Rp)
+            <input name="estimatedPrice" type="number" min="0" max="9999999999.99" step="0.01" value={form.estimatedPrice} onChange={update} placeholder="Opsional" />
+          </label>
+          <label>Tanggal Pengajuan
+            <input name="requestDate" type="date" value={form.requestDate} onChange={update} required />
+          </label>
+          <label>Pemohon
+            <input value={requester || 'Akun aktif'} readOnly />
+          </label>
+          <label>Alasan Pengajuan / Catatan Pengajuan
+            <textarea name="notes" value={form.notes} onChange={update} maxLength={5000} rows={4} placeholder="Jelaskan kebutuhan atau alasan pengajuan (opsional)" />
+            <small>{form.notes.length}/5000 karakter</small>
           </label>
           <p>Usulan akan berstatus Pending sampai ditinjau oleh Admin atau Kepala Perpustakaan.</p>
           <footer className="procurement-modal-actions">
@@ -80,7 +121,7 @@ function RequestFormModal({ onClose, onSave }) {
 
 function ReviewRequestModal({ request, onClose, onSave }) {
   const [status, setStatus] = useState(request.status);
-  const [notes, setNotes] = useState(request.notes || '');
+  const [reviewNotes, setReviewNotes] = useState(request.review_notes || '');
   const [addToCatalog, setAddToCatalog] = useState(false);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -98,7 +139,7 @@ function ReviewRequestModal({ request, onClose, onSave }) {
     setSaving(true);
     setError('');
     try {
-      await onSave({ status, notes, addToCatalog: status === 'Diterima' && addToCatalog });
+      await onSave({ status, reviewNotes, addToCatalog: status === 'Diterima' && addToCatalog });
     } catch (saveError) {
       setError(saveError.message);
     } finally {
@@ -118,8 +159,10 @@ function ReviewRequestModal({ request, onClose, onSave }) {
         {error && <div className="library-error" role="alert">{error}</div>}
         <div className="procurement-review-details">
           <b>{request.title}</b>
-          <span>Pengarang: {request.author || '—'} · Penerbit: {request.publisher || '—'}</span>
+          <span>Pengarang: {request.author || '—'} · Penerbit: {request.publisher || '—'} · Tahun: {request.year || '—'}</span>
+          <span>Kebutuhan: {Number(request.quantity_needed || 1).toLocaleString('id-ID')} eksemplar · Estimasi: {formatCurrency(request.estimated_price)}</span>
           <small>Diajukan oleh {request.requester || 'Member'} pada {formatRequestDate(request.request_date)}</small>
+          {request.notes && <p><b>Alasan pengajuan:</b> {request.notes}</p>}
         </div>
         <form className="procurement-modal-form" onSubmit={submit}>
           <label>Pilih Tindakan
@@ -129,13 +172,13 @@ function ReviewRequestModal({ request, onClose, onSave }) {
               <option value="Ditolak">Ditolak</option>
             </select>
           </label>
-          <label>Catatan / Alasan
-            <textarea value={notes} onChange={(event) => setNotes(event.target.value)} maxLength={5000} rows={4} placeholder="Tulis catatan untuk pemohon (opsional)" />
-            <small>{notes.length}/5000 karakter</small>
+          <label>Catatan Peninjau
+            <textarea value={reviewNotes} onChange={(event) => setReviewNotes(event.target.value)} maxLength={5000} rows={4} placeholder="Tulis catatan keputusan untuk pemohon (opsional)" />
+            <small>{reviewNotes.length}/5000 karakter</small>
           </label>
           {status === 'Diterima' && <label className="procurement-add-catalog">
             <input type="checkbox" checked={addToCatalog} onChange={(event) => setAddToCatalog(event.target.checked)} />
-            <span><b>Tambahkan ke Daftar Pustaka</b><small>Buat data katalog dengan stok awal 0. Pengarang dan penerbit akan ditautkan ke Master Data.</small></span>
+            <span><b>Langsung masukkan judul ini ke Daftar Pustaka?</b><small>Data judul, pengarang, penerbit, dan tahun akan disalin ke katalog dengan stok awal 0.</small></span>
           </label>}
           <footer className="procurement-modal-actions">
             <button type="button" className="master-button master-button-light" onClick={onClose} disabled={saving}>Batal</button>
@@ -156,7 +199,7 @@ function ProcurementStatus({ status }) {
   return <span className={`procurement-status ${className}`}>{status}</span>;
 }
 
-export default function SchoolProcurementsPage({ rights, role }) {
+export default function SchoolProcurementsPage({ rights, role, requester }) {
   const [requests, setRequests] = useState([]);
   const [pagination, setPagination] = useState({ page: 1, total: 0, totalPages: 0 });
   const [page, setPage] = useState(1);
@@ -171,8 +214,15 @@ export default function SchoolProcurementsPage({ rights, role }) {
   const [refreshKey, setRefreshKey] = useState(0);
   const [createOpen, setCreateOpen] = useState(false);
   const [reviewing, setReviewing] = useState(null);
+  const [selectedRequests, setSelectedRequests] = useState({});
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+  const [deleting, setDeleting] = useState(false);
   const canEdit = Boolean(rights?.edit);
   const canReview = canEdit && ['admin', 'kapus'].includes(role);
+  const canDelete = Boolean(rights?.delete);
+  const selectedIds = Object.keys(selectedRequests);
+  const allVisibleSelected = requests.length > 0 && requests.every((request) => Boolean(selectedRequests[String(request.id)]));
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -181,6 +231,10 @@ export default function SchoolProcurementsPage({ rights, role }) {
     }, 250);
     return () => window.clearTimeout(timeout);
   }, [query]);
+
+  useEffect(() => {
+    setSelectedRequests({});
+  }, [page, search, statusFilter]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -229,6 +283,32 @@ export default function SchoolProcurementsPage({ rights, role }) {
     setRefreshKey((key) => key + 1);
   }
 
+  function toggleRequestSelection(request, checked) {
+    setSelectedRequests((current) => {
+      const next = { ...current };
+      if (checked) next[String(request.id)] = request;
+      else delete next[String(request.id)];
+      return next;
+    });
+  }
+
+  async function confirmBulkDelete() {
+    if (!selectedIds.length) return;
+    setDeleting(true);
+    setDeleteError('');
+    try {
+      const result = await deleteProcurements(selectedIds);
+      setSelectedRequests({});
+      setDeleteConfirmOpen(false);
+      setNotice(result.message || 'Usulan terpilih berhasil dihapus.');
+      setRefreshKey((key) => key + 1);
+    } catch (deleteFailure) {
+      setDeleteError(deleteFailure.message);
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   return (
     <div className="library-module-page catalog-page procurements-page">
       <header className="library-module-heading">
@@ -275,6 +355,9 @@ export default function SchoolProcurementsPage({ rights, role }) {
             {canEdit && <button type="button" className="master-button master-button-primary" onClick={() => setCreateOpen(true)}>
               <Plus size={15} />Usulkan Buku
             </button>}
+            {canDelete && selectedIds.length > 0 && <button type="button" className="master-button procurement-delete-selected" onClick={() => { setDeleteError(''); setDeleteConfirmOpen(true); }}>
+              <Trash2 size={15} />Hapus Terpilih ({selectedIds.length})
+            </button>}
           </div>
         </div>
       </section>
@@ -288,20 +371,35 @@ export default function SchoolProcurementsPage({ rights, role }) {
           <table className="procurement-table">
             <thead>
               <tr>
-                <th>No</th><th>Judul Buku</th><th>Pengarang</th><th>Penerbit</th>
-                <th>Tanggal Pengajuan</th><th>Status</th><th>Catatan</th><th>Member</th>
+                {canDelete && <th className="procurement-checkbox-cell"><input type="checkbox" checked={allVisibleSelected} onChange={(event) => {
+                  if (event.target.checked) {
+                    setSelectedRequests((current) => ({ ...current, ...Object.fromEntries(requests.map((request) => [String(request.id), request])) }));
+                  } else {
+                    setSelectedRequests((current) => {
+                      const next = { ...current };
+                      requests.forEach((request) => delete next[String(request.id)]);
+                      return next;
+                    });
+                  }
+                }} aria-label="Pilih semua usulan di halaman ini" /></th>}
+                <th>No</th><th>Judul Buku</th><th>Pengarang / Penulis</th><th>Penerbit</th><th>Tahun Terbit</th>
+                <th>Kebutuhan</th><th>Estimasi Harga</th><th>Tanggal Pengajuan</th><th>Status</th><th>Alasan Pengajuan</th><th>Pemohon</th>
                 {canReview && <th>Aksi</th>}
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={canReview ? 9 : 8} className="procurement-table-empty"><LoaderCircle size={17} className="book-stock-spinner" />Memuat usulan...</td></tr>
+                <tr><td colSpan={11 + Number(canReview) + Number(canDelete)} className="procurement-table-empty"><LoaderCircle size={17} className="book-stock-spinner" />Memuat usulan...</td></tr>
               ) : requests.length ? requests.map((request, index) => (
                 <tr key={request.id}>
+                  {canDelete && <td className="procurement-checkbox-cell"><input type="checkbox" checked={Boolean(selectedRequests[String(request.id)])} onChange={(event) => toggleRequestSelection(request, event.target.checked)} aria-label={`Pilih usulan ${request.title}`} /></td>}
                   <td>{(page - 1) * pageSize + index + 1}</td>
                   <td><b className="procurement-book-title">{request.title}</b></td>
                   <td>{request.author || '—'}</td>
                   <td>{request.publisher || '—'}</td>
+                  <td>{request.year || '—'}</td>
+                  <td>{Number(request.quantity_needed || 1).toLocaleString('id-ID')} eksemplar</td>
+                  <td>{formatCurrency(request.estimated_price)}</td>
                   <td>{formatRequestDate(request.request_date)}</td>
                   <td><ProcurementStatus status={request.status} /></td>
                   <td><span className="procurement-notes" title={request.notes || ''}>{request.notes || '—'}</span></td>
@@ -309,7 +407,7 @@ export default function SchoolProcurementsPage({ rights, role }) {
                   {canReview && <td><button type="button" className="master-button master-button-light procurement-review-button" onClick={() => setReviewing(request)}>Tinjau</button></td>}
                 </tr>
               )) : (
-                <tr><td colSpan={canReview ? 9 : 8} className="procurement-table-empty"><ClipboardList size={20} />{search || statusFilter ? 'Tidak ada usulan yang cocok dengan pencarian atau filter.' : 'Belum ada usulan pengadaan buku.'}</td></tr>
+                <tr><td colSpan={11 + Number(canReview) + Number(canDelete)} className="procurement-table-empty"><ClipboardList size={20} />{search || statusFilter ? 'Tidak ada usulan yang cocok dengan pencarian atau filter.' : 'Belum ada usulan pengadaan buku.'}</td></tr>
               )}
             </tbody>
           </table>
@@ -323,8 +421,17 @@ export default function SchoolProcurementsPage({ rights, role }) {
         </footer>
       </section>
 
-      {createOpen && <RequestFormModal onClose={() => setCreateOpen(false)} onSave={submitRequest} />}
+      {createOpen && <RequestFormModal requester={requester} onClose={() => setCreateOpen(false)} onSave={submitRequest} />}
       {reviewing && <ReviewRequestModal request={reviewing} onClose={() => setReviewing(null)} onSave={saveReview} />}
+      {deleteConfirmOpen && <SchoolConfirmDialog
+        title="Hapus usulan terpilih?"
+        message={`${selectedIds.length} usulan akan dihapus permanen dari sekolah ini.`}
+        itemName={selectedIds.length === 1 ? selectedRequests[selectedIds[0]]?.title : `${selectedIds.length} usulan`}
+        loading={deleting}
+        error={deleteError}
+        onClose={() => { if (!deleting) { setDeleteConfirmOpen(false); setDeleteError(''); } }}
+        onConfirm={confirmBulkDelete}
+      />}
     </div>
   );
 }

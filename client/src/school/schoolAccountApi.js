@@ -26,6 +26,17 @@ export async function updateSchoolProfile(profile) {
   });
 }
 
+export async function fetchSchoolIdentity() {
+  return schoolRequest('/identity');
+}
+
+export async function updateSchoolIdentity(identity) {
+  return schoolRequest('/identity', {
+    method: 'PATCH',
+    body: JSON.stringify(identity)
+  });
+}
+
 export async function changeSchoolPassword(passwords) {
   return schoolRequest('/profile/password', {
     method: 'POST',

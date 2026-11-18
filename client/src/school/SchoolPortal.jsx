@@ -3,12 +3,20 @@ import { BookOpen, ChevronDown, ChevronRight, LogOut, Menu, PanelLeftClose, Pane
 import SchoolDashboard from './SchoolDashboard.jsx';
 import SchoolModulePage from './SchoolModulePage.jsx';
 import SchoolMasterDataPage from './SchoolMasterDataPage.jsx';
+import SchoolIdentityPage from './SchoolIdentityPage.jsx';
 import SchoolBookCatalogPage from './SchoolBookCatalogPage.jsx';
 import SchoolBookStockPage from './SchoolBookStockPage.jsx';
 import SchoolBookItemsPage from './SchoolBookItemsPage.jsx';
+import SchoolLoansPage from './SchoolLoansPage.jsx';
+import SchoolFinesPage from './SchoolFinesPage.jsx';
+import SchoolVisitorsPage from './SchoolVisitorsPage.jsx';
 import SchoolProcurementsPage from './SchoolProcurementsPage.jsx';
 import SchoolProfileEditor from './SchoolProfileEditor.jsx';
 import SchoolSettingsPage from './SchoolSettingsPage.jsx';
+import SchoolReservationsPage from './SchoolReservationsPage.jsx';
+import SchoolReviewsPage from './SchoolReviewsPage.jsx';
+import SchoolAnnouncementsPage from './SchoolAnnouncementsPage.jsx';
+import SchoolAcademicYearsPage from './SchoolAcademicYearsPage.jsx';
 import { fetchSchoolProfile } from './schoolAccountApi.js';
 import { fetchMySchoolPermissions } from './schoolSettingsApi.js';
 import { masterCategoryTypes, schoolNavigation } from './schoolNavigation.js';
@@ -16,6 +24,8 @@ import { defaultSchoolPermissions, schoolPermissionByLabel } from './schoolPermi
 import './school.css';
 
 const SchoolCirculationAnalyticsPage = lazy(() => import('./SchoolCirculationAnalyticsPage.jsx'));
+const SchoolReportsPage = lazy(() => import('./SchoolReportsPage.jsx'));
+const SchoolStudentsPage = lazy(() => import('./SchoolStudentsPage.jsx'));
 
 export default function SchoolPortal({ account, onLogout, onAccountUpdated }) {
   const [active, setActive] = useState('Dashboard');
@@ -119,6 +129,24 @@ export default function SchoolPortal({ account, onLogout, onAccountUpdated }) {
     return () => { activeRequest = false; };
   }, [profileLoaded, profileOpen]);
 
+  useEffect(() => {
+    if (!school.logo) return undefined;
+    let favicon = document.querySelector('link[rel~="icon"]');
+    const created = !favicon;
+    if (!favicon) {
+      favicon = document.createElement('link');
+      favicon.rel = 'icon';
+      document.head.appendChild(favicon);
+    }
+    const previousHref = favicon.getAttribute('href');
+    favicon.href = school.logo;
+    return () => {
+      if (created) favicon.remove();
+      else if (previousHref) favicon.setAttribute('href', previousHref);
+      else favicon.removeAttribute('href');
+    };
+  }, [school.logo]);
+
   function selectMenu(label) {
     setActive(label);
     setMobileOpen(false);
@@ -131,6 +159,13 @@ export default function SchoolPortal({ account, onLogout, onAccountUpdated }) {
     onAccountUpdated?.(updatedAccount);
     setProfileEditorOpen(false);
     setProfileOpen(false);
+  }
+
+  function handleSchoolIdentityUpdated(identity) {
+    onAccountUpdated?.({
+      ...account,
+      school: { ...school, name: identity.name, npsn: identity.npsn, logo: identity.logo }
+    });
   }
 
   function toggleSection(label) {
@@ -226,17 +261,41 @@ export default function SchoolPortal({ account, onLogout, onAccountUpdated }) {
             ) : active === 'Dashboard' ? (
               <SchoolDashboard account={profile} />
             ) : active === 'Daftar Pustaka' ? (
-              <SchoolBookCatalogPage rights={activeRights} />
+              <SchoolBookCatalogPage rights={activeRights} role={role} />
             ) : active === 'Tambah Stok Buku' ? (
               <SchoolBookStockPage rights={activeRights} />
             ) : active === 'Eksemplar' ? (
               <SchoolBookItemsPage rights={activeRights} schoolName={schoolName} />
             ) : active === 'Pengadaan Buku' ? (
-              <SchoolProcurementsPage rights={activeRights} role={role} />
+              <SchoolProcurementsPage rights={activeRights} role={role} requester={profile.name} />
+            ) : active === 'Buku Tamu Digital' ? (
+              <SchoolVisitorsPage rights={activeRights} role={role} account={profile} schoolName={schoolName} />
+            ) : active === 'Peminjaman' ? (
+              <SchoolLoansPage rights={activeRights} role={role} account={profile} />
+            ) : active === 'Denda' ? (
+              <SchoolFinesPage rights={activeRights} />
+            ) : active === 'Booking Buku' ? (
+              <SchoolReservationsPage rights={activeRights} role={role} />
+            ) : active === 'Ulasan & Rating' ? (
+              <SchoolReviewsPage rights={activeRights} role={role} />
+            ) : active === 'Pengumuman' ? (
+              <SchoolAnnouncementsPage rights={activeRights} role={role} />
+            ) : active === 'Laporan Bulanan' ? (
+              <Suspense fallback={<div className="library-empty-state">Memuat laporan...</div>}>
+                <SchoolReportsPage rights={activeRights} />
+              </Suspense>
+            ) : active === 'Tahun Pelajaran' ? (
+              <SchoolAcademicYearsPage rights={activeRights} />
+            ) : active === 'Data Siswa & Rombel' ? (
+              <Suspense fallback={<div className="library-empty-state">Memuat data siswa...</div>}>
+                <SchoolStudentsPage rights={activeRights} />
+              </Suspense>
             ) : active === 'Analitik Sirkulasi' ? (
               <Suspense fallback={<div className="library-empty-state">Memuat analitik sirkulasi...</div>}>
                 <SchoolCirculationAnalyticsPage rights={activeRights} schoolName={schoolName} />
               </Suspense>
+            ) : active === 'Identitas Sekolah' ? (
+              <SchoolIdentityPage rights={activeRights} onSaved={handleSchoolIdentityUpdated} />
             ) : activeMasterType ? (
               <SchoolMasterDataPage active={active} type={activeMasterType} rights={activeRights} />
             ) : (

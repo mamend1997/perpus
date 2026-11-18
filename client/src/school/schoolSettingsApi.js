@@ -40,3 +40,14 @@ export async function saveRolePermissions(role, permissions) {
     body: JSON.stringify({ permissions })
   });
 }
+
+export async function fetchLibrarySettings() {
+  return schoolRequest('/settings/library');
+}
+
+export async function saveLibrarySettings(settings) {
+  return schoolRequest('/settings/library', {
+    method: 'PUT',
+    body: JSON.stringify(settings)
+  });
+}

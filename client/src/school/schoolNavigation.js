@@ -1,9 +1,10 @@
 import {
-  BookOpen, FileBarChart2, LayoutDashboard, MessageSquare,
-  PackagePlus, Repeat2, Settings, Star, Tags, Ticket, Users, Wallet
+  BookOpen, Building2, FileBarChart2, LayoutDashboard, MessageSquare,
+  CalendarDays, PackagePlus, Repeat2, Settings, Star, Tags, Ticket, Users, Wallet
 } from 'lucide-react';
 
 const allRoles = ['admin', 'kepsek', 'kapus', 'member'];
+const staffRoles = ['admin', 'kepsek', 'kapus'];
 
 export const masterCategoryTypes = {
   Bahasa: 'bahasa',
@@ -52,8 +53,13 @@ export const schoolNavigation = [
       {
         label: 'Master Data',
         icon: Tags,
-        children: Object.entries(masterCategoryTypes)
-          .map(([label, type]) => ({ label, icon: Tags, roles: allRoles, permission: `master.${type}` }))
+        children: [
+          { label: 'Identitas Sekolah', icon: Building2, roles: allRoles, permission: 'master.identity' },
+          { label: 'Tahun Pelajaran', icon: CalendarDays, roles: allRoles, permission: 'master.academic-years' },
+          { label: 'Data Siswa & Rombel', icon: Users, roles: staffRoles, permission: 'master.students' },
+          ...Object.entries(masterCategoryTypes)
+            .map(([label, type]) => ({ label, icon: Tags, roles: allRoles, permission: `master.${type}` }))
+        ]
       }
     ]
   },
@@ -119,7 +125,7 @@ export const schoolModuleDetails = {
   },
   'Tambah Stok Buku': {
     description: 'Tambahkan eksemplar pada judul buku yang sudah terdaftar.',
-    features: ['Cari judul buku', 'Input jumlah stok', 'Buat nomor serial otomatis', 'Perbarui stok buku']
+    features: ['Scan atau isi kode barcode', 'Cari nama buku setelah mengetik 3 huruf', 'Tanggal stok otomatis', 'Input jumlah dan keterangan']
   },
   Eksemplar: {
     description: 'Pantau setiap salinan fisik menggunakan nomor serial dan status terkini.',
@@ -137,9 +143,17 @@ export const schoolModuleDetails = {
     description: 'Tinjau dan kelola denda keterlambatan pengembalian buku.',
     features: ['Daftar denda', 'Nominal dan status pembayaran', 'Filter anggota dan periode', 'Riwayat pelunasan']
   },
+  'Tahun Pelajaran': {
+    description: 'Atur periode tahun pelajaran untuk membantu penyaringan laporan perpustakaan.',
+    features: ['Nama tahun pelajaran', 'Tanggal mulai dan akhir', 'Periode aktif', 'Riwayat periode']
+  },
+  'Data Siswa & Rombel': {
+    description: 'Kelola data anggota perpustakaan dan ringkasan siswa berdasarkan kelas.',
+    features: ['Pencarian nama dan NIS/NISN', 'Filter kelas / rombel', 'Import dan export Excel', 'Aksi massal siswa']
+  },
   'Pengadaan Buku': {
     description: 'Tinjau usulan buku dan kelola tindak lanjut pengadaan.',
-    features: ['Usulan dari anggota', 'Status pending/diterima/ditolak', 'Catatan keputusan', 'Riwayat usulan']
+    features: ['Data buku, kebutuhan, dan estimasi harga', 'Tanggal pengajuan dan pemohon', 'Status serta alasan pengajuan', 'Masukkan usulan diterima ke Daftar Pustaka']
   },
   'Buku Tamu Digital': {
     description: 'Catat kunjungan perpustakaan melalui pencarian anggota atau pemindaian kartu.',

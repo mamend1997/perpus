@@ -37,10 +37,15 @@ export async function searchStockBooks(search, signal) {
   return requestBookApi(`/stock/books?${query}`, { signal });
 }
 
-export function addBookStock(bookId, quantity, note) {
+export async function findStockBookByBarcode(barcode, signal) {
+  const query = new URLSearchParams({ barcode });
+  return requestBookApi(`/stock/books?${query}`, { signal });
+}
+
+export function addBookStock(bookId, quantity, note, stockDate) {
   return requestBookApi('/stock', {
     method: 'POST',
-    body: { bookId, quantity, note }
+    body: { bookId, quantity, note, stockDate }
   });
 }
 

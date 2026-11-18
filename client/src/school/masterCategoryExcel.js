@@ -36,7 +36,7 @@ async function downloadWorkbook(workbook, filename) {
 export async function downloadMasterTemplate(type) {
   const isAuthor = type === 'pengarang';
   const isAgent = type === 'agen';
-  const isCodeLess = type === 'jenis' || type === 'koleksi' || type === 'topik';
+  const isCodeLess = type === 'jenis' || type === 'koleksi' || type === 'topik' || type === 'penerbit';
   const columns = isAgent
     ? [
       { header: 'Nama Agen', key: 'name', width: 32 },
@@ -71,7 +71,7 @@ export async function downloadMasterTemplate(type) {
 export async function downloadMasterExport(type, rows) {
   const isAuthor = type === 'pengarang';
   const isAgent = type === 'agen';
-  const isCodeLess = type === 'jenis' || type === 'koleksi' || type === 'topik';
+  const isCodeLess = type === 'jenis' || type === 'koleksi' || type === 'topik' || type === 'penerbit';
   const columns = isAgent
     ? [
       { header: 'No', key: 'number', width: 9 },
@@ -173,7 +173,7 @@ export async function parseMasterImport(file, type) {
     const row = sheet.getRow(rowNumber);
     const imported = {
       name: cellText(row.getCell(columns.name)),
-      code: type === 'agen' || type === 'pengarang' || type === 'jenis' || type === 'koleksi' || type === 'topik' ? '' : columns.code ? cellText(row.getCell(columns.code)) : '',
+      code: type === 'agen' || type === 'pengarang' || type === 'jenis' || type === 'koleksi' || type === 'topik' || type === 'penerbit' ? '' : columns.code ? cellText(row.getCell(columns.code)) : '',
       description: type === 'agen' ? '' : columns.description ? cellText(row.getCell(columns.description)) : '',
       email: type === 'agen' && columns.email ? cellText(row.getCell(columns.email)) : '',
       phone: type === 'agen' && columns.phone ? cellText(row.getCell(columns.phone)) : '',

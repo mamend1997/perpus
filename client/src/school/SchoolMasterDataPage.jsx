@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  AlertCircle, CheckCircle2, CircleX, Download, FileSpreadsheet, List, Pencil, Plus,
+  AlertCircle, CheckCircle2, CircleX, Download, Eye, FileSpreadsheet, List, Pencil, Plus,
   Search, Trash2, Upload, X
 } from 'lucide-react';
 import {
   deleteMasterCategories, fetchMasterCategories, importMasterCategories, saveMasterCategory
 } from './masterCategoryApi.js';
+import SchoolConfirmDialog from './SchoolConfirmDialog.jsx';
 import {
   downloadMasterExport, downloadMasterTemplate, parseMasterImport
 } from './masterCategoryExcel.js';
@@ -15,10 +16,65 @@ function displayStatus(status) {
   return status === 'active' ? 'Aktif' : 'Nonaktif';
 }
 
+function MasterCategoryPreviewModal({ type, category, onClose }) {
+  const isAuthor = type === 'pengarang';
+  const isAgent = type === 'agen';
+  const isCodeLess = type === 'koleksi' || type === 'topik' || type === 'penerbit';
+  const details = [
+    { label: isAgent ? 'Nama Agen' : isAuthor ? 'Nama Pengarang' : 'Nama', value: category.name },
+    ...(!isAgent && !isAuthor && !isCodeLess
+      ? [{ label: 'Kode', value: category.code }]
+      : []),
+    ...(isAgent
+      ? [
+        { label: 'Email', value: category.email },
+        { label: 'No. Telepon', value: category.phone },
+        { label: 'Alamat', value: category.address }
+      ]
+      : [{ label: isAuthor ? 'Biodata' : 'Keterangan', value: category.description }]),
+    { label: 'Status', value: displayStatus(category.status), isStatus: true }
+  ];
+
+  useEffect(() => {
+    function closeOnEscape(event) {
+      if (event.key === 'Escape') onClose();
+    }
+    document.addEventListener('keydown', closeOnEscape);
+    return () => document.removeEventListener('keydown', closeOnEscape);
+  }, [onClose]);
+
+  return createPortal(
+    <div className="master-modal-backdrop" onMouseDown={(event) => {
+      if (event.target === event.currentTarget) onClose();
+    }}>
+      <section className="master-modal master-preview-modal" role="dialog" aria-modal="true" aria-labelledby="master-preview-title">
+        <header className="master-modal-heading">
+          <div><span className="library-eyebrow">PRATINJAU MASTER DATA</span><h2 id="master-preview-title">{category.name}</h2></div>
+          <button type="button" className="master-icon-button" onClick={onClose} aria-label="Tutup pratinjau"><X size={18} /></button>
+        </header>
+        <dl className="master-preview-details">
+          {details.map(({ label, value, isStatus }) => (
+            <div className="master-preview-detail" key={label}>
+              <dt>{label}</dt>
+              <dd>{isStatus
+                ? <span className={`master-status ${category.status === 'active' ? 'is-active' : 'is-inactive'}`}>{value}</span>
+                : value || '—'}</dd>
+            </div>
+          ))}
+        </dl>
+        <footer className="master-modal-actions">
+          <button type="button" className="master-button master-button-muted" onClick={onClose}>Tutup</button>
+        </footer>
+      </section>
+    </div>,
+    document.body
+  );
+}
+
 function MasterCategoryModal({ type, category, onClose, onSave }) {
   const isAuthor = type === 'pengarang';
   const isAgent = type === 'agen';
-  const isCodeLess = type === 'jenis' || type === 'koleksi' || type === 'topik';
+  const isCodeLess = type === 'jenis' || type === 'koleksi' || type === 'topik' || type === 'penerbit';
   const [form, setForm] = useState({
     code: isCodeLess ? '' : category?.code || '',
     name: category?.name || '',
@@ -121,10 +177,173 @@ function MasterCategoryModal({ type, category, onClose, onSave }) {
   );
 }
 
+function MasterImportModal({ type, onClose, onImported }) {
+  const isAuthor = type === 'pengarang';
+  const isAgent = type === 'agen';
+  const isCodeLess = type === 'jenis' || type === 'koleksi' || type === 'topik' || type === 'penerbit';
+  const [file, setFile] = useState(null);
+  const [rows, setRows] = useState([]);
+  const [phase, setPhase] = useState('choose');
+  const [dragging, setDragging] = useState(false);
+  const [processing, setProcessing] = useState(false);
+  const [error, setError] = useState('');
+  const fileInputRef = useRef(null);
+  const previewColumns = isAgent
+    ? [['name', 'Nama Agen'], ['email', 'Email'], ['phone', 'No. Telp'], ['address', 'Alamat'], ['status', 'Status']]
+    : isAuthor
+      ? [['name', 'Nama Pengarang'], ['description', 'Biodata'], ['status', 'Status']]
+      : [
+        ...(!isCodeLess ? [['code', 'Kode']] : []),
+        ['name', 'Nama'],
+        ['description', 'Keterangan'],
+        ['status', 'Status']
+      ];
+
+  useEffect(() => {
+    function closeOnEscape(event) {
+      if (event.key === 'Escape' && !processing) onClose();
+    }
+    document.addEventListener('keydown', closeOnEscape);
+    return () => document.removeEventListener('keydown', closeOnEscape);
+  }, [onClose, processing]);
+
+  async function prepareFile(selectedFile) {
+    if (!selectedFile) return;
+    if (!selectedFile.name.toLocaleLowerCase('id-ID').endsWith('.xlsx')) {
+      setError('Pilih file Excel dengan format .xlsx.');
+      return;
+    }
+    setProcessing(true);
+    setError('');
+    setFile(selectedFile);
+    try {
+      const parsedRows = await parseMasterImport(selectedFile, type);
+      setRows(parsedRows);
+      setPhase('preview');
+    } catch (parseError) {
+      setFile(null);
+      setRows([]);
+      setError(parseError.message);
+    } finally {
+      setProcessing(false);
+    }
+  }
+
+  function chooseFile(event) {
+    const selectedFile = event.target.files?.[0];
+    event.target.value = '';
+    prepareFile(selectedFile);
+  }
+
+  function handleDrop(event) {
+    event.preventDefault();
+    setDragging(false);
+    prepareFile(event.dataTransfer.files?.[0]);
+  }
+
+  async function submit(event) {
+    event.preventDefault();
+    if (!rows.length) return;
+    setProcessing(true);
+    setError('');
+    try {
+      const result = await importMasterCategories(type, rows);
+      onImported(result);
+    } catch (importError) {
+      setError(importError.message);
+    } finally {
+      setProcessing(false);
+    }
+  }
+
+  function cellValue(row, key) {
+    if (key === 'status') return displayStatus(row.status);
+    return String(row[key] || '—');
+  }
+
+  return createPortal(
+    <div className="master-modal-backdrop master-import-backdrop" onMouseDown={(event) => {
+      if (event.target === event.currentTarget && !processing) onClose();
+    }}>
+      <section className="master-modal master-import-modal" role="dialog" aria-modal="true" aria-labelledby="master-import-title">
+        <header className="master-modal-heading">
+          <div><span className="library-eyebrow">IMPOR MASTER DATA</span><h2 id="master-import-title">Impor {isAgent ? 'Agen' : isAuthor ? 'Pengarang' : type}</h2></div>
+          <button type="button" className="master-icon-button" onClick={onClose} disabled={processing} aria-label="Tutup impor"><X size={18} /></button>
+        </header>
+        <form onSubmit={submit}>
+          <input
+            ref={fileInputRef}
+            className="master-file-input"
+            type="file"
+            accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            onChange={chooseFile}
+            aria-label="Pilih file Excel Master Data"
+          />
+          {phase === 'choose' ? (
+            <label
+              className={`master-import-drop ${dragging ? 'is-dragging' : ''}`}
+              role="button"
+              tabIndex={0}
+              aria-label="Pilih atau seret file Excel untuk diimpor"
+              onClick={() => fileInputRef.current?.click()}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  fileInputRef.current?.click();
+                }
+              }}
+              onDragOver={(event) => { event.preventDefault(); setDragging(true); }}
+              onDragLeave={(event) => { event.preventDefault(); setDragging(false); }}
+              onDrop={handleDrop}
+            >
+              <Upload size={24} />
+              <b>{processing ? 'Membaca file...' : 'Seret file ke sini atau klik untuk mencari file'}</b>
+              <span>{file?.name || 'Format .xlsx · maksimal 5 MB dan 500 baris'}</span>
+            </label>
+          ) : (
+            <>
+              <div className="master-import-preview-heading">
+                <div><b>{rows.length} baris siap diimpor</b><span>{file?.name}</span></div>
+                <button type="button" className="master-button master-button-light" disabled={processing} onClick={() => {
+                  setPhase('choose');
+                  setRows([]);
+                  setFile(null);
+                  setError('');
+                  fileInputRef.current?.click();
+                }}>Pilih file lain</button>
+              </div>
+              <div className="master-import-preview-scroll">
+                <table className="master-import-preview-table">
+                  <thead><tr>{previewColumns.map(([key, title]) => <th key={key}>{title}</th>)}</tr></thead>
+                  <tbody>
+                    {rows.slice(0, 10).map((row, index) => (
+                      <tr key={`${row.name}-${index}`}>
+                        {previewColumns.map(([key]) => <td key={key}>{cellValue(row, key)}</td>)}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {rows.length > 10 && <small className="master-import-preview-note">Menampilkan 10 dari {rows.length} baris. Semua baris akan diimpor setelah dikonfirmasi.</small>}
+            </>
+          )}
+          {error && <p className="master-form-error" role="alert"><AlertCircle size={15} />{error}</p>}
+          <footer className="master-modal-actions">
+            <button type="button" className="master-button master-button-muted" onClick={onClose} disabled={processing}>Batal</button>
+            {phase === 'preview' && <button type="submit" className="master-button master-button-primary" disabled={processing || !rows.length}>{processing ? 'Mengimpor...' : `Impor ${rows.length} Data`}</button>}
+          </footer>
+        </form>
+      </section>
+    </div>,
+    document.body
+  );
+}
+
 export default function SchoolMasterDataPage({ active, type, rights }) {
   const isAuthor = type === 'pengarang';
   const isAgent = type === 'agen';
-  const isCodeLess = type === 'jenis' || type === 'koleksi' || type === 'topik';
+  const isCodeLess = type === 'jenis' || type === 'koleksi' || type === 'topik' || type === 'penerbit';
+  const canPreview = ['koleksi', 'klasifikasi', 'topik', 'rak', 'pengarang', 'penerbit', 'agen'].includes(type);
   const canEdit = Boolean(rights?.edit);
   const canDelete = Boolean(rights?.delete);
   const [categories, setCategories] = useState([]);
@@ -135,10 +354,12 @@ export default function SchoolMasterDataPage({ active, type, rights }) {
   const [statusFilter, setStatusFilter] = useState('all');
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [editingCategory, setEditingCategory] = useState(null);
+  const [previewCategory, setPreviewCategory] = useState(null);
+  const [deleteRequest, setDeleteRequest] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [busyAction, setBusyAction] = useState('');
-  const fileInputRef = useRef(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -183,17 +404,25 @@ export default function SchoolMasterDataPage({ active, type, rights }) {
     setRefreshKey((key) => key + 1);
   }
 
-  async function removeCategories(ids) {
-    const label = isAgent ? 'agen' : isAuthor ? 'pengarang' : 'data';
-    const confirmation = ids.length === 1
-      ? `Hapus ${label} ini?`
-      : `Hapus ${ids.length} ${label} terpilih?`;
-    if (!window.confirm(confirmation)) return;
+  function removeCategories(ids) {
+    const categoryIds = ids.map(String);
+    if (!categoryIds.length) return;
+    const label = isAgent ? 'agen' : isAuthor ? 'pengarang' : active.toLocaleLowerCase('id-ID');
+    const itemName = categoryIds.length === 1
+      ? categories.find((category) => String(category.id) === categoryIds[0])?.name
+      : '';
+    setError('');
+    setDeleteRequest({ ids: categoryIds, label, itemName });
+  }
+
+  async function confirmRemoveCategories() {
+    if (!deleteRequest) return;
     setBusyAction('delete');
     setError('');
     setNotice('');
     try {
-      const result = await deleteMasterCategories(type, ids);
+      const result = await deleteMasterCategories(type, deleteRequest.ids);
+      setDeleteRequest(null);
       setSelectedIds(new Set());
       setNotice(`${result.deleted} data berhasil dihapus.`);
       setRefreshKey((key) => key + 1);
@@ -201,27 +430,13 @@ export default function SchoolMasterDataPage({ active, type, rights }) {
       setError(deleteError.message);
     } finally {
       setBusyAction('');
-      setMenuId(null);
     }
   }
 
-  async function handleImport(event) {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file) return;
-    setBusyAction('import');
-    setError('');
-    setNotice('');
-    try {
-      const rows = await parseMasterImport(file, type);
-      const result = await importMasterCategories(type, rows);
-      setNotice(`${result.imported} data berhasil diimpor.`);
-      setRefreshKey((key) => key + 1);
-    } catch (importError) {
-      setError(importError.message);
-    } finally {
-      setBusyAction('');
-    }
+  function handleImportComplete(result) {
+    setImportOpen(false);
+    setNotice(`${result.imported} data berhasil diimpor.`);
+    setRefreshKey((key) => key + 1);
   }
 
   async function handleTemplate() {
@@ -312,7 +527,7 @@ export default function SchoolMasterDataPage({ active, type, rights }) {
             <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Cari Disini" aria-label="Cari Master Data" />
           </label>
           <div className="master-toolbar-actions">
-            {!isAuthor && !isAgent && canDelete && (
+            {canDelete && (
               <button type="button" className="master-button master-button-danger" disabled={!selectedIds.size || Boolean(busyAction)} onClick={() => removeCategories([...selectedIds])}>
                 <Trash2 size={16} />Hapus Terpilih{selectedIds.size ? ` (${selectedIds.size})` : ''}
               </button>
@@ -320,9 +535,8 @@ export default function SchoolMasterDataPage({ active, type, rights }) {
             {canEdit && <button type="button" className="master-button master-button-primary" disabled={Boolean(busyAction)} onClick={() => { setEditingCategory(null); setModalOpen(true); }}>
               <Plus size={16} />Tambah
             </button>}
-            <input ref={fileInputRef} className="master-file-input" type="file" accept=".xlsx" onChange={handleImport} aria-label="Pilih file Excel" />
-            {canEdit && <button type="button" className="master-button master-button-teal" disabled={Boolean(busyAction)} onClick={() => fileInputRef.current?.click()}>
-              <Upload size={15} />{busyAction === 'import' ? 'Mengimpor...' : 'Import Excel'}
+            {canEdit && <button type="button" className="master-button master-button-teal" disabled={Boolean(busyAction)} onClick={() => { setError(''); setNotice(''); setImportOpen(true); }}>
+              <Upload size={15} />Import Excel
             </button>}
             <button type="button" className="master-button master-button-light" disabled={Boolean(busyAction)} onClick={handleTemplate}>
               <FileSpreadsheet size={15} />Template
@@ -340,9 +554,15 @@ export default function SchoolMasterDataPage({ active, type, rights }) {
           <table className={`master-table ${isAgent ? 'master-table-agent' : ''}`}>
             <thead>
               {isAgent ? (
-                <tr><th>No</th><th>Nama Agen</th><th>Email</th><th>No. Telp</th><th>Alamat</th><th>Status</th><th>Aksi</th></tr>
+                <tr>
+                  <th className="master-check-cell"><input type="checkbox" checked={allVisibleSelected} onChange={(event) => toggleAllVisible(event.target.checked)} aria-label="Pilih semua agen yang tampil" /></th>
+                  <th>No</th><th>Nama Agen</th><th>Email</th><th>No. Telp</th><th>Alamat</th><th>Status</th><th>Aksi</th>
+                </tr>
               ) : isAuthor ? (
-                <tr><th>No</th><th>Nama</th><th>Biodata</th><th>Status</th><th>Aksi</th></tr>
+                <tr>
+                  <th className="master-check-cell"><input type="checkbox" checked={allVisibleSelected} onChange={(event) => toggleAllVisible(event.target.checked)} aria-label="Pilih semua pengarang yang tampil" /></th>
+                  <th>No</th><th>Nama</th><th>Biodata</th><th>Status</th><th>Aksi</th>
+                </tr>
               ) : isCodeLess ? (
                 <tr>
                   <th className="master-check-cell"><input type="checkbox" checked={allVisibleSelected} onChange={(event) => toggleAllVisible(event.target.checked)} aria-label="Pilih semua data yang tampil" /></th>
@@ -357,15 +577,23 @@ export default function SchoolMasterDataPage({ active, type, rights }) {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td className="master-empty-cell" colSpan={isAgent ? 7 : isAuthor || isCodeLess ? 5 : 6}>Memuat data...</td></tr>
+                <tr><td className="master-empty-cell" colSpan={isAgent ? 8 : isAuthor ? 6 : isCodeLess ? 5 : 6}>Memuat data...</td></tr>
               ) : error && categories.length === 0 ? (
-                <tr><td className="master-empty-cell" colSpan={isAgent ? 7 : isAuthor || isCodeLess ? 5 : 6}>Data belum dapat dimuat.</td></tr>
+                <tr><td className="master-empty-cell" colSpan={isAgent ? 8 : isAuthor ? 6 : isCodeLess ? 5 : 6}>Data belum dapat dimuat.</td></tr>
               ) : filteredCategories.length === 0 ? (
-                <tr><td className="master-empty-cell" colSpan={isAgent ? 7 : isAuthor || isCodeLess ? 5 : 6}>{search || statusFilter !== 'all' ? 'Data tidak ditemukan.' : 'Belum ada data. Tambahkan data pertama Anda.'}</td></tr>
+                <tr><td className="master-empty-cell" colSpan={isAgent ? 8 : isAuthor ? 6 : isCodeLess ? 5 : 6}>{search || statusFilter !== 'all' ? 'Data tidak ditemukan.' : 'Belum ada data. Tambahkan data pertama Anda.'}</td></tr>
               ) : filteredCategories.map((category, index) => (
                 <tr key={category.id}>
                   {isAgent ? (
                     <>
+                      <td className="master-check-cell"><input type="checkbox" checked={selectedIds.has(String(category.id))} onChange={(event) => {
+                        setSelectedIds((current) => {
+                          const next = new Set(current);
+                          if (event.target.checked) next.add(String(category.id));
+                          else next.delete(String(category.id));
+                          return next;
+                        });
+                      }} aria-label={`Pilih ${category.name}`} /></td>
                       <td>{index + 1}</td>
                       <td><b className="master-primary-text">{category.name}</b></td>
                       <td>{category.email || '—'}</td>
@@ -374,23 +602,33 @@ export default function SchoolMasterDataPage({ active, type, rights }) {
                       <td><span className={`master-status ${category.status === 'active' ? 'is-active' : 'is-inactive'}`}>{displayStatus(category.status)}</span></td>
                       <td>
                         <div className="master-agent-actions">
+                          {canPreview && <button type="button" className="master-row-icon is-preview" title="Pratinjau" aria-label={`Pratinjau ${category.name}`} onClick={() => setPreviewCategory(category)}><Eye size={14} /></button>}
                           {canEdit && <button type="button" className="master-row-icon is-edit" title="Edit" aria-label={`Edit ${category.name}`} onClick={() => { setEditingCategory(category); setModalOpen(true); }}><Pencil size={14} /></button>}
                           {canDelete && <button type="button" className="master-row-icon is-delete" title="Hapus" aria-label={`Hapus ${category.name}`} disabled={busyAction === 'delete'} onClick={() => removeCategories([category.id])}><Trash2 size={14} /></button>}
-                          {!canEdit && !canDelete && '—'}
+                          {!canPreview && !canEdit && !canDelete && '—'}
                         </div>
                       </td>
                     </>
                   ) : isAuthor ? (
                     <>
+                      <td className="master-check-cell"><input type="checkbox" checked={selectedIds.has(String(category.id))} onChange={(event) => {
+                        setSelectedIds((current) => {
+                          const next = new Set(current);
+                          if (event.target.checked) next.add(String(category.id));
+                          else next.delete(String(category.id));
+                          return next;
+                        });
+                      }} aria-label={`Pilih ${category.name}`} /></td>
                       <td>{index + 1}</td>
                       <td><b className="master-primary-text">{category.name}</b></td>
                       <td className="master-description-cell">{category.description || '—'}</td>
                       <td><span className={`master-status ${category.status === 'active' ? 'is-active' : 'is-inactive'}`}>{displayStatus(category.status)}</span></td>
                       <td>
                         <div className="master-agent-actions">
+                          {canPreview && <button type="button" className="master-row-icon is-preview" title="Pratinjau" aria-label={`Pratinjau ${category.name}`} onClick={() => setPreviewCategory(category)}><Eye size={14} /></button>}
                           {canEdit && <button type="button" className="master-row-icon is-edit" title="Edit" aria-label={`Edit ${category.name}`} onClick={() => { setEditingCategory(category); setModalOpen(true); }}><Pencil size={14} /></button>}
                           {canDelete && <button type="button" className="master-row-icon is-delete" title="Hapus" aria-label={`Hapus ${category.name}`} disabled={busyAction === 'delete'} onClick={() => removeCategories([category.id])}><Trash2 size={14} /></button>}
-                          {!canEdit && !canDelete && '—'}
+                          {!canPreview && !canEdit && !canDelete && '—'}
                         </div>
                       </td>
                     </>
@@ -410,9 +648,10 @@ export default function SchoolMasterDataPage({ active, type, rights }) {
                       <td><span className={`master-status ${category.status === 'active' ? 'is-active' : 'is-inactive'}`}>{displayStatus(category.status)}</span></td>
                       <td>
                         <div className="master-agent-actions">
+                          {canPreview && <button type="button" className="master-row-icon is-preview" title="Pratinjau" aria-label={`Pratinjau ${category.name}`} onClick={() => setPreviewCategory(category)}><Eye size={14} /></button>}
                           {canEdit && <button type="button" className="master-row-icon is-edit" title="Edit" aria-label={`Edit ${category.name}`} onClick={() => { setEditingCategory(category); setModalOpen(true); }}><Pencil size={14} /></button>}
                           {canDelete && <button type="button" className="master-row-icon is-delete" title="Hapus" aria-label={`Hapus ${category.name}`} disabled={busyAction === 'delete'} onClick={() => removeCategories([category.id])}><Trash2 size={14} /></button>}
-                          {!canEdit && !canDelete && '—'}
+                          {!canPreview && !canEdit && !canDelete && '—'}
                         </div>
                       </td>
                     </>
@@ -431,6 +670,28 @@ export default function SchoolMasterDataPage({ active, type, rights }) {
         category={editingCategory}
         onClose={() => { setModalOpen(false); setEditingCategory(null); }}
         onSave={saveCategory}
+      />}
+      {previewCategory && <MasterCategoryPreviewModal
+        type={type}
+        category={previewCategory}
+        onClose={() => setPreviewCategory(null)}
+      />}
+      {importOpen && <MasterImportModal
+        type={type}
+        onClose={() => setImportOpen(false)}
+        onImported={handleImportComplete}
+      />}
+      {deleteRequest && <SchoolConfirmDialog
+        title={deleteRequest.ids.length === 1 ? `Hapus ${deleteRequest.label}?` : 'Hapus Data Terpilih?'}
+        message={deleteRequest.ids.length === 1
+          ? 'Apakah Anda yakin ingin menghapus data ini?'
+          : `Anda akan menghapus ${deleteRequest.ids.length} ${deleteRequest.label} yang dipilih.`}
+        itemName={deleteRequest.itemName}
+        confirmLabel="Hapus Data"
+        loading={busyAction === 'delete'}
+        error={error}
+        onClose={() => { setDeleteRequest(null); setError(''); }}
+        onConfirm={confirmRemoveCategories}
       />}
     </div>
   );

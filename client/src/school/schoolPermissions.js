@@ -7,6 +7,9 @@ export const schoolPermissionFeatures = [
   { key: 'circulation.analytics', label: 'Analitik Sirkulasi', section: 'Sirkulasi Buku' },
   { key: 'circulation.loans', label: 'Peminjaman', section: 'Sirkulasi Buku' },
   { key: 'circulation.fines', label: 'Denda', section: 'Sirkulasi Buku' },
+  { key: 'master.identity', label: 'Identitas Sekolah', section: 'Master Data' },
+  { key: 'master.academic-years', label: 'Tahun Pelajaran', section: 'Master Data' },
+  { key: 'master.students', label: 'Data Siswa & Rombel', section: 'Master Data' },
   { key: 'master.bahasa', label: 'Bahasa', section: 'Master Data' },
   { key: 'master.jenis', label: 'Jenis', section: 'Master Data' },
   { key: 'master.koleksi', label: 'Koleksi', section: 'Master Data' },
@@ -34,8 +37,13 @@ export const schoolPermissionByLabel = Object.fromEntries(
 );
 
 export function defaultSchoolPermissions() {
+  const memberEditable = new Set(['visitors', 'reservations', 'reviews']);
+  const viewable = new Set([
+    'dashboard', 'visitors', 'reservations', 'reviews', 'announcements',
+    'master.academic-years', 'master.students'
+  ]);
   return Object.fromEntries(schoolPermissionFeatures.map(({ key }) => [
     key,
-    { view: key === 'dashboard', edit: false, delete: false }
+    { view: viewable.has(key), edit: memberEditable.has(key), delete: false }
   ]));
 }

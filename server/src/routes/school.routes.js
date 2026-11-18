@@ -4,8 +4,17 @@ import { pool } from '../config/database.js';
 import { requireSchool } from '../middleware/require-school.js';
 import { requireSchoolPermission } from '../middleware/require-school-permission.js';
 import schoolBookRoutes from './school-books.routes.js';
+import schoolLoanRoutes from './school-loans.routes.js';
 import schoolProcurementRoutes from './school-procurements.routes.js';
 import schoolCirculationAnalyticsRoutes from './school-circulation-analytics.routes.js';
+import schoolVisitorsRoutes from './school-visitors.routes.js';
+import schoolAnnouncementsRoutes from './school-announcements.routes.js';
+import schoolReportsRoutes from './school-reports.routes.js';
+import schoolYearsRoutes from './school-years.routes.js';
+import schoolSettingsRoutes from './school-settings.routes.js';
+import schoolReservationsRoutes from './school-reservations.routes.js';
+import schoolReviewsRoutes from './school-reviews.routes.js';
+import schoolStudentsRoutes from './school-students.routes.js';
 import {
   defaultSchoolPermissions, schoolPermissionFeatureKeys, schoolPermissionFeatures,
   schoolPermissionRoles
@@ -19,8 +28,17 @@ const masterCategoryTypes = new Set([
 
 router.use(requireSchool);
 router.use('/books', schoolBookRoutes);
+router.use('/loans', schoolLoanRoutes);
 router.use('/procurements', schoolProcurementRoutes);
 router.use('/circulation/analytics', schoolCirculationAnalyticsRoutes);
+router.use('/visitors', schoolVisitorsRoutes);
+router.use('/announcements', schoolAnnouncementsRoutes);
+router.use('/reports', schoolReportsRoutes);
+router.use('/academic-years', schoolYearsRoutes);
+router.use('/settings', schoolSettingsRoutes);
+router.use('/reservations', schoolReservationsRoutes);
+router.use('/reviews', schoolReviewsRoutes);
+router.use('/students', schoolStudentsRoutes);
 
 function requireSchoolAdmin(req, res, next) {
   if (req.school.role !== 'admin') {
@@ -67,7 +85,7 @@ function normalizeMasterCategory(body, type) {
   if (textFields.some((field) => body[field] != null && typeof body[field] !== 'string')) {
     return { error: 'Semua nilai Master Data harus berupa teks.' };
   }
-  const code = type === 'jenis' || type === 'koleksi' || type === 'topik' ? '' : typeof body?.code === 'string' ? body.code.trim() : '';
+  const code = type === 'jenis' || type === 'koleksi' || type === 'topik' || type === 'penerbit' ? '' : typeof body?.code === 'string' ? body.code.trim() : '';
   const name = typeof body?.name === 'string' ? body.name.trim() : '';
   const description = typeof body?.description === 'string' ? body.description.trim() : '';
   const email = typeof body?.email === 'string' ? body.email.trim() : '';
@@ -272,6 +290,91 @@ router.post('/users', requireSchoolAdmin, async (req, res, next) => {
   } catch (error) {
     if (error.code === 'ER_DUP_ENTRY') {
       return res.status(409).json({ message: 'Email atau NIS/NISN tersebut sudah digunakan di sekolah ini.' });
+    }
+    return next(error);
+  }
+});
+
+router.get('/identity', requireSchoolPermission('master.identity', 'view'), async (req, res, next) => {
+  try {
+    const [rows] = await pool.execute(
+      `SELECT name, npsn, phone, email, website, address,
+              principal_name, principal_nip, librarian_name, librarian_nip, logo
+       FROM tenants_schools WHERE id = ? LIMIT 1`,
+      [req.school.id]
+    );
+    if (!rows[0]) return res.status(404).json({ message: 'Data identitas sekolah tidak ditemukan.' });
+    return res.json({ identity: rows[0] });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.patch('/identity', requireSchoolPermission('master.identity', 'edit'), async (req, res, next) => {
+  const fields = [
+    'name', 'npsn', 'phone', 'email', 'website', 'address',
+    'principal_name', 'principal_nip', 'librarian_name', 'librarian_nip'
+  ];
+  if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)
+      || fields.some((field) => typeof req.body[field] !== 'string')) {
+    return res.status(400).json({ message: 'Lengkapi identitas sekolah dengan format yang valid.' });
+  }
+
+  const identity = Object.fromEntries(fields.map((field) => [field, req.body[field].trim()]));
+  identity.npsn = identity.npsn || null;
+  identity.phone = identity.phone || null;
+  identity.email = identity.email.toLowerCase() || null;
+  identity.website = identity.website || null;
+  identity.address = identity.address || null;
+  identity.principal_name = identity.principal_name || null;
+  identity.principal_nip = identity.principal_nip || null;
+  identity.librarian_name = identity.librarian_name || null;
+  identity.librarian_nip = identity.librarian_nip || null;
+  const logo = req.body.logo === '' || req.body.logo == null ? null : req.body.logo;
+
+  let validWebsite = true;
+  if (identity.website) {
+    try {
+      const websiteUrl = new URL(identity.website);
+      validWebsite = ['http:', 'https:'].includes(websiteUrl.protocol);
+    } catch {
+      validWebsite = false;
+    }
+  }
+  const validLogo = logo === null || (typeof logo === 'string'
+    && logo.length <= 700000
+    && (/^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(logo)
+      || /^https?:\/\/\S+$/i.test(logo)));
+  if (identity.name.length < 2 || identity.name.length > 180
+      || (identity.npsn && !/^\d{8}$/.test(identity.npsn))
+      || (identity.phone && identity.phone.length > 30)
+      || (identity.email && (identity.email.length > 190 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identity.email)))
+      || (identity.website && (identity.website.length > 255 || !validWebsite))
+      || (identity.address && identity.address.length > 65535)
+      || (identity.principal_name && identity.principal_name.length > 180)
+      || (identity.principal_nip && identity.principal_nip.length > 30)
+      || (identity.librarian_name && identity.librarian_name.length > 180)
+      || (identity.librarian_nip && identity.librarian_nip.length > 30)
+      || !validLogo) {
+    return res.status(400).json({ message: 'Nama, kontak, NPSN, alamat, data pimpinan, atau logo sekolah tidak valid.' });
+  }
+
+  try {
+    await pool.execute(
+      `UPDATE tenants_schools
+       SET name = ?, npsn = ?, phone = ?, email = ?, website = ?, address = ?,
+           principal_name = ?, principal_nip = ?, librarian_name = ?, librarian_nip = ?, logo = ?
+       WHERE id = ?`,
+      [
+        identity.name, identity.npsn, identity.phone, identity.email, identity.website,
+        identity.address, identity.principal_name, identity.principal_nip,
+        identity.librarian_name, identity.librarian_nip, logo, req.school.id
+      ]
+    );
+    return res.json({ identity: { ...identity, logo }, message: 'Identitas sekolah berhasil disimpan.' });
+  } catch (error) {
+    if (error.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ message: 'NPSN tersebut sudah digunakan sekolah lain.' });
     }
     return next(error);
   }

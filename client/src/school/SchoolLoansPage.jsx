@@ -1,0 +1,436 @@
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
+import {
+  Check, ChevronLeft, ChevronRight, Clock3, LoaderCircle, Plus, RefreshCw,
+  RotateCcw, Search, X
+} from 'lucide-react';
+import {
+  createLoan, fetchLoans, returnLoan, searchLoanItems, searchLoanMembers,
+  updateLoanStatus
+} from './schoolLoanApi.js';
+
+const pageSize = 25;
+const numberFormat = new Intl.NumberFormat('id-ID');
+const currencyFormat = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 });
+
+function formatDate(value) {
+  if (!value) return '—';
+  const date = new Date(`${String(value).slice(0, 10)}T00:00:00`);
+  return Number.isNaN(date.getTime()) ? '—' : new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium' }).format(date);
+}
+
+function LoanSearchPicker({
+  label, placeholder, query, selected, results, loading, onQueryChange, onChoose, onClear, getTitle, getSubtitle, fixed = false
+}) {
+  const matchingResult = results.find((result) => {
+    const text = `${getTitle(result)} ${getSubtitle(result)}`.toLocaleLowerCase('id-ID');
+    return text === query.trim().toLocaleLowerCase('id-ID');
+  });
+
+  return (
+    <div className="loan-picker">
+      <span className="loan-form-label">{label}</span>
+      {selected ? (
+        <div className="loan-picker-selected">
+          <div><b>{getTitle(selected)}</b><small>{getSubtitle(selected)}</small></div>
+          {!fixed && <button type="button" onClick={onClear} aria-label={`Ganti ${label}`} title={`Ganti ${label}`}><X size={15} /></button>}
+        </div>
+      ) : (
+        <>
+          <label className="master-search loan-picker-search">
+            <Search size={16} />
+            <input
+              value={query}
+              onChange={(event) => onQueryChange(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  if (matchingResult || results.length === 1) onChoose(matchingResult || results[0]);
+                }
+              }}
+              placeholder={placeholder}
+              autoComplete="off"
+            />
+            {loading && <LoaderCircle size={15} className="book-stock-spinner" />}
+          </label>
+          {results.length > 0 && (
+            <div className="loan-picker-options" role="listbox" aria-label={label}>
+              {results.map((result) => (
+                <button type="button" role="option" key={result.id} onClick={() => onChoose(result)}>
+                  <b>{getTitle(result)}</b><small>{getSubtitle(result)}</small>
+                </button>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function NewLoanModal({ account, role, durationDays, onClose, onSave }) {
+  const isMember = role === 'member';
+  const [memberSearch, setMemberSearch] = useState('');
+  const [memberResults, setMemberResults] = useState([]);
+  const [memberLoading, setMemberLoading] = useState(false);
+  const [selectedMember, setSelectedMember] = useState(() => isMember && account?.id
+    ? { id: account.id, name: account.name, nis_nisn: account.nis_nisn || '' }
+    : null);
+  const [itemSearch, setItemSearch] = useState('');
+  const [itemResults, setItemResults] = useState([]);
+  const [itemLoading, setItemLoading] = useState(false);
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const dueDate = new Date();
+  dueDate.setDate(dueDate.getDate() + durationDays);
+
+  useEffect(() => {
+    if (isMember || memberSearch.trim().length < 2) {
+      setMemberResults([]);
+      setMemberLoading(false);
+      return undefined;
+    }
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      setMemberLoading(true);
+      searchLoanMembers(memberSearch.trim(), controller.signal)
+        .then((results) => {
+          setMemberResults(results);
+          const term = memberSearch.trim().toLocaleLowerCase('id-ID');
+          const exactMatches = results.filter((member) => [member.name, member.nis_nisn]
+            .some((value) => String(value || '').toLocaleLowerCase('id-ID') === term));
+          if (exactMatches.length === 1) {
+            setSelectedMember(exactMatches[0]);
+            setMemberSearch('');
+            setMemberResults([]);
+          }
+        })
+        .catch((searchError) => {
+          if (searchError.name !== 'AbortError') setError(searchError.message);
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setMemberLoading(false);
+        });
+    }, 220);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [isMember, memberSearch]);
+
+  useEffect(() => {
+    if (!itemSearch.trim()) {
+      setItemResults([]);
+      setItemLoading(false);
+      return undefined;
+    }
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      setItemLoading(true);
+      searchLoanItems(itemSearch.trim(), controller.signal)
+        .then((results) => {
+          setItemResults(results);
+          const term = itemSearch.trim().toLocaleLowerCase('id-ID');
+          const exactMatches = results.filter((item) => String(item.serial_number || '').toLocaleLowerCase('id-ID') === term);
+          if (exactMatches.length === 1) {
+            setSelectedItem(exactMatches[0]);
+            setItemSearch('');
+            setItemResults([]);
+          }
+        })
+        .catch((searchError) => {
+          if (searchError.name !== 'AbortError') setError(searchError.message);
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setItemLoading(false);
+        });
+    }, 220);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [itemSearch]);
+
+  useEffect(() => {
+    function closeOnEscape(event) {
+      if (event.key === 'Escape' && !saving) onClose();
+    }
+    document.addEventListener('keydown', closeOnEscape);
+    return () => document.removeEventListener('keydown', closeOnEscape);
+  }, [onClose, saving]);
+
+  async function submit(event) {
+    event.preventDefault();
+    if (!selectedMember || !selectedItem) {
+      setError('Pilih anggota dan eksemplar yang akan dipinjam.');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      await onSave({ userId: selectedMember.id, bookItemId: selectedItem.id });
+    } catch (saveError) {
+      setError(saveError.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return createPortal(
+    <div className="master-modal-backdrop loan-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) onClose(); }}>
+      <section className="master-modal loan-modal" role="dialog" aria-modal="true" aria-labelledby="loan-modal-title">
+        <header className="master-modal-heading">
+          <div><span className="library-eyebrow">TRANSAKSI BARU</span><h2 id="loan-modal-title">Peminjaman Buku</h2></div>
+          <button type="button" className="master-icon-button" onClick={onClose} disabled={saving} aria-label="Tutup form"><X size={18} /></button>
+        </header>
+        <form className="loan-modal-form" onSubmit={submit}>
+          <LoanSearchPicker
+            label="Anggota / NIS"
+            placeholder="Cari nama atau scan/ketik NIS"
+            query={memberSearch}
+            selected={selectedMember}
+            results={memberResults}
+            loading={memberLoading}
+            onQueryChange={(value) => { setMemberSearch(value); setSelectedMember(null); setError(''); }}
+            onChoose={(member) => { setSelectedMember(member); setMemberSearch(''); setMemberResults([]); }}
+            onClear={() => setSelectedMember(null)}
+            getTitle={(member) => member.name}
+            getSubtitle={(member) => member.nis_nisn ? `NIS/NISN ${member.nis_nisn}` : 'Anggota perpustakaan'}
+            fixed={isMember}
+          />
+          <LoanSearchPicker
+            label="Buku / Barcode Eksemplar"
+            placeholder="Cari judul, kode, atau scan serial buku"
+            query={itemSearch}
+            selected={selectedItem}
+            results={itemResults}
+            loading={itemLoading}
+            onQueryChange={(value) => { setItemSearch(value); setSelectedItem(null); setError(''); }}
+            onChoose={(item) => { setSelectedItem(item); setItemSearch(''); setItemResults([]); }}
+            onClear={() => setSelectedItem(null)}
+            getTitle={(item) => item.book_title}
+            getSubtitle={(item) => `${item.serial_number}${item.kode_buku ? ` · ${item.kode_buku}` : ''}`}
+          />
+          <div className="loan-date-preview">
+            <div><small>Tanggal pinjam</small><b>Otomatis hari ini</b></div>
+            <div><small>Batas pengembalian</small><b>{formatDate(`${dueDate.getFullYear()}-${String(dueDate.getMonth() + 1).padStart(2, '0')}-${String(dueDate.getDate()).padStart(2, '0')}`)}</b></div>
+            <span>Durasi standar {durationDays} hari</span>
+          </div>
+          <p className="loan-modal-note">{isMember
+            ? 'Permintaan akan berstatus Pending sampai disetujui petugas perpustakaan.'
+            : 'Peminjaman akan langsung aktif dan status eksemplar berubah menjadi Dipinjam.'}</p>
+          {error && <p className="master-form-error" role="alert">{error}</p>}
+          <footer className="master-modal-actions">
+            <button type="button" className="master-button master-button-muted" onClick={onClose} disabled={saving}>Batal</button>
+            <button type="submit" className="master-button master-button-primary" disabled={saving || !selectedMember || !selectedItem}>
+              {saving ? 'Menyimpan...' : isMember ? 'Ajukan Peminjaman' : 'Simpan Peminjaman'}
+            </button>
+          </footer>
+        </form>
+      </section>
+    </div>,
+    document.body
+  );
+}
+
+function statusClass(status) {
+  if (status === 'Pending') return 'is-pending';
+  if (status === 'Terlambat') return 'is-overdue';
+  if (status === 'Dikembalikan') return 'is-returned';
+  if (status === 'Ditolak') return 'is-rejected';
+  return 'is-borrowed';
+}
+
+export default function SchoolLoansPage({ rights, role, account }) {
+  const canEdit = Boolean(rights?.edit);
+  const canManage = canEdit && role !== 'member';
+  const [loans, setLoans] = useState([]);
+  const [pagination, setPagination] = useState({ page: 1, total: 0, totalPages: 0 });
+  const [page, setPage] = useState(1);
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [busyLoanId, setBusyLoanId] = useState('');
+  const [createOpen, setCreateOpen] = useState(false);
+  const [loanDurationDays, setLoanDurationDays] = useState(7);
+  const [finePerDay, setFinePerDay] = useState(1000);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setSearch(searchInput.trim());
+      setPage(1);
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [searchInput]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setLoading(true);
+    setError('');
+    fetchLoans({ page, limit: pageSize, search, status: statusFilter, signal: controller.signal })
+      .then((result) => {
+        if (controller.signal.aborted) return;
+        setLoans(result.loans || []);
+        setPagination(result.pagination || { page: 1, total: 0, totalPages: 0 });
+        setLoanDurationDays(result.loanDurationDays || 7);
+        setFinePerDay(result.finePerDay ?? 1000);
+        if (result.pagination?.totalPages && page > result.pagination.totalPages) {
+          setPage(result.pagination.totalPages);
+        }
+      })
+      .catch((fetchError) => {
+        if (!controller.signal.aborted) setError(fetchError.message);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+    return () => controller.abort();
+  }, [page, search, statusFilter, refreshKey]);
+
+  async function submitLoan(data) {
+    const result = await createLoan(data);
+    setCreateOpen(false);
+    setNotice(result.message);
+    setPage(1);
+    setRefreshKey((current) => current + 1);
+  }
+
+  async function runAction(id, action) {
+    setBusyLoanId(String(id));
+    setError('');
+    setNotice('');
+    try {
+      const result = await action();
+      setNotice(result.message);
+      setRefreshKey((current) => current + 1);
+    } catch (actionError) {
+      setError(actionError.message);
+    } finally {
+      setBusyLoanId('');
+    }
+  }
+
+  function processPending(loan, status) {
+    const action = status === 'Borrowed' ? 'setujui' : 'tolak';
+    if (!window.confirm(`${action[0].toUpperCase()}${action.slice(1)} permintaan peminjaman ${loan.book_title}?`)) return;
+    runAction(loan.id, () => updateLoanStatus(loan.id, status));
+  }
+
+  function processReturn(loan) {
+    if (!window.confirm(`Proses pengembalian "${loan.book_title}" dari ${loan.member_name}?`)) return;
+    runAction(loan.id, () => returnLoan(loan.id));
+  }
+
+  return (
+    <div className="library-module-page loans-page">
+      <header className="library-module-heading">
+        <span className="library-eyebrow">SIRKULASI BUKU</span>
+        <h1>Peminjaman</h1>
+        <p>Catat transaksi pinjam, pantau tenggat, dan proses pengembalian eksemplar.</p>
+      </header>
+
+      {notice && <div className="book-stock-success" role="status"><Check size={16} />{notice}</div>}
+      {error && <div className="library-error" role="alert"><span>{error}</span><button type="button" onClick={() => setRefreshKey((current) => current + 1)}><RefreshCw size={14} />Coba lagi</button></div>}
+
+      <section className="catalog-toolbar-panel loan-toolbar">
+        <div className="loan-toolbar-top">
+          <label className="master-search loan-table-search">
+            <Search size={16} />
+            <input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Cari anggota, NIS, judul, atau serial..." aria-label="Cari transaksi peminjaman" />
+          </label>
+          <div className="loan-toolbar-actions">
+            <label className="loan-status-filter">Status
+              <select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setPage(1); }}>
+                <option value="">Semua status</option>
+                <option value="Pending">Pending</option>
+                <option value="Dipinjam">Dipinjam</option>
+                <option value="Terlambat">Terlambat</option>
+                <option value="Dikembalikan">Dikembalikan</option>
+                <option value="Ditolak">Ditolak</option>
+              </select>
+            </label>
+            {canEdit && <button type="button" className="master-button master-button-primary" onClick={() => setCreateOpen(true)}><Plus size={16} />Peminjaman Baru</button>}
+          </div>
+        </div>
+        <div className="loan-policy-note"><Clock3 size={14} />Durasi pinjam {loanDurationDays} hari <span>·</span> Denda {currencyFormat.format(finePerDay)} per hari keterlambatan</div>
+      </section>
+
+      <section className="library-panel loan-table-panel">
+        <div className="catalog-table-heading">
+          <div><span className="library-eyebrow">DAFTAR TRANSAKSI</span><h2>Transaksi Peminjaman</h2></div>
+          <span>{numberFormat.format(pagination.total)} transaksi</span>
+        </div>
+        <div className="loan-table-scroll">
+          <table className="loan-table">
+            <thead>
+              <tr>
+                <th>No</th><th>ID Pinjam</th><th>Anggota / NIS</th><th>Buku / Serial</th>
+                <th>Tanggal Pinjam</th><th>Batas Pengembalian</th><th>Tanggal Kembali</th>
+                <th>Status</th><th>Denda</th><th>Aksi</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr><td className="loan-table-empty" colSpan={10}><LoaderCircle size={17} className="book-stock-spinner" />Memuat transaksi peminjaman...</td></tr>
+              ) : loans.length ? loans.map((loan, index) => (
+                <tr key={loan.id}>
+                  <td>{(page - 1) * pageSize + index + 1}</td>
+                  <td><span className="loan-id-badge">PJM-{String(loan.id).padStart(5, '0')}</span></td>
+                  <td><div className="loan-member-cell"><b>{loan.member_name}</b><small>{loan.nis_nisn ? `NIS/NISN ${loan.nis_nisn}` : 'NIS belum diisi'}</small></div></td>
+                  <td><div className="loan-book-cell"><b>{loan.book_title}</b><small>Serial {loan.serial_number}</small></div></td>
+                  <td>{formatDate(loan.borrow_date)}</td>
+                  <td>{formatDate(loan.due_date)}</td>
+                  <td>{formatDate(loan.return_date)}</td>
+                  <td><span className={`loan-status-badge ${statusClass(loan.status)}`}>{loan.status}</span></td>
+                  <td>
+                    <div className="loan-fine-cell">
+                      <b>{currencyFormat.format(loan.display_fine)}</b>
+                      {loan.status === 'Dikembalikan' && loan.display_fine > 0 && <small>{loan.fine_status === 'paid' ? 'Lunas' : loan.fine_status === 'waived' ? 'Dibebaskan' : 'Belum dibayar'}</small>}
+                      {loan.status === 'Terlambat' && loan.display_fine > 0 && <small>Estimasi berjalan</small>}
+                    </div>
+                  </td>
+                  <td>
+                    <div className="loan-row-actions">
+                      {canManage && loan.status === 'Pending' && (
+                        <>
+                          <button type="button" className="loan-action-button is-approve" title="Setujui peminjaman" aria-label={`Setujui peminjaman ${loan.id}`} disabled={busyLoanId === loan.id} onClick={() => processPending(loan, 'Borrowed')}><Check size={15} /></button>
+                          <button type="button" className="loan-action-button is-reject" title="Tolak peminjaman" aria-label={`Tolak peminjaman ${loan.id}`} disabled={busyLoanId === loan.id} onClick={() => processPending(loan, 'Rejected')}><X size={15} /></button>
+                        </>
+                      )}
+                      {canManage && ['Dipinjam', 'Terlambat'].includes(loan.status) && (
+                        <button type="button" className="loan-action-button is-return" title="Proses pengembalian" aria-label={`Proses pengembalian ${loan.id}`} disabled={busyLoanId === loan.id} onClick={() => processReturn(loan)}><RotateCcw size={15} /></button>
+                      )}
+                      {(!canManage || !['Pending', 'Dipinjam', 'Terlambat'].includes(loan.status)) && '—'}
+                    </div>
+                  </td>
+                </tr>
+              )) : (
+                <tr><td className="loan-table-empty" colSpan={10}>{search || statusFilter ? 'Tidak ada transaksi yang sesuai dengan pencarian atau filter.' : 'Belum ada transaksi peminjaman.'}</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        <footer className="catalog-pagination">
+          <span>Halaman {pagination.totalPages ? page : 0} dari {pagination.totalPages} · {numberFormat.format(pagination.total)} transaksi</span>
+          <div>
+            <button type="button" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={loading || page <= 1} aria-label="Halaman sebelumnya"><ChevronLeft size={15} /></button>
+            <button type="button" onClick={() => setPage((current) => Math.min(pagination.totalPages, current + 1))} disabled={loading || page >= pagination.totalPages} aria-label="Halaman berikutnya"><ChevronRight size={15} /></button>
+          </div>
+        </footer>
+      </section>
+
+      {createOpen && <NewLoanModal
+        account={account}
+        role={role}
+        durationDays={loanDurationDays}
+        onClose={() => setCreateOpen(false)}
+        onSave={submitLoan}
+      />}
+    </div>
+  );
+}

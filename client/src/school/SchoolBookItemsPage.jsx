@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { deleteBookItem, fetchBookItems, updateBookItem } from './schoolBookApi.js';
 import { downloadBookItemsExcel } from './schoolBookItemsExcel.js';
+import SchoolConfirmDialog from './SchoolConfirmDialog.jsx';
 
 const pageSize = 25;
 
@@ -131,6 +132,8 @@ export default function SchoolBookItemsPage({ rights, schoolName }) {
   const [status, setStatus] = useState('');
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [editingItem, setEditingItem] = useState(null);
+  const [deleteRequest, setDeleteRequest] = useState(null);
+  const [deletingItemId, setDeletingItemId] = useState('');
   const [printItems, setPrintItems] = useState(null);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
@@ -196,17 +199,25 @@ export default function SchoolBookItemsPage({ rights, schoolName }) {
     setRefreshKey((key) => key + 1);
   }
 
-  async function removeItem(item) {
-    const confirmed = window.confirm(`Hapus eksemplar ${item.serial_number} dari "${item.book_title}"? Jumlah stok buku akan berkurang satu.`);
-    if (!confirmed) return;
+  function removeItem(item) {
+    setError('');
+    setDeleteRequest(item);
+  }
+
+  async function confirmRemoveItem() {
+    if (!deleteRequest) return;
+    setDeletingItemId(String(deleteRequest.id));
     setError('');
     setNotice('');
     try {
-      await deleteBookItem(item.id);
-      setNotice(`Eksemplar ${item.serial_number} berhasil dihapus.`);
+      await deleteBookItem(deleteRequest.id);
+      setDeleteRequest(null);
+      setNotice(`Eksemplar ${deleteRequest.serial_number} berhasil dihapus.`);
       setRefreshKey((key) => key + 1);
     } catch (deleteError) {
       setError(deleteError.message);
+    } finally {
+      setDeletingItemId('');
     }
   }
 
@@ -351,6 +362,16 @@ export default function SchoolBookItemsPage({ rights, schoolName }) {
 
       {editingItem && <EditBookItemModal item={editingItem} onClose={() => setEditingItem(null)} onSave={saveItem} />}
       {printItems && <BookItemBarcodePrint items={printItems} schoolName={schoolName || 'Perpustakaan Sekolah'} onClose={() => setPrintItems(null)} />}
+      {deleteRequest && <SchoolConfirmDialog
+        title="Hapus Eksemplar?"
+        message="Menghapus eksemplar akan mengurangi jumlah stok buku tersebut satu."
+        itemName={`${deleteRequest.serial_number} · ${deleteRequest.book_title}`}
+        confirmLabel="Hapus Eksemplar"
+        loading={deletingItemId === String(deleteRequest.id)}
+        error={error}
+        onClose={() => { setDeleteRequest(null); setError(''); }}
+        onConfirm={confirmRemoveItem}
+      />}
     </div>
   );
 }

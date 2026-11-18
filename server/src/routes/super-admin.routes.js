@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { randomBytes } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { pool } from '../config/database.js';
 import { requireSuperAdmin } from '../middleware/require-super-admin.js';
@@ -294,6 +295,179 @@ router.get('/schools', async (req, res, next) => {
     });
   } catch (error) {
     return next(error);
+  }
+});
+
+router.get('/schools/:id', async (req, res, next) => {
+  const schoolId = String(req.params.id);
+  if (!/^[1-9]\d*$/.test(schoolId)) return res.status(400).json({ message: 'ID sekolah tidak valid.' });
+
+  try {
+    const [schools] = await pool.execute(
+      `SELECT id, name, school_code, npsn, phone, email, website, address,
+              principal_name, principal_nip, librarian_name, librarian_nip,
+              package_type, status, students_count, fine_per_day, created_at
+       FROM tenants_schools WHERE id = ? LIMIT 1`,
+      [schoolId]
+    );
+    const school = schools[0];
+    if (!school) return res.status(404).json({ message: 'Sekolah tidak ditemukan.' });
+
+    const [admins] = await pool.execute(
+      `SELECT id, name, email, phone, status, created_at
+       FROM users
+       WHERE school_id = ? AND role = 'admin'
+       ORDER BY status = 'active' DESC, name, id`,
+      [schoolId]
+    );
+    const [[counts]] = await pool.execute(
+      `SELECT
+         (SELECT COUNT(*) FROM users WHERE school_id = ?) AS total_users,
+         (SELECT COUNT(*) FROM users WHERE school_id = ? AND role = 'member' AND status = 'active') AS active_members,
+         (SELECT COUNT(*) FROM books WHERE school_id = ?) AS book_titles,
+         (SELECT COALESCE(SUM(qty), 0) FROM books WHERE school_id = ?) AS book_stock,
+         (SELECT COUNT(*) FROM book_items WHERE school_id = ?) AS book_items,
+         (SELECT COUNT(*) FROM loans WHERE school_id = ? AND status = 'Borrowed') AS active_loans,
+         (SELECT COUNT(*) FROM procurements WHERE school_id = ? AND status = 'Pending') AS pending_procurements,
+         (SELECT COUNT(*) FROM visitors WHERE school_id = ?) AS total_visitors`,
+      Array(8).fill(schoolId)
+    );
+
+    return res.json({
+      school: { ...school, id: String(school.id) },
+      admins: admins.map((admin) => ({ ...admin, id: String(admin.id) })),
+      summary: {
+        totalUsers: Number(counts.total_users || 0),
+        activeMembers: Number(counts.active_members || 0),
+        bookTitles: Number(counts.book_titles || 0),
+        bookStock: Number(counts.book_stock || 0),
+        bookItems: Number(counts.book_items || 0),
+        activeLoans: Number(counts.active_loans || 0),
+        pendingProcurements: Number(counts.pending_procurements || 0),
+        totalVisitors: Number(counts.total_visitors || 0)
+      }
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.patch('/schools/:id', async (req, res, next) => {
+  const schoolId = String(req.params.id);
+  const schoolCode = typeof req.body?.schoolCode === 'string'
+    ? req.body.schoolCode.trim().toUpperCase()
+    : '';
+  if (!/^[1-9]\d*$/.test(schoolId)) return res.status(400).json({ message: 'ID sekolah tidak valid.' });
+  if (!/^[A-Z0-9]{4}$/.test(schoolCode)) {
+    return res.status(400).json({ message: 'Kode sekolah harus terdiri dari 4 huruf atau angka.' });
+  }
+
+  let connection;
+  let transactionStarted = false;
+  try {
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    transactionStarted = true;
+    const [rows] = await connection.execute(
+      'SELECT id, school_code FROM tenants_schools WHERE id = ? FOR UPDATE',
+      [schoolId]
+    );
+    if (!rows[0]) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(404).json({ message: 'Sekolah tidak ditemukan.' });
+    }
+
+    const previousCode = rows[0].school_code;
+    if (previousCode !== schoolCode) {
+      await connection.execute(
+        'UPDATE tenants_schools SET school_code = ? WHERE id = ?',
+        [schoolCode, schoolId]
+      );
+      await connection.execute(
+        'INSERT INTO audit_logs (admin_id, activity, ip_address) VALUES (?, ?, ?)',
+        [req.admin.id, `Mengubah kode sekolah ${schoolId} dari ${previousCode} menjadi ${schoolCode}`, req.ip]
+      );
+    }
+    await connection.commit();
+    transactionStarted = false;
+    return res.json({
+      message: previousCode === schoolCode ? 'Kode sekolah tidak berubah.' : 'Kode sekolah berhasil diperbarui.',
+      school: { id: schoolId, school_code: schoolCode }
+    });
+  } catch (error) {
+    if (transactionStarted && connection) {
+      try {
+        await connection.rollback();
+      } catch (rollbackError) {
+        error.rollbackError = rollbackError;
+        return next(error);
+      }
+    }
+    if (error.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ message: 'Kode sekolah sudah digunakan sekolah lain.' });
+    }
+    return next(error);
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+router.post('/schools/:schoolId/admins/:adminId/password-reset', async (req, res, next) => {
+  const schoolId = String(req.params.schoolId);
+  const adminId = String(req.params.adminId);
+  if (!/^[1-9]\d*$/.test(schoolId) || !/^[1-9]\d*$/.test(adminId)) {
+    return res.status(400).json({ message: 'ID sekolah atau akun admin tidak valid.' });
+  }
+
+  const temporaryPassword = `${randomBytes(18).toString('hex')}A1!`;
+  let connection;
+  let transactionStarted = false;
+  try {
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    transactionStarted = true;
+    const [admins] = await connection.execute(
+      `SELECT id, name FROM users
+       WHERE id = ? AND school_id = ? AND role = 'admin'
+       LIMIT 1 FOR UPDATE`,
+      [adminId, schoolId]
+    );
+    const admin = admins[0];
+    if (!admin) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(404).json({ message: 'Akun admin sekolah tidak ditemukan.' });
+    }
+
+    const passwordHash = await bcrypt.hash(temporaryPassword, 12);
+    await connection.execute(
+      'UPDATE users SET password = ? WHERE id = ? AND school_id = ? AND role = ?',
+      [passwordHash, adminId, schoolId, 'admin']
+    );
+    await connection.execute(
+      'INSERT INTO audit_logs (admin_id, activity, ip_address) VALUES (?, ?, ?)',
+      [req.admin.id, `Mereset kata sandi admin sekolah ${schoolId} (akun ${adminId})`, req.ip]
+    );
+    await connection.commit();
+    transactionStarted = false;
+    return res.json({
+      message: 'Kata sandi admin berhasil direset.',
+      admin: { id: String(admin.id), name: admin.name },
+      temporaryPassword
+    });
+  } catch (error) {
+    if (transactionStarted && connection) {
+      try {
+        await connection.rollback();
+      } catch (rollbackError) {
+        error.rollbackError = rollbackError;
+        return next(error);
+      }
+    }
+    return next(error);
+  } finally {
+    if (connection) connection.release();
   }
 });
 

@@ -35,3 +35,10 @@ export function updateProcurement(id, changes) {
     body: changes
   });
 }
+
+export function deleteProcurements(ids) {
+  return requestProcurementApi('/bulk', {
+    method: 'DELETE',
+    body: { ids }
+  });
+}

@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  AlertCircle, Check, Plus, Save, ShieldCheck, UserPlus, Users, X
+  AlertCircle, Bell, BookOpen, Check, Clock3, Plus, Save, ShieldCheck,
+  UserPlus, Users, Wallet, X
 } from 'lucide-react';
 import {
-  createSchoolUser, fetchRolePermissions, fetchSchoolUsers, saveRolePermissions
+  createSchoolUser, fetchLibrarySettings, fetchRolePermissions, fetchSchoolUsers,
+  saveLibrarySettings, saveRolePermissions
 } from './schoolSettingsApi.js';
 import {
   defaultSchoolPermissions, schoolPermissionFeatures, schoolPermissionRoles
@@ -106,6 +108,153 @@ function PermissionToggle({ checked, label, onChange }) {
   );
 }
 
+const defaultLibrarySettings = {
+  maxLoansPerMember: 3,
+  loanDurationDays: 7,
+  renewalsEnabled: false,
+  maxRenewals: 1,
+  finePerDay: 1000,
+  automaticFines: true,
+  whatsappEnabled: false,
+  whatsappReminders: false,
+  whatsappFineNotifications: false,
+  whatsappOtp: false,
+  whatsappTokenConfigured: false
+};
+
+function LibrarySettingsPanel() {
+  const [settings, setSettings] = useState(defaultLibrarySettings);
+  const [whatsappToken, setWhatsappToken] = useState('');
+  const [clearWhatsappToken, setClearWhatsappToken] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    fetchLibrarySettings()
+      .then(({ settings: result }) => { if (active) setSettings({ ...defaultLibrarySettings, ...result }); })
+      .catch((loadError) => { if (active) setError(loadError.message); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, []);
+
+  function update(event) {
+    const { name, value, type, checked } = event.target;
+    setSettings((current) => ({ ...current, [name]: type === 'checkbox' ? checked : value }));
+    setError('');
+    setNotice('');
+  }
+
+  async function submit(event) {
+    event.preventDefault();
+    setSaving(true);
+    setError('');
+    setNotice('');
+    try {
+      const payload = {
+        ...settings,
+        maxLoansPerMember: Number(settings.maxLoansPerMember),
+        loanDurationDays: Number(settings.loanDurationDays),
+        maxRenewals: Number(settings.maxRenewals),
+        finePerDay: Number(settings.finePerDay),
+        clearWhatsappToken
+      };
+      if (whatsappToken.trim()) payload.whatsappToken = whatsappToken.trim();
+      const result = await saveLibrarySettings(payload);
+      setSettings({ ...defaultLibrarySettings, ...result.settings });
+      setWhatsappToken('');
+      setClearWhatsappToken(false);
+      setNotice(result.message || 'Pengaturan berhasil disimpan.');
+    } catch (saveError) {
+      setError(saveError.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form className="master-data-panel school-library-settings-panel" onSubmit={submit}>
+      <div className="school-settings-panel-heading">
+        <div><h2>Aturan Perpustakaan</h2><p>Perubahan langsung diterapkan pada transaksi peminjaman dan denda baru.</p></div>
+      </div>
+      {error && <div className="master-message master-message-error" role="alert"><AlertCircle size={16} />{error}</div>}
+      {notice && <div className="master-message master-message-success" role="status"><Check size={16} />{notice}</div>}
+
+      <section className="school-library-settings-section">
+        <h3><BookOpen size={17} />Aturan Sirkulasi &amp; Peminjaman</h3>
+        <div className="school-library-settings-grid">
+          <label>Batas maksimal pinjaman per siswa
+            <input name="maxLoansPerMember" type="number" min="1" max="50" value={settings.maxLoansPerMember} onChange={update} disabled={loading || saving} required />
+            <small>Menghitung permintaan Pending dan transaksi Dipinjam.</small>
+          </label>
+          <label>Durasi pinjam standar (hari)
+            <input name="loanDurationDays" type="number" min="1" max="60" value={settings.loanDurationDays} onChange={update} disabled={loading || saving} required />
+          </label>
+          <label className="school-settings-check">
+            <input name="renewalsEnabled" type="checkbox" checked={Boolean(settings.renewalsEnabled)} onChange={update} disabled={loading || saving} />
+            Izinkan perpanjangan masa pinjam
+          </label>
+          <label>Jumlah maksimal perpanjangan
+            <input name="maxRenewals" type="number" min="0" max="5" value={settings.maxRenewals} onChange={update} disabled={loading || saving || !settings.renewalsEnabled} />
+          </label>
+        </div>
+      </section>
+
+      <section className="school-library-settings-section">
+        <h3><Wallet size={17} />Konfigurasi Denda</h3>
+        <div className="school-library-settings-grid">
+          <label>Tarif denda keterlambatan per hari (Rp)
+            <input name="finePerDay" type="number" min="0" max="1000000" step="100" value={settings.finePerDay} onChange={update} disabled={loading || saving} required />
+          </label>
+          <label className="school-settings-check">
+            <input name="automaticFines" type="checkbox" checked={Boolean(settings.automaticFines)} onChange={update} disabled={loading || saving} />
+            Aktifkan perhitungan denda otomatis saat pengembalian
+          </label>
+        </div>
+      </section>
+
+      <section className="school-library-settings-section">
+        <h3><Bell size={17} />Notifikasi &amp; Integrasi WhatsApp</h3>
+        <div className="school-library-settings-grid">
+          <label className="school-settings-check">
+            <input name="whatsappEnabled" type="checkbox" checked={Boolean(settings.whatsappEnabled)} onChange={update} disabled={loading || saving} />
+            Aktifkan integrasi WhatsApp Gateway / Fonnte
+          </label>
+          <label>Token API Fonnte
+            <input type="password" autoComplete="new-password" value={whatsappToken} onChange={(event) => { setWhatsappToken(event.target.value); setClearWhatsappToken(false); }} maxLength={500} placeholder={settings.whatsappTokenConfigured ? 'Token tersimpan — isi hanya untuk mengganti' : 'Masukkan token API'} disabled={loading || saving} />
+            <small>{settings.whatsappTokenConfigured ? 'Token tersimpan terenkripsi dan tidak ditampilkan kembali.' : 'Token akan dienkripsi sebelum disimpan.'}</small>
+          </label>
+          <label className="school-settings-check">
+            <input name="whatsappReminders" type="checkbox" checked={Boolean(settings.whatsappReminders)} onChange={update} disabled={loading || saving || !settings.whatsappEnabled} />
+            Pengingat batas pengembalian buku
+          </label>
+          <label className="school-settings-check">
+            <input name="whatsappFineNotifications" type="checkbox" checked={Boolean(settings.whatsappFineNotifications)} onChange={update} disabled={loading || saving || !settings.whatsappEnabled} />
+            Notifikasi denda dan keterlambatan
+          </label>
+          <label className="school-settings-check">
+            <input name="whatsappOtp" type="checkbox" checked={Boolean(settings.whatsappOtp)} onChange={update} disabled={loading || saving || !settings.whatsappEnabled} />
+            Pengiriman OTP melalui WhatsApp
+          </label>
+          {settings.whatsappTokenConfigured && <label className="school-settings-check school-settings-clear-token">
+            <input type="checkbox" checked={clearWhatsappToken} onChange={(event) => { setClearWhatsappToken(event.target.checked); if (event.target.checked) setWhatsappToken(''); }} disabled={loading || saving} />
+            Hapus token tersimpan
+          </label>}
+        </div>
+      </section>
+
+      <div className="school-library-settings-savebar">
+        <span><Clock3 size={14} />{loading ? 'Memuat konfigurasi...' : 'Pengaturan berlaku untuk transaksi baru.'}</span>
+        <button type="submit" className="master-button master-button-primary" disabled={loading || saving}>
+          <Save size={15} />{saving ? 'Menyimpan...' : 'Simpan Perubahan'}
+        </button>
+      </div>
+    </form>
+  );
+}
+
 export default function SchoolSettingsPage() {
   const [tab, setTab] = useState('accounts');
   const [users, setUsers] = useState([]);
@@ -196,6 +345,9 @@ export default function SchoolSettingsPage() {
         <button type="button" role="tab" aria-selected={tab === 'permissions'} className={tab === 'permissions' ? 'selected' : ''} onClick={() => setTab('permissions')}>
           <ShieldCheck size={16} />Hak Akses
         </button>
+        <button type="button" role="tab" aria-selected={tab === 'library'} className={tab === 'library' ? 'selected' : ''} onClick={() => setTab('library')}>
+          <BookOpen size={16} />Aturan Perpustakaan
+        </button>
       </div>
 
       {tab === 'accounts' ? (
@@ -227,7 +379,7 @@ export default function SchoolSettingsPage() {
           </div>
           <div className="master-table-footer"><span>{users.length} akun terdaftar</span><span>Akun dibatasi untuk sekolah ini</span></div>
         </section>
-      ) : (
+      ) : tab === 'permissions' ? (
         <section className="master-data-panel school-permissions-panel">
           <div className="school-settings-panel-heading">
             <div><h2>Kontrol Hak Akses</h2><p>Atur izin Lihat, Edit, dan Hapus untuk setiap fitur.</p></div>
@@ -269,7 +421,7 @@ export default function SchoolSettingsPage() {
             </button>
           </div>
         </section>
-      )}
+      ) : <LibrarySettingsPanel />}
 
       {accountModalOpen && <AccountModal onClose={() => setAccountModalOpen(false)} onCreated={handleCreated} />}
     </div>

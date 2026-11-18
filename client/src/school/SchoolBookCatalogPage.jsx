@@ -3,13 +3,15 @@ import { createPortal } from 'react-dom';
 import JsBarcode from 'jsbarcode';
 import {
   Check, ChevronLeft, ChevronRight, Download, Eye, FileSpreadsheet, FilterX,
-  Pencil, Plus, Printer, Search,
+  Pencil, Plus, Printer, Search, Star,
   Trash2, Upload, X
 } from 'lucide-react';
 import {
   deleteBooks, fetchBook, fetchBookCatalog, fetchBookCatalogMeta, saveBook, importBooks
 } from './schoolBookApi.js';
 import { downloadBookTemplate, parseBookImport } from './bookCatalogExcel.js';
+import SchoolConfirmDialog from './SchoolConfirmDialog.jsx';
+import { createReview, fetchEligibleReviewBooks, fetchReviews } from './schoolReviewsApi.js';
 
 const formFields = [
   'nomor_induk', 'title',
@@ -61,24 +63,76 @@ function initialForm(book) {
   }));
 }
 
-function MasterSelect({ name, label, options, value, onChange, includeAll = false, required = false }) {
+function MasterSelect({
+  name, label, options, value, onValueChange, required = false,
+  allowManual = false, manualValue = '', onManualChange
+}) {
+  const selected = options.find((option) => String(option.id) === String(value));
+  const displayValue = selected?.name || (allowManual ? manualValue : '');
+  const [query, setQuery] = useState(displayValue);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => setQuery(displayValue), [displayValue]);
+
+  const matches = options
+    .filter((option) => !query.trim() || option.name.toLocaleLowerCase('id-ID').includes(query.trim().toLocaleLowerCase('id-ID')))
+    .slice(0, 20);
+
   return (
-    <label>
+    <label className="catalog-combobox-field">
       {label}{required ? ' *' : ''}
-      <select name={name} value={value} onChange={onChange} required={required}>
-        <option value="">{includeAll ? `Semua ${label}` : `Pilih ${label}`}</option>
-        {options.map((option) => (
-          <option value={option.id} key={option.id}>
-            {option.name}{option.status === 'inactive' ? ' (Nonaktif)' : ''}
-          </option>
-        ))}
-      </select>
+      <div className="catalog-combobox">
+        <input
+          name={`${name}_search`}
+          value={query}
+          onChange={(event) => {
+            const nextQuery = event.target.value;
+            setQuery(nextQuery);
+            setOpen(true);
+            onValueChange(name, '');
+            if (allowManual) onManualChange(nextQuery);
+          }}
+          onFocus={() => setOpen(true)}
+          onBlur={() => window.setTimeout(() => setOpen(false), 120)}
+          autoComplete="off"
+          role="combobox"
+          aria-expanded={open}
+          aria-autocomplete="list"
+          required={required}
+          placeholder={`Cari ${label.toLocaleLowerCase('id-ID')}...`}
+        />
+        {open && matches.length > 0 && (
+          <div className="catalog-combobox-options" role="listbox">
+            {matches.map((option) => (
+              <button
+                type="button"
+                role="option"
+                aria-selected={String(option.id) === String(value)}
+                key={option.id}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => {
+                  setQuery(option.name);
+                  onValueChange(name, String(option.id));
+                  if (allowManual) onManualChange('');
+                  setOpen(false);
+                }}
+              >
+                {option.name}{option.status === 'inactive' ? ' (Nonaktif)' : ''}
+              </button>
+            ))}
+          </div>
+        )}
+        {allowManual && query.trim() && !options.some((option) => option.name.toLocaleLowerCase('id-ID') === query.trim().toLocaleLowerCase('id-ID')) && (
+          <small>Nama pengarang baru akan disimpan ke Master Data.</small>
+        )}
+      </div>
     </label>
   );
 }
 
 function BookFormModal({ book, categories, onClose, onSave }) {
   const [form, setForm] = useState(() => initialForm(book));
+  const [manualAuthor, setManualAuthor] = useState('');
   const [coverFile, setCoverFile] = useState(null);
   const [digitalFile, setDigitalFile] = useState(null);
   const [removeCover, setRemoveCover] = useState(false);
@@ -96,6 +150,20 @@ function BookFormModal({ book, categories, onClose, onSave }) {
 
   function update(event) {
     setForm((current) => ({ ...current, [event.target.name]: event.target.value }));
+  }
+
+  function updateCategory(name, value) {
+    setForm((current) => ({ ...current, [name]: value }));
+  }
+
+  function updateYear(event) {
+    const value = event.target.value.replace(/\D/g, '').slice(0, 4);
+    setForm((current) => ({ ...current, year: value }));
+  }
+
+  function updatePrice(event) {
+    const digits = event.target.value.replace(/\D/g, '');
+    setForm((current) => ({ ...current, price: digits }));
   }
 
   function chooseFile(event, kind) {
@@ -127,11 +195,23 @@ function BookFormModal({ book, categories, onClose, onSave }) {
 
   async function submit(event) {
     event.preventDefault();
+    const invalidCategory = formCategories.find(([name]) => (
+      name === 'author_id'
+        ? !form.author_id && !manualAuthor.trim()
+        : !form[name]
+    ));
+    if (invalidCategory) {
+      setError(invalidCategory[1] === 'Pengarang'
+        ? 'Pilih pengarang dari daftar atau ketik nama pengarang.'
+        : `Pilih ${invalidCategory[1]} dari daftar yang tersedia.`);
+      return;
+    }
     setSaving(true);
     setError('');
     try {
       const payload = new FormData();
       formFields.forEach((field) => payload.append(field, form[field] ?? ''));
+      payload.append('author_name', form.author_id ? '' : manualAuthor.trim());
       if (coverFile) payload.append('cover', coverFile);
       if (digitalFile) payload.append('digitalAttachment', digitalFile);
       if (removeCover) payload.append('remove_cover', 'true');
@@ -174,38 +254,45 @@ function BookFormModal({ book, categories, onClose, onSave }) {
                 label={label}
                 value={form[name]}
                 options={categories[type] || []}
-                onChange={update}
+                onValueChange={updateCategory}
+                allowManual={name === 'author_id'}
+                manualValue={name === 'author_id' ? manualAuthor : ''}
+                onManualChange={setManualAuthor}
                 required
               />
             ))}
             <label>GMD
-              <input name="gmd" value={form.gmd} onChange={update} maxLength={100} placeholder="Contoh: teks" />
+              <input name="gmd" value={form.gmd} onChange={update} maxLength={100} />
             </label>
             <label>ISBN
               <input name="isbn" value={form.isbn} onChange={update} maxLength={20} />
             </label>
             <label>Tahun Terbit *
-              <input name="year" type="number" min="1000" max="9999" value={form.year} onChange={update} required />
+              <input name="year" type="text" inputMode="numeric" pattern="[0-9]{4}" maxLength={4} value={form.year} onChange={updateYear} required />
             </label>
             <label>Jumlah Halaman *
               <input name="pages" type="number" min="1" max="65535" value={form.pages} onChange={update} required />
             </label>
             <label>Harga
-              <input name="price" type="number" min="0" step="0.01" value={form.price} onChange={update} />
+              <span className="catalog-price-input"><span>Rp</span><input name="price" type="text" inputMode="numeric" value={form.price ? new Intl.NumberFormat('id-ID').format(Number(form.price)) : ''} onChange={updatePrice} placeholder="0" /></span>
             </label>
             <label>Kota Terbit
               <input name="city" value={form.city} onChange={update} maxLength={120} />
             </label>
-            <label className="catalog-form-wide">Foto Sampul
-              <input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => chooseFile(event, 'cover')} />
+            <div className="catalog-form-wide catalog-file-field"><span>Foto Sampul</span>
+              <label className="catalog-file-upload-button"><Upload size={15} />Upload Berkas
+                <input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => chooseFile(event, 'cover')} />
+              </label>
               <small>{coverFile?.name || (book?.has_cover ? 'Foto sampul sudah tersimpan.' : 'JPG, PNG, atau WebP; maksimal 5 MB.')}</small>
               {book?.has_cover && <span className="catalog-file-remove"><input type="checkbox" checked={removeCover} onChange={(event) => setRemoveCover(event.target.checked)} /> Hapus foto sampul</span>}
-            </label>
-            <label className="catalog-form-wide">Lampiran Digital (PDF)
-              <input type="file" accept="application/pdf,.pdf" onChange={(event) => chooseFile(event, 'digital')} />
+            </div>
+            <div className="catalog-form-wide catalog-file-field"><span>Lampiran Digital (PDF)</span>
+              <label className="catalog-file-upload-button"><Upload size={15} />Upload Berkas
+                <input type="file" accept="application/pdf,.pdf" onChange={(event) => chooseFile(event, 'digital')} />
+              </label>
               <small>{digitalFile?.name || (book?.has_digital_attachment ? 'Lampiran PDF sudah tersimpan.' : 'PDF; maksimal 20 MB.')}</small>
               {book?.has_digital_attachment && <span className="catalog-file-remove"><input type="checkbox" checked={removeDigital} onChange={(event) => setRemoveDigital(event.target.checked)} /> Hapus lampiran PDF</span>}
-            </label>
+            </div>
             <label className="catalog-form-wide">Deskripsi Buku
               <textarea name="description" rows={3} value={form.description} onChange={update} maxLength={16000} />
             </label>
@@ -316,11 +403,20 @@ async function fetchAssetUrl(bookId, kind, signal) {
   return URL.createObjectURL(await response.blob());
 }
 
-function BookDetailModal({ bookId, onClose }) {
+function BookDetailModal({ bookId, onClose, role }) {
   const [book, setBook] = useState(null);
   const [coverUrl, setCoverUrl] = useState('');
   const [digitalUrl, setDigitalUrl] = useState('');
   const [error, setError] = useState('');
+  const [reviews, setReviews] = useState([]);
+  const [reviewAggregate, setReviewAggregate] = useState({ total: 0, averageRating: 0 });
+  const [canReview, setCanReview] = useState(false);
+  const [reviewRating, setReviewRating] = useState(0);
+  const [reviewComment, setReviewComment] = useState('');
+  const [reviewError, setReviewError] = useState('');
+  const [reviewNotice, setReviewNotice] = useState('');
+  const [savingReview, setSavingReview] = useState(false);
+  const [reviewRefresh, setReviewRefresh] = useState(0);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -356,6 +452,52 @@ function BookDetailModal({ bookId, onClose }) {
       objectUrls.forEach(URL.revokeObjectURL);
     };
   }, [bookId]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchReviews({ bookId, page: 1, limit: 10, signal: controller.signal })
+      .then((result) => {
+        if (controller.signal.aborted) return;
+        setReviews(result.reviews || []);
+        setReviewAggregate(result.aggregate || { total: 0, averageRating: 0 });
+      })
+      .catch((loadError) => {
+        if (!controller.signal.aborted) setReviewError(loadError.message);
+      });
+    if (role === 'member') {
+      fetchEligibleReviewBooks('', controller.signal)
+        .then(({ books }) => {
+          if (!controller.signal.aborted) setCanReview((books || []).some((item) => String(item.id) === String(bookId)));
+        })
+        .catch((loadError) => {
+          if (!controller.signal.aborted) setReviewError(loadError.message);
+        });
+    }
+    return () => controller.abort();
+  }, [bookId, role, reviewRefresh]);
+
+  async function submitReview(event) {
+    event.preventDefault();
+    if (!reviewRating) {
+      setReviewError('Pilih rating bintang terlebih dahulu.');
+      return;
+    }
+    setSavingReview(true);
+    setReviewError('');
+    setReviewNotice('');
+    try {
+      const result = await createReview({ bookId, rating: reviewRating, review: reviewComment });
+      setReviewNotice(result.message);
+      setReviewRating(0);
+      setReviewComment('');
+      setCanReview(false);
+      setReviewRefresh((value) => value + 1);
+    } catch (submitError) {
+      setReviewError(submitError.message);
+    } finally {
+      setSavingReview(false);
+    }
+  }
 
   useEffect(() => {
     function closeOnEscape(event) {
@@ -405,6 +547,40 @@ function BookDetailModal({ bookId, onClose }) {
               ))}
             </dl>
             {digitalUrl && <a className="catalog-file-link" href={digitalUrl} download={`${book.title || 'lampiran'}.pdf`}><Download size={15} />Unduh Lampiran PDF</a>}
+            <section className="book-detail-reviews">
+              <div className="book-detail-reviews-heading">
+                <div><h3>Ulasan &amp; Rating</h3><span>{Number(reviewAggregate.averageRating || 0).toFixed(1)} / 5 · {reviewAggregate.total} ulasan</span></div>
+                <div className="book-detail-rating-stars" aria-label={`Rata-rata ${reviewAggregate.averageRating} dari 5`}>
+                  {[1, 2, 3, 4, 5].map((value) => <Star key={value} size={16} fill={value <= Math.round(reviewAggregate.averageRating || 0) ? 'currentColor' : 'none'} />)}
+                </div>
+              </div>
+              {reviewNotice && <div className="master-message master-message-success" role="status">{reviewNotice}</div>}
+              {reviewError && <p className="master-form-error" role="alert">{reviewError}</p>}
+              {role === 'member' && canReview && (
+                <form className="book-detail-review-form" onSubmit={submitReview}>
+                  <label>Beri rating
+                    <span className="book-detail-rating-input">
+                      {[1, 2, 3, 4, 5].map((value) => <button key={value} type="button" aria-label={`${value} bintang`} aria-pressed={reviewRating === value} onClick={() => setReviewRating(value)}><Star size={19} fill={value <= reviewRating ? 'currentColor' : 'none'} /></button>)}
+                    </span>
+                  </label>
+                  <label>Ulasan
+                    <textarea value={reviewComment} onChange={(event) => setReviewComment(event.target.value)} maxLength={2000} rows={3} placeholder="Tulis pengalaman Anda membaca buku ini..." />
+                  </label>
+                  <button type="submit" className="master-button master-button-primary" disabled={savingReview || !reviewRating}>{savingReview ? 'Mengirim...' : 'Kirim Ulasan'}</button>
+                </form>
+              )}
+              {role === 'member' && !canReview && <p className="book-detail-review-note">Ulasan hanya dapat dikirim setelah buku dikembalikan, dan satu ulasan untuk setiap judul.</p>}
+              <div className="book-detail-review-list">
+                {reviews.length ? reviews.map((review) => (
+                  <article key={review.id}>
+                    <div><b>{review.reviewer_name}</b><small>{review.rombel || 'Anggota perpustakaan'} · {formatDate(review.created_at)}</small></div>
+                    <span className="book-detail-rating-stars">{[1, 2, 3, 4, 5].map((value) => <Star key={value} size={13} fill={value <= review.rating ? 'currentColor' : 'none'} />)}</span>
+                    <p>{review.review || '—'}</p>
+                    {review.verified && <small className="review-verified">✓ Pernah Meminjam</small>}
+                  </article>
+                )) : <p className="book-detail-review-note">Belum ada ulasan untuk buku ini.</p>}
+              </div>
+            </section>
           </div>
         )}
       </section>
@@ -448,7 +624,7 @@ function BookBarcodePrint({ books, schoolName, onClose }) {
   );
 }
 
-export default function SchoolBookCatalogPage({ rights }) {
+export default function SchoolBookCatalogPage({ rights, role }) {
   const canEdit = Boolean(rights?.edit);
   const canDelete = Boolean(rights?.delete);
   const [meta, setMeta] = useState({ school: {}, categories: {} });
@@ -463,6 +639,7 @@ export default function SchoolBookCatalogPage({ rights }) {
   const [filters, setFilters] = useState({ collectionId: '', typeId: '', languageId: '', rackId: '' });
   const [selectedBooks, setSelectedBooks] = useState({});
   const [editingBook, setEditingBook] = useState(null);
+  const [deleteRequest, setDeleteRequest] = useState(null);
   const [detailBookId, setDetailBookId] = useState(null);
   const [formOpen, setFormOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
@@ -558,14 +735,23 @@ export default function SchoolBookCatalogPage({ rights }) {
     }
   }
 
-  async function handleDelete(ids) {
-    const message = ids.length === 1 ? 'Hapus buku ini dari katalog?' : `Hapus ${ids.length} buku terpilih dari katalog?`;
-    if (!window.confirm(message)) return;
+  function handleDelete(ids, title = '') {
+    if (!ids.length) return;
+    setError('');
+    setDeleteRequest({
+      ids,
+      itemName: ids.length === 1 ? title || selectedBooks[String(ids[0])]?.title : `${ids.length} buku terpilih`
+    });
+  }
+
+  async function confirmDeleteBooks() {
+    if (!deleteRequest) return;
     setBusyAction('delete');
     setError('');
     setNotice('');
     try {
-      const result = await deleteBooks(ids);
+      const result = await deleteBooks(deleteRequest.ids);
+      setDeleteRequest(null);
       setSelectedBooks({});
       setNotice(`${result.deleted} buku berhasil dihapus.`);
       setRefreshKey((key) => key + 1);
@@ -573,7 +759,6 @@ export default function SchoolBookCatalogPage({ rights }) {
       setError(deleteError.message);
     } finally {
       setBusyAction('');
-      setMenuId(null);
     }
   }
 
@@ -645,39 +830,38 @@ export default function SchoolBookCatalogPage({ rights }) {
             <thead>
               <tr>
                 <th className="master-check-cell"><input type="checkbox" checked={allVisibleSelected} onChange={(event) => toggleVisibleSelection(event.target.checked)} aria-label="Pilih semua buku pada halaman ini" /></th>
-                <th>No</th><th>Tanggal Terima</th><th>Nomor Induk</th><th>Kode/Nomor Panggil</th><th>Judul Buku</th>
-                <th>Pengarang</th><th>Penerbit</th><th>Tahun Terbit</th><th>Kota Terbit</th><th>Asal Barang</th>
-                <th>Harga</th><th>Jumlah</th><th>Koleksi</th><th>Jenis</th><th>Bahasa</th><th>Aksi</th>
+                <th>No</th><th>Nomor Induk</th><th>Judul Buku</th><th>Pengarang</th><th>Penerbit</th>
+                <th>Agen</th><th>Topik</th><th>Koleksi</th><th>Jenis</th><th>Bahasa</th><th>Lokasi Rak</th>
+                <th>Tahun Terbit</th><th>Kota Terbit</th><th>Jumlah Halaman</th><th>Aksi</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td className="master-empty-cell" colSpan={17}>Memuat katalog buku...</td></tr>
+                <tr><td className="master-empty-cell" colSpan={16}>Memuat katalog buku...</td></tr>
               ) : books.length === 0 ? (
-                <tr><td className="master-empty-cell" colSpan={17}>{search || Object.values(filters).some(Boolean) ? 'Tidak ada buku yang sesuai dengan pencarian.' : 'Belum ada buku. Tambahkan buku pertama Anda.'}</td></tr>
+                <tr><td className="master-empty-cell" colSpan={16}>{search || Object.values(filters).some(Boolean) ? 'Tidak ada buku yang sesuai dengan pencarian.' : 'Belum ada buku. Tambahkan buku pertama Anda.'}</td></tr>
               ) : books.map((book, index) => (
                 <tr key={book.id}>
                   <td className="master-check-cell"><input type="checkbox" checked={Boolean(selectedBooks[String(book.id)])} onChange={(event) => toggleBookSelection(book, event.target.checked)} aria-label={`Pilih ${book.title}`} /></td>
                   <td>{(pagination.page - 1) * pagination.limit + index + 1}</td>
-                  <td>{formatDate(book.received_date)}</td>
                   <td>{book.nomor_induk || '—'}</td>
-                  <td><span className="catalog-code-badge">{book.kode_buku || '—'}</span></td>
                   <td><b className="master-primary-text">{book.title}</b>{book.isbn && <small className="master-secondary-text">ISBN {book.isbn}</small>}</td>
                   <td>{book.author_name || '—'}</td>
                   <td>{book.publisher_name || '—'}</td>
-                  <td>{book.year || '—'}</td>
-                  <td>{book.city || '—'}</td>
-                  <td>{book.source || '—'}</td>
-                  <td>{formatCurrency(book.price)}</td>
-                  <td><span className="catalog-quantity-badge">{book.qty}</span></td>
+                  <td>{book.agent_name || '—'}</td>
+                  <td>{book.topic_name || '—'}</td>
                   <td>{book.collection_name || '—'}</td>
                   <td>{book.type_name || '—'}</td>
                   <td>{book.language_name || '—'}</td>
+                  <td>{book.rack_name || '—'}</td>
+                  <td>{book.year || '—'}</td>
+                  <td>{book.city || '—'}</td>
+                  <td>{book.pages || '—'}</td>
                   <td className="catalog-action-cell">
                     <div className="catalog-row-actions">
                       <button type="button" className="master-row-icon" aria-label={`Detail ${book.title}`} title="Detail" onClick={() => setDetailBookId(book.id)}><Eye size={15} /></button>
                       {canEdit && <button type="button" className="master-row-icon is-edit" aria-label={`Edit ${book.title}`} title="Edit" onClick={() => { setEditingBook(book); setFormOpen(true); }}><Pencil size={14} /></button>}
-                      {canDelete && <button type="button" className="master-row-icon is-delete" aria-label={`Hapus ${book.title}`} title="Hapus" onClick={() => handleDelete([String(book.id)])}><Trash2 size={14} /></button>}
+                      {canDelete && <button type="button" className="master-row-icon is-delete" aria-label={`Hapus ${book.title}`} title="Hapus" onClick={() => handleDelete([String(book.id)], book.title)}><Trash2 size={14} /></button>}
                     </div>
                   </td>
                 </tr>
@@ -702,8 +886,20 @@ export default function SchoolBookCatalogPage({ rights }) {
         onSave={handleSave}
       />}
       {importOpen && <BookImportModal onClose={() => setImportOpen(false)} onImport={handleImport} />}
-      {detailBookId && <BookDetailModal bookId={detailBookId} onClose={() => setDetailBookId(null)} />}
+      {detailBookId && <BookDetailModal bookId={detailBookId} role={role} onClose={() => setDetailBookId(null)} />}
       {printBooks && <BookBarcodePrint books={printBooks} schoolName={meta.school?.name || 'Perpustakaan Sekolah'} onClose={() => setPrintBooks(null)} />}
+      {deleteRequest && <SchoolConfirmDialog
+        title={deleteRequest.ids.length === 1 ? 'Hapus Buku?' : 'Hapus Buku Terpilih?'}
+        message={deleteRequest.ids.length === 1
+          ? 'Apakah Anda yakin ingin menghapus buku ini dari katalog?'
+          : `Anda akan menghapus ${deleteRequest.ids.length} buku dari katalog.`}
+        itemName={deleteRequest.itemName}
+        confirmLabel="Hapus Buku"
+        loading={busyAction === 'delete'}
+        error={error}
+        onClose={() => { setDeleteRequest(null); setError(''); }}
+        onConfirm={confirmDeleteBooks}
+      />}
     </div>
   );
 }

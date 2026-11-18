@@ -205,10 +205,13 @@ function normalizeBook(body) {
   value.received_date = receivedDate.value;
 
   for (const [key, label] of Object.entries(categoryFields)) {
-    const result = idValue(body, key, label, { required: true });
+    const result = idValue(body, key, label, { required: key !== 'author_id' });
     if (result.error) return result;
     value[key] = result.value;
   }
+  const authorName = textValue(body, 'author_name', 'Pengarang', 180);
+  if (authorName.error) return authorName;
+  value.author_name = authorName.value;
 
   const year = numberValue(body, 'year', 'Tahun terbit', { minimum: 1000, maximum: 9999, integer: true, required: true });
   const pages = numberValue(body, 'pages', 'Jumlah halaman', { minimum: 1, maximum: 65535, integer: true, required: true });
@@ -242,6 +245,28 @@ async function validateCategoryReferences(connection, schoolId, book) {
       return `Pilihan ${type} tidak ditemukan pada sekolah ini.`;
     }
   }
+  return '';
+}
+
+async function resolveManualAuthor(connection, schoolId, book) {
+  if (book.author_id) return '';
+  if (!book.author_name) return 'Pengarang wajib dipilih atau diisi.';
+  const [matches] = await connection.execute(
+    `SELECT id FROM master_categories
+     WHERE school_id = ? AND type = 'pengarang' AND name = ?
+     ORDER BY id ASC LIMIT 1`,
+    [schoolId, book.author_name]
+  );
+  if (matches[0]) {
+    book.author_id = String(matches[0].id);
+    return '';
+  }
+  const [result] = await connection.execute(
+    `INSERT INTO master_categories (school_id, type, code, name, status)
+     VALUES (?, 'pengarang', NULL, ?, 'active')`,
+    [schoolId, book.author_name]
+  );
+  book.author_id = String(result.insertId);
   return '';
 }
 
@@ -732,9 +757,38 @@ router.delete('/items/:id', requireSchoolPermission('books.items', 'delete'), as
 });
 
 router.get('/stock/books', requireSchoolPermission('books.stock', 'view'), async (req, res, next) => {
+  const barcode = typeof req.query.barcode === 'string' ? req.query.barcode.trim() : '';
+  if (barcode.length > 100) return res.status(400).json({ message: 'Kode barcode maksimal 100 karakter.' });
+  if (barcode) {
+    try {
+      const [books] = await pool.execute(
+        `SELECT b.id, b.title, b.nomor_induk, b.kode_buku, b.qty
+         FROM books b
+         WHERE b.school_id = ? AND (b.nomor_induk = ? OR b.kode_buku = ?)
+         ORDER BY CASE WHEN b.nomor_induk = ? THEN 0 ELSE 1 END, b.title
+         LIMIT 10`,
+        [req.school.id, barcode, barcode, barcode]
+      );
+      if (books.length) return res.json({ books });
+
+      const [itemMatches] = await pool.execute(
+        `SELECT DISTINCT b.id, b.title, b.nomor_induk, b.kode_buku, b.qty
+         FROM book_items bi
+         JOIN books b ON b.school_id = bi.school_id AND b.id = bi.book_id
+         WHERE bi.school_id = ? AND bi.serial_number = ?
+         ORDER BY b.title
+         LIMIT 10`,
+        [req.school.id, barcode]
+      );
+      return res.json({ books: itemMatches });
+    } catch (error) {
+      return next(error);
+    }
+  }
+
   const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
   if (search.length > 100) return res.status(400).json({ message: 'Kata pencarian maksimal 100 karakter.' });
-  if (search.length < 2) return res.json({ books: [] });
+  if (search.length < 3) return res.json({ books: [] });
 
   const pattern = `%${search}%`;
   try {
@@ -759,6 +813,10 @@ router.post('/stock', requireSchoolPermission('books.stock', 'edit'), async (req
     return res.status(400).json({ message: 'Data penambahan stok tidak valid.' });
   }
   const { bookId, quantity, note } = req.body;
+  const stockDateResult = normalizeDate(req.body, 'stockDate', 'Tanggal');
+  if (stockDateResult.error) return res.status(400).json({ message: stockDateResult.error });
+  if (!stockDateResult.value) return res.status(400).json({ message: 'Tanggal penambahan stok wajib diisi.' });
+  const stockDate = stockDateResult.value;
   const id = typeof bookId === 'string' || typeof bookId === 'number' ? String(bookId) : '';
   if (!/^[1-9]\d*$/.test(id)) return res.status(400).json({ message: 'Buku yang dipilih tidak valid.' });
   if (typeof quantity !== 'number' || !Number.isSafeInteger(quantity) || quantity < 1 || quantity > MAX_BOOK_QUANTITY) {
@@ -807,9 +865,9 @@ router.post('/stock', requireSchoolPermission('books.stock', 'edit'), async (req
     await synchronizeBookItems(connection, req.school.id, id, resultingQty);
     const [movement] = await connection.execute(
       `INSERT INTO book_stock_movements
-       (school_id, book_id, actor_id, quantity_added, previous_qty, resulting_qty, note)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [req.school.id, id, req.school.userId, quantity, previousQty, resultingQty, normalizedNote || null]
+       (school_id, book_id, actor_id, quantity_added, previous_qty, resulting_qty, stock_date, note)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [req.school.id, id, req.school.userId, quantity, previousQty, resultingQty, stockDate, normalizedNote || null]
     );
     await connection.commit();
     transactionStarted = false;
@@ -820,6 +878,7 @@ router.post('/stock', requireSchoolPermission('books.stock', 'edit'), async (req
         quantity_added: quantity,
         previous_qty: previousQty,
         resulting_qty: resultingQty,
+        stock_date: stockDate,
         note: normalizedNote || null
       }
     });
@@ -899,15 +958,23 @@ router.post('/', requireSchoolPermission('books.catalog', 'edit'), uploadBookAss
       await removeUploadedFiles(req);
       return res.status(400).json({ message: normalized.error });
     }
-    const referenceError = await validateCategoryReferences(pool, req.school.id, normalized.value);
-    if (referenceError) {
-      await removeUploadedFiles(req);
-      return res.status(400).json({ message: referenceError });
-    }
-
     connection = await pool.getConnection();
     await connection.beginTransaction();
     transactionStarted = true;
+    const authorError = await resolveManualAuthor(connection, req.school.id, normalized.value);
+    if (authorError) {
+      await connection.rollback();
+      transactionStarted = false;
+      await removeUploadedFiles(req);
+      return res.status(400).json({ message: authorError });
+    }
+    const referenceError = await validateCategoryReferences(connection, req.school.id, normalized.value);
+    if (referenceError) {
+      await connection.rollback();
+      transactionStarted = false;
+      await removeUploadedFiles(req);
+      return res.status(400).json({ message: referenceError });
+    }
     const id = await insertBook(connection, req.school.id, normalized.value, {
       cover: uploadedFile(req, 'cover'),
       digitalAttachment: uploadedFile(req, 'digitalAttachment')
@@ -967,12 +1034,6 @@ router.patch('/:id', requireSchoolPermission('books.catalog', 'edit'), uploadBoo
       await removeUploadedFiles(req);
       return res.status(400).json({ message: normalized.error });
     }
-    const referenceError = await validateCategoryReferences(pool, req.school.id, normalized.value);
-    if (referenceError) {
-      await removeUploadedFiles(req);
-      return res.status(400).json({ message: referenceError });
-    }
-
     connection = await pool.getConnection();
     await connection.beginTransaction();
     transactionStarted = true;
@@ -987,6 +1048,20 @@ router.patch('/:id', requireSchoolPermission('books.catalog', 'edit'), uploadBoo
       transactionStarted = false;
       await removeUploadedFiles(req);
       return res.status(404).json({ message: 'Buku tidak ditemukan.' });
+    }
+    const authorError = await resolveManualAuthor(connection, req.school.id, normalized.value);
+    if (authorError) {
+      await connection.rollback();
+      transactionStarted = false;
+      await removeUploadedFiles(req);
+      return res.status(400).json({ message: authorError });
+    }
+    const referenceError = await validateCategoryReferences(connection, req.school.id, normalized.value);
+    if (referenceError) {
+      await connection.rollback();
+      transactionStarted = false;
+      await removeUploadedFiles(req);
+      return res.status(400).json({ message: referenceError });
     }
     const book = {
       ...normalized.value,

@@ -1,0 +1,441 @@
+import { Router } from 'express';
+import { pool } from '../config/database.js';
+import { requireSchoolPermission } from '../middleware/require-school-permission.js';
+import { readLibrarySettings } from '../utils/school-settings.js';
+
+const router = Router();
+const isMember = (req) => req.school.role === 'member';
+const validId = (value) => /^[1-9]\d*$/.test(String(value ?? ''));
+const validPage = (value, fallback, maximum) => {
+  const parsed = value == null ? fallback : Number(value);
+  return Number.isSafeInteger(parsed) && parsed >= 1 && parsed <= maximum ? parsed : null;
+};
+
+router.get('/notifications', requireSchoolPermission('reservations', 'view'), async (req, res, next) => {
+  try {
+    const [notifications] = await pool.execute(
+      `SELECT id, type, title, message, link, read_at, created_at
+       FROM school_notifications
+       WHERE school_id = ? AND user_id = ?
+       ORDER BY created_at DESC, id DESC
+       LIMIT 100`,
+      [req.school.id, req.school.userId]
+    );
+    return res.json({ notifications });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post('/notifications/:id/read', requireSchoolPermission('reservations', 'view'), async (req, res, next) => {
+  const id = String(req.params.id);
+  if (!validId(id)) return res.status(400).json({ message: 'ID notifikasi tidak valid.' });
+  try {
+    const [result] = await pool.execute(
+      `UPDATE school_notifications SET read_at = COALESCE(read_at, NOW())
+       WHERE id = ? AND school_id = ? AND user_id = ?`,
+      [id, req.school.id, req.school.userId]
+    );
+    if (!result.affectedRows) {
+      const [rows] = await pool.execute(
+        'SELECT id FROM school_notifications WHERE id = ? AND school_id = ? AND user_id = ? LIMIT 1',
+        [id, req.school.id, req.school.userId]
+      );
+      if (!rows[0]) return res.status(404).json({ message: 'Notifikasi tidak ditemukan.' });
+    }
+    return res.json({ message: 'Notifikasi ditandai telah dibaca.' });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/books', requireSchoolPermission('reservations', 'view'), async (req, res, next) => {
+  const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+  if (search.length > 100) return res.status(400).json({ message: 'Pencarian buku maksimal 100 karakter.' });
+  try {
+    const [books] = await pool.execute(
+      `SELECT b.id, b.title, b.kode_buku, b.cover_image,
+              (SELECT COUNT(*) FROM book_reservations br
+               WHERE br.school_id = b.school_id AND br.book_id = b.id AND br.status = 'Active') AS active_reservations
+       FROM books b
+       WHERE b.school_id = ?
+         AND (? = '' OR b.title LIKE ? OR b.kode_buku LIKE ? OR b.nomor_induk LIKE ?)
+         AND NOT EXISTS (
+           SELECT 1 FROM book_items bi
+           WHERE bi.school_id = b.school_id AND bi.book_id = b.id AND bi.status = 'Tersedia'
+             AND NOT EXISTS (
+               SELECT 1 FROM loans l
+               WHERE l.school_id = bi.school_id AND l.book_item_id = bi.id
+                 AND l.status IN ('Pending', 'Borrowed')
+             )
+         )
+       ORDER BY b.title ASC
+       LIMIT 50`,
+      [req.school.id, search, `%${search}%`, `%${search}%`, `%${search}%`]
+    );
+    return res.json({ books });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/', requireSchoolPermission('reservations', 'view'), async (req, res, next) => {
+  const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+  const status = typeof req.query.status === 'string' ? req.query.status : '';
+  const page = validPage(req.query.page, 1, 1000000);
+  const limit = validPage(req.query.limit, 25, 100);
+  if (search.length > 100) return res.status(400).json({ message: 'Pencarian maksimal 100 karakter.' });
+  if (!page || !limit) return res.status(400).json({ message: 'Halaman atau jumlah data tidak valid.' });
+  if (!['', 'Active', 'Fulfilled', 'Cancelled'].includes(status)) {
+    return res.status(400).json({ message: 'Filter status booking tidak valid.' });
+  }
+
+  try {
+    await pool.execute(
+      `UPDATE book_reservations
+       SET status = 'Cancelled'
+       WHERE school_id = ? AND status = 'Active'
+         AND expired_date IS NOT NULL AND expired_date <= NOW()`,
+      [req.school.id]
+    );
+
+    const conditions = ['br.school_id = ?'];
+    const values = [req.school.id];
+    if (isMember(req)) {
+      conditions.push('br.user_id = ?');
+      values.push(req.school.userId);
+    }
+    if (status) {
+      conditions.push('br.status = ?');
+      values.push(status);
+    }
+    if (search) {
+      conditions.push('(b.title LIKE ? OR u.name LIKE ? OR CAST(br.id AS CHAR) LIKE ?)');
+      values.push(`%${search}%`, `%${search}%`, `%${search}%`);
+    }
+    const from = `FROM book_reservations br
+      JOIN books b ON b.school_id = br.school_id AND b.id = br.book_id
+      JOIN users u ON u.school_id = br.school_id AND u.id = br.user_id`;
+    const where = conditions.join(' AND ');
+    const [[count], [rows]] = await Promise.all([
+      pool.execute(`SELECT COUNT(*) AS total ${from} WHERE ${where}`, values),
+      pool.execute(
+        `SELECT br.id, br.book_id, br.user_id, br.reservation_date, br.status,
+                br.expired_date, br.ready_notified_at, b.title AS book_title,
+                b.cover_image, u.name AS member_name, u.nis_nisn
+         ${from}
+         WHERE ${where}
+         ORDER BY FIELD(br.status, 'Active', 'Fulfilled', 'Cancelled'),
+                  br.reservation_date DESC, br.id DESC
+         LIMIT ? OFFSET ?`,
+        [...values, limit, (page - 1) * limit]
+      )
+    ]);
+    const total = Number(count.total);
+    return res.json({
+      reservations: rows.map((row) => ({ ...row, id: String(row.id), book_id: String(row.book_id), user_id: String(row.user_id) })),
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post('/', requireSchoolPermission('reservations', 'edit'), async (req, res, next) => {
+  const bookId = String(req.body?.bookId ?? '');
+  if (!validId(bookId)) return res.status(400).json({ message: 'Pilih buku yang valid.' });
+
+  let connection;
+  let transactionStarted = false;
+  try {
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    transactionStarted = true;
+
+    const [books] = await connection.execute(
+      'SELECT id FROM books WHERE id = ? AND school_id = ? FOR UPDATE',
+      [bookId, req.school.id]
+    );
+    if (!books[0]) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(404).json({ message: 'Buku tidak ditemukan di sekolah ini.' });
+    }
+    const [members] = await connection.execute(
+      `SELECT id FROM users
+       WHERE id = ? AND school_id = ? AND role = 'member' AND status = 'active'
+       FOR UPDATE`,
+      [req.school.userId, req.school.id]
+    );
+    if (!members[0]) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(403).json({ message: 'Hanya anggota aktif yang dapat membuat booking.' });
+    }
+    const [copies] = await connection.execute(
+      `SELECT bi.id FROM book_items bi
+       WHERE bi.school_id = ? AND bi.book_id = ? AND bi.status = 'Tersedia'
+         AND NOT EXISTS (
+           SELECT 1 FROM loans l WHERE l.school_id = bi.school_id
+             AND l.book_item_id = bi.id AND l.status IN ('Pending', 'Borrowed')
+         )
+       LIMIT 1`,
+      [req.school.id, bookId]
+    );
+    if (copies.length) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(409).json({ message: 'Buku masih memiliki eksemplar yang tersedia; booking hanya dapat dibuat saat stok tidak tersedia.' });
+    }
+    const [existing] = await connection.execute(
+      `SELECT id FROM book_reservations
+       WHERE school_id = ? AND book_id = ? AND user_id = ? AND status = 'Active'
+       LIMIT 1 FOR UPDATE`,
+      [req.school.id, bookId, req.school.userId]
+    );
+    if (existing.length) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(409).json({ message: 'Anda sudah memiliki booking aktif untuk buku ini.' });
+    }
+    const [result] = await connection.execute(
+      `INSERT INTO book_reservations (school_id, book_id, user_id, status)
+       VALUES (?, ?, ?, 'Active')`,
+      [req.school.id, bookId, req.school.userId]
+    );
+    await connection.commit();
+    transactionStarted = false;
+    return res.status(201).json({
+      reservation: { id: String(result.insertId), book_id: bookId, user_id: String(req.school.userId), status: 'Active' },
+      message: 'Booking buku berhasil dibuat.'
+    });
+  } catch (error) {
+    if (transactionStarted && connection) await connection.rollback();
+    return next(error);
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+router.post('/:id/cancel', requireSchoolPermission('reservations', 'edit'), async (req, res, next) => {
+  const id = String(req.params.id);
+  if (!validId(id)) return res.status(400).json({ message: 'ID booking tidak valid.' });
+  try {
+    const [result] = await pool.execute(
+      `UPDATE book_reservations SET status = 'Cancelled'
+       WHERE id = ? AND school_id = ? AND status = 'Active'
+         AND (? = 0 OR user_id = ?)`,
+      [id, req.school.id, isMember(req) ? 1 : 0, req.school.userId]
+    );
+    if (!result.affectedRows) return res.status(404).json({ message: 'Booking aktif tidak ditemukan atau tidak dapat dibatalkan.' });
+    return res.json({ message: 'Booking berhasil dibatalkan.' });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post('/:id/ready', requireSchoolPermission('reservations', 'edit'), async (req, res, next) => {
+  const id = String(req.params.id);
+  if (!validId(id)) return res.status(400).json({ message: 'ID booking tidak valid.' });
+  if (isMember(req)) return res.status(403).json({ message: 'Hanya petugas yang dapat mengirim notifikasi ketersediaan.' });
+
+  let connection;
+  let transactionStarted = false;
+  try {
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    transactionStarted = true;
+    const [references] = await connection.execute(
+      'SELECT book_id FROM book_reservations WHERE id = ? AND school_id = ? LIMIT 1',
+      [id, req.school.id]
+    );
+    if (!references[0]) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(404).json({ message: 'Booking tidak ditemukan.' });
+    }
+    const [books] = await connection.execute(
+      'SELECT id FROM books WHERE id = ? AND school_id = ? FOR UPDATE',
+      [references[0].book_id, req.school.id]
+    );
+    if (!books[0]) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(404).json({ message: 'Buku tidak ditemukan.' });
+    }
+    const [reservations] = await connection.execute(
+      `SELECT id, book_id, user_id, status, ready_notified_at
+       FROM book_reservations WHERE id = ? AND school_id = ? FOR UPDATE`,
+      [id, req.school.id]
+    );
+    const reservation = reservations[0];
+    if (!reservation || reservation.status !== 'Active') {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(409).json({ message: 'Hanya booking aktif yang dapat diberi notifikasi.' });
+    }
+    if (reservation.ready_notified_at) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(409).json({ message: 'Notifikasi ketersediaan sudah pernah dikirim untuk booking ini.' });
+    }
+    const [copies] = await connection.execute(
+      `SELECT bi.id FROM book_items bi
+       WHERE bi.school_id = ? AND bi.book_id = ? AND bi.status = 'Tersedia'
+         AND NOT EXISTS (
+           SELECT 1 FROM loans l WHERE l.school_id = bi.school_id
+             AND l.book_item_id = bi.id AND l.status IN ('Pending', 'Borrowed')
+         )
+       ORDER BY bi.id LIMIT 1 FOR UPDATE`,
+      [req.school.id, reservation.book_id]
+    );
+    if (!copies.length) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(409).json({ message: 'Belum ada eksemplar tersedia untuk memenuhi booking.' });
+    }
+    await connection.execute(
+      `UPDATE book_reservations
+       SET ready_notified_at = NOW(), expired_date = DATE_ADD(NOW(), INTERVAL 2 DAY)
+       WHERE id = ? AND school_id = ?`,
+      [id, req.school.id]
+    );
+    await connection.execute(
+      `INSERT IGNORE INTO school_notifications
+       (school_id, user_id, type, title, message, link, dedupe_key)
+       VALUES (?, ?, 'reservation_ready', 'Buku booking Anda tersedia',
+               'Buku yang Anda booking sudah tersedia. Silakan ambil dalam 2 hari.',
+               '/reservations', ?)`,
+      [req.school.id, reservation.user_id, `reservation:${reservation.id}`]
+    );
+    await connection.commit();
+    transactionStarted = false;
+    return res.json({ message: 'Notifikasi ketersediaan berhasil dikirim.', expiresInDays: 2 });
+  } catch (error) {
+    if (transactionStarted && connection) await connection.rollback();
+    return next(error);
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+router.post('/:id/fulfill', requireSchoolPermission('reservations', 'edit'), async (req, res, next) => {
+  const id = String(req.params.id);
+  if (!validId(id)) return res.status(400).json({ message: 'ID booking tidak valid.' });
+  if (isMember(req)) return res.status(403).json({ message: 'Hanya petugas yang dapat memenuhi booking.' });
+
+  let connection;
+  let transactionStarted = false;
+  try {
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    transactionStarted = true;
+    const [references] = await connection.execute(
+      'SELECT book_id FROM book_reservations WHERE id = ? AND school_id = ? LIMIT 1',
+      [id, req.school.id]
+    );
+    if (!references[0]) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(404).json({ message: 'Booking tidak ditemukan.' });
+    }
+    const [books] = await connection.execute(
+      'SELECT id FROM books WHERE id = ? AND school_id = ? FOR UPDATE',
+      [references[0].book_id, req.school.id]
+    );
+    if (!books[0]) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(404).json({ message: 'Buku tidak ditemukan.' });
+    }
+    const [reservations] = await connection.execute(
+      `SELECT id, book_id, user_id, status, ready_notified_at, expired_date,
+              (expired_date > NOW()) AS is_unexpired
+       FROM book_reservations WHERE id = ? AND school_id = ? FOR UPDATE`,
+      [id, req.school.id]
+    );
+    const reservation = reservations[0];
+    if (!reservation || reservation.status !== 'Active') {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(409).json({ message: 'Hanya booking aktif yang dapat dipenuhi.' });
+    }
+    if (!reservation.ready_notified_at || !reservation.is_unexpired) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(409).json({ message: 'Booking belum diberi notifikasi atau masa pengambilannya telah berakhir.' });
+    }
+    const [members] = await connection.execute(
+      `SELECT id FROM users
+       WHERE id = ? AND school_id = ? AND role = 'member' AND status = 'active'
+       FOR UPDATE`,
+      [reservation.user_id, req.school.id]
+    );
+    if (!members[0]) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(409).json({ message: 'Akun anggota booking tidak aktif.' });
+    }
+    const settings = await readLibrarySettings(req.school.id, connection);
+    const [activeLoans] = await connection.execute(
+      `SELECT COUNT(*) AS total FROM loans
+       WHERE school_id = ? AND user_id = ? AND status IN ('Pending', 'Borrowed')`,
+      [req.school.id, reservation.user_id]
+    );
+    const maxLoans = Number(settings.max_loans_per_member);
+    if (Number(activeLoans[0].total) >= maxLoans) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(409).json({ message: `Anggota sudah mencapai batas maksimal ${maxLoans} peminjaman aktif.` });
+    }
+    const [items] = await connection.execute(
+      `SELECT bi.id FROM book_items bi
+       WHERE bi.school_id = ? AND bi.book_id = ? AND bi.status = 'Tersedia'
+         AND NOT EXISTS (
+           SELECT 1 FROM loans l WHERE l.school_id = bi.school_id
+             AND l.book_item_id = bi.id AND l.status IN ('Pending', 'Borrowed')
+         )
+       ORDER BY bi.id LIMIT 1 FOR UPDATE`,
+      [req.school.id, reservation.book_id]
+    );
+    if (!items[0]) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(409).json({ message: 'Eksemplar tersedia sudah tidak ada.' });
+    }
+    const [result] = await connection.execute(
+      `INSERT INTO loans (school_id, book_item_id, user_id, borrow_date, due_date, status)
+       VALUES (?, ?, ?, CURRENT_DATE, DATE_ADD(CURRENT_DATE, INTERVAL ${Number(settings.loan_duration_days)} DAY), 'Borrowed')`,
+      [req.school.id, items[0].id, reservation.user_id]
+    );
+    const [itemUpdate] = await connection.execute(
+      `UPDATE book_items SET status = 'Dipinjam'
+       WHERE id = ? AND school_id = ? AND status = 'Tersedia'`,
+      [items[0].id, req.school.id]
+    );
+    if (!itemUpdate.affectedRows) throw new Error('Eksemplar berubah saat booking dipenuhi.');
+    await connection.execute(
+      `UPDATE book_reservations SET status = 'Fulfilled'
+       WHERE id = ? AND school_id = ? AND status = 'Active'`,
+      [id, req.school.id]
+    );
+    await connection.commit();
+    transactionStarted = false;
+    return res.json({
+      loan: {
+        id: String(result.insertId),
+        bookItemId: String(items[0].id),
+        status: 'Borrowed',
+        dueInDays: Number(settings.loan_duration_days)
+      },
+      message: 'Booking dipenuhi dan peminjaman berhasil dicatat.'
+    });
+  } catch (error) {
+    if (transactionStarted && connection) await connection.rollback();
+    return next(error);
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+export default router;

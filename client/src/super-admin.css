@@ -1,0 +1,298 @@
+.school-detail-icon {
+  width: 32px;
+  height: 32px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid #dfe6ef;
+  border-radius: 8px;
+  background: #fff;
+  color: #526078;
+}
+
+.school-detail-icon:hover {
+  border-color: #f6b285;
+  background: #fff7ed;
+  color: #dc651c;
+}
+
+.school-detail-modal {
+  width: min(100%, 780px);
+  max-height: calc(100vh - 36px);
+  overflow-y: auto;
+}
+
+.school-detail-section {
+  padding: 15px 17px;
+  border-bottom: 1px solid #edf0f4;
+}
+
+.school-detail-section:last-child {
+  border-bottom: 0;
+}
+
+.school-detail-section > h3 {
+  margin: 0 0 13px;
+  color: #35415a;
+  font-size: 12px;
+}
+
+.school-detail-section .school-detail-grid {
+  padding: 0;
+  grid-template-columns: minmax(110px, 150px) minmax(0, 1fr);
+}
+
+.school-code-editor {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.school-code-editor input {
+  width: 90px;
+  height: 32px;
+  padding: 0 9px;
+  border: 1px solid #dfe6ef;
+  border-radius: 7px;
+  outline: 0;
+  color: #35415a;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.school-code-editor input:focus {
+  border-color: #f97316;
+  box-shadow: 0 0 0 3px #f973161c;
+}
+
+.school-detail-save,
+.school-admin-reset-button {
+  min-height: 31px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 9px;
+  border: 1px solid #fed7aa;
+  border-radius: 7px;
+  background: #fff7ed;
+  color: #bd5a1b;
+  font-size: 10px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.school-detail-save:hover:not(:disabled),
+.school-admin-reset-button:hover:not(:disabled) {
+  background: #ffedd5;
+}
+
+.school-detail-save:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.school-detail-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.school-detail-summary-grid article {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid #edf0f4;
+  border-radius: 9px;
+  background: #fafbfd;
+}
+
+.school-detail-summary-grid span {
+  color: #8994a6;
+  font-size: 9px;
+}
+
+.school-detail-summary-grid b {
+  overflow: hidden;
+  color: #35415a;
+  font-size: 15px;
+  text-overflow: ellipsis;
+}
+
+.school-admin-account-list {
+  display: grid;
+  gap: 8px;
+}
+
+.school-admin-account-list article {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid #edf0f4;
+  border-radius: 9px;
+  background: #fff;
+}
+
+.school-admin-account-list article > div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.school-admin-account-list b {
+  overflow: hidden;
+  color: #35415a;
+  font-size: 11px;
+  text-overflow: ellipsis;
+}
+
+.school-admin-account-list span,
+.school-admin-account-list small {
+  overflow: hidden;
+  color: #8994a6;
+  font-size: 9px;
+  text-overflow: ellipsis;
+}
+
+.school-detail-empty {
+  margin: 0;
+  color: #8994a6;
+  font-size: 10px;
+}
+
+.school-detail-notice,
+.school-detail-error {
+  margin: 12px 17px 0;
+}
+
+.school-temporary-password {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 10px;
+  border: 1px solid #a7f3d0;
+  border-radius: 9px;
+  background: #ecfdf5;
+}
+
+.school-temporary-password > div {
+  display: grid;
+  gap: 4px;
+}
+
+.school-temporary-password > div b {
+  color: #166534;
+  font-size: 10px;
+}
+
+.school-temporary-password > div span,
+.school-temporary-password > small {
+  color: #4f7d64;
+  font-size: 9px;
+}
+
+.school-temporary-password code {
+  overflow-wrap: anywhere;
+  padding: 7px;
+  border: 1px solid #d1fae5;
+  border-radius: 6px;
+  background: #fff;
+  color: #14532d;
+  font-size: 10px;
+  user-select: all;
+}
+
+.school-temporary-password > small {
+  grid-column: 1 / -1;
+}
+
+.school-password-reset-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: #17233b66;
+}
+
+.school-password-reset-dialog {
+  width: min(100%, 390px);
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  padding: 22px;
+  border: 1px solid #e8edf3;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 18px 50px #17233b2b;
+  text-align: center;
+}
+
+.school-password-reset-dialog > svg {
+  color: #e87523;
+}
+
+.school-password-reset-dialog h3 {
+  margin: 0;
+  color: #26334b;
+  font-size: 14px;
+}
+
+.school-password-reset-dialog p {
+  margin: 0;
+  color: #778398;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.school-password-reset-dialog .error-box {
+  width: 100%;
+}
+
+.school-password-reset-dialog > div:last-child {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 5px;
+}
+
+@media (max-width: 620px) {
+  .school-detail-modal {
+    max-height: calc(100vh - 24px);
+  }
+
+  .school-detail-section {
+    padding: 13px;
+  }
+
+  .school-detail-section .school-detail-grid {
+    grid-template-columns: 105px minmax(0, 1fr);
+    gap: 9px;
+  }
+
+  .school-detail-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .school-admin-account-list article {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .school-temporary-password {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .school-temporary-password > div {
+    grid-column: 1 / -1;
+  }
+}

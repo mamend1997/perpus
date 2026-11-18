@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Activity, BookOpen, CalendarDays, ClipboardList, RefreshCw, Users } from 'lucide-react';
+import { Activity, Bell, BookOpen, CalendarDays, ClipboardList, RefreshCw, Users } from 'lucide-react';
 import { fetchSchoolDashboard } from './schoolApi.js';
+import { fetchAnnouncements } from './schoolAnnouncementApi.js';
 
 const number = (value) => new Intl.NumberFormat('id-ID').format(value || 0);
 
@@ -11,13 +12,10 @@ const statCards = [
   { key: 'pendingProcurements', label: 'Pengajuan Pending', icon: ClipboardList, tone: 'green' }
 ];
 
-function packageLabel(value) {
-  const labels = { trial: 'Uji coba', basic: 'Basic', premium: 'Premium', lifetime: 'Lifetime' };
-  return labels[value] || value || 'Belum diatur';
-}
-
 export default function SchoolDashboard({ account }) {
   const [dashboard, setDashboard] = useState(null);
+  const [announcements, setAnnouncements] = useState([]);
+  const [announcementError, setAnnouncementError] = useState('');
   const [error, setError] = useState('');
   const [retry, setRetry] = useState(0);
 
@@ -39,7 +37,18 @@ export default function SchoolDashboard({ account }) {
     return () => controller.abort();
   }, [retry]);
 
-  const schoolName = dashboard?.school?.name || account.school?.name || 'Sekolah';
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchAnnouncements({ signal: controller.signal })
+      .then(({ announcements: results }) => {
+        if (!controller.signal.aborted) setAnnouncements((results || []).slice(0, 3));
+      })
+      .catch((requestError) => {
+        if (!controller.signal.aborted) setAnnouncementError(requestError.message);
+      });
+    return () => controller.abort();
+  }, [retry]);
+
   const recentProcurements = dashboard?.recentProcurements || [];
   const categories = dashboard?.availabilityByCategory || [];
   const maxCategoryItems = Math.max(1, ...categories.map((category) => category.total_items || 0));
@@ -50,12 +59,7 @@ export default function SchoolDashboard({ account }) {
         <div>
           <span className="library-eyebrow"><i /> DASHBOARD PERPUSTAKAAN</span>
           <h1>Selamat datang, {account.name}</h1>
-          <p>Ringkasan koleksi dan aktivitas perpustakaan {schoolName}.</p>
-        </div>
-        <div className="library-subscription">
-          <span>Status langganan</span>
-          <b>{packageLabel(dashboard?.school?.packageType || account.school?.packageType)}</b>
-          <small>{dashboard?.school?.status || account.school?.status || 'Aktif'}</small>
+          <p>Ringkasan koleksi dan aktivitas perpustakaan {dashboard?.school?.name || account.school?.name || 'Sekolah'}.</p>
         </div>
       </section>
 
@@ -74,6 +78,18 @@ export default function SchoolDashboard({ account }) {
           </article>
         ))}
       </section>
+
+      {(announcements.length > 0 || announcementError) && (
+        <section className="library-panel dashboard-announcements">
+          <div className="library-panel-heading"><div><span className="library-eyebrow">INFORMASI TERBARU</span><h2><Bell size={17} />Pengumuman Perpustakaan</h2></div></div>
+          {announcementError ? <p className="library-error" role="alert">{announcementError}</p> : announcements.map((item) => (
+            <article key={item.id} className="dashboard-announcement">
+              {item.banner && <img src={item.banner} alt="" />}
+              <div><small>{item.category}</small><b>{item.title}</b><p>{item.content}</p></div>
+            </article>
+          ))}
+        </section>
+      )}
 
       <section className="library-dashboard-grid">
         <article className="library-panel">

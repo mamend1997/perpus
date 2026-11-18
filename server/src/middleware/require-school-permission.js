@@ -1,4 +1,5 @@
 import { pool } from '../config/database.js';
+import { defaultSchoolPermissions } from '../utils/school-permissions.js';
 
 const permissionColumns = {
   view: 'can_view',
@@ -25,7 +26,7 @@ export function requireSchoolPermission(feature, action) {
       );
       const allowed = rows.length > 0
         ? Boolean(rows[0].allowed)
-        : featureKey === 'dashboard' && action === 'view';
+        : Boolean(defaultSchoolPermissions()[featureKey]?.[action]);
       if (!allowed) {
         return res.status(403).json({ message: 'Anda tidak memiliki izin untuk tindakan ini.' });
       }

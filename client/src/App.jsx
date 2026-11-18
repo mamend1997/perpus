@@ -3,10 +3,11 @@ import {
   Activity, ArrowDownRight, ArrowUpRight, Bell, BookOpen, Building2,
   Check, ChevronDown, ChevronRight, CircleHelp, ClipboardList, Copy, Eye, EyeOff,
   CreditCard, Database, FileText, Headphones, LayoutDashboard,
-  LogOut, Menu, MessageSquare, MoreHorizontal, PanelLeftClose, PanelLeftOpen, Plus,
+  KeyRound, LogOut, Menu, MessageSquare, MoreHorizontal, PanelLeftClose, PanelLeftOpen, Plus,
   Search, Settings2, ShieldCheck, Sparkles, Ticket, Users, X
 } from 'lucide-react';
 import SchoolPortal from './school/SchoolPortal.jsx';
+import './super-admin.css';
 
 const groups = [
   { title: 'RINGKASAN', items: [{ label: 'Dashboard', icon: LayoutDashboard }] },
@@ -277,6 +278,17 @@ function SchoolListPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selectedSchool, setSelectedSchool] = useState(null);
+  const [schoolDetail, setSchoolDetail] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState('');
+  const [schoolCode, setSchoolCode] = useState('');
+  const [savingSchoolCode, setSavingSchoolCode] = useState(false);
+  const [detailNotice, setDetailNotice] = useState('');
+  const [resetTarget, setResetTarget] = useState(null);
+  const [resettingPassword, setResettingPassword] = useState(false);
+  const [resetError, setResetError] = useState('');
+  const [resetResult, setResetResult] = useState(null);
+  const [copyNotice, setCopyNotice] = useState('');
   const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
@@ -298,6 +310,91 @@ function SchoolListPage() {
       });
     return () => { active = false; };
   }, [search, status, retryCount]);
+
+  useEffect(() => {
+    if (!selectedSchool) return undefined;
+    let active = true;
+    setSchoolDetail(null);
+    setDetailLoading(true);
+    setDetailError('');
+    setDetailNotice('');
+    setResetResult(null);
+    setCopyNotice('');
+    request(`/api/super-admin/schools/${encodeURIComponent(selectedSchool.id)}`)
+      .then((result) => {
+        if (!active) return;
+        setSchoolDetail(result);
+        setSchoolCode(result.school.school_code || '');
+      })
+      .catch((err) => {
+        if (active) setDetailError(err.message);
+      })
+      .finally(() => {
+        if (active) setDetailLoading(false);
+      });
+    return () => { active = false; };
+  }, [selectedSchool?.id]);
+
+  function openSchoolDetail(school) {
+    setSelectedSchool(school);
+    setSchoolCode(school.school_code || '');
+    setDetailError('');
+    setResetTarget(null);
+    setResetError('');
+  }
+
+  async function saveSchoolCode() {
+    if (!schoolDetail || savingSchoolCode) return;
+    setSavingSchoolCode(true);
+    setDetailError('');
+    setDetailNotice('');
+    try {
+      const result = await request(`/api/super-admin/schools/${encodeURIComponent(schoolDetail.school.id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ schoolCode })
+      });
+      setSchoolDetail((current) => ({ ...current, school: { ...current.school, ...result.school } }));
+      setSelectedSchool((current) => current ? { ...current, school_code: result.school.school_code } : current);
+      setSchools((current) => current.map((school) => String(school.id) === String(result.school.id)
+        ? { ...school, school_code: result.school.school_code }
+        : school));
+      setSchoolCode(result.school.school_code);
+      setDetailNotice(result.message);
+    } catch (saveError) {
+      setDetailError(saveError.message);
+    } finally {
+      setSavingSchoolCode(false);
+    }
+  }
+
+  async function confirmPasswordReset() {
+    if (!selectedSchool || !resetTarget || resettingPassword) return;
+    setResettingPassword(true);
+    setResetError('');
+    setCopyNotice('');
+    try {
+      const result = await request(
+        `/api/super-admin/schools/${encodeURIComponent(selectedSchool.id)}/admins/${encodeURIComponent(resetTarget.id)}/password-reset`,
+        { method: 'POST' }
+      );
+      setResetResult({ ...result.admin, temporaryPassword: result.temporaryPassword });
+      setResetTarget(null);
+    } catch (resetRequestError) {
+      setResetError(resetRequestError.message);
+    } finally {
+      setResettingPassword(false);
+    }
+  }
+
+  async function copyTemporaryPassword() {
+    if (!resetResult?.temporaryPassword) return;
+    try {
+      await navigator.clipboard.writeText(resetResult.temporaryPassword);
+      setCopyNotice('Kata sandi sementara berhasil disalin.');
+    } catch {
+      setCopyNotice('Gagal menyalin. Salin kata sandi secara manual.');
+    }
+  }
 
   const formatDate = (value) => value
     ? new Intl.DateTimeFormat('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(value))
@@ -353,7 +450,7 @@ function SchoolListPage() {
                     <td><span className={`directory-status ${currentStatus.className}`}>{currentStatus.label}</span></td>
                     <td>{school.package_type === 'lifetime' ? 'Lifetime' : formatDate(school.created_at)}</td>
                     <td className="directory-domain">—</td>
-                    <td><button className="school-detail-button" onClick={() => setSelectedSchool(school)}><Eye size={14} />Detail Sekolah</button></td>
+                    <td><button type="button" className="school-detail-icon" onClick={() => openSchoolDetail(school)} title="Detail Sekolah" aria-label={`Detail sekolah ${school.name}`}><Eye size={16} /></button></td>
                   </tr>
                 );
               })}</tbody>
@@ -364,20 +461,122 @@ function SchoolListPage() {
         )}
       </section>
       {selectedSchool && (
-        <div className="school-detail-backdrop" onClick={() => setSelectedSchool(null)}>
+        <div className="school-detail-backdrop" onClick={() => { setSelectedSchool(null); setResetResult(null); }}>
           <section className="panel school-detail-modal" role="dialog" aria-modal="true" aria-labelledby="school-detail-title" onClick={(event) => event.stopPropagation()}>
-            <div className="school-detail-heading"><div><h2 id="school-detail-title">Detail Sekolah</h2><p>{selectedSchool.name}</p></div><button className="icon-button" onClick={() => setSelectedSchool(null)} aria-label="Tutup detail"><X size={18} /></button></div>
-            <div className="school-detail-grid">
-              <span>Kode sekolah</span><b>{selectedSchool.school_code || '—'}</b>
-              <span>Administrator</span><b>{selectedSchool.admin_name || '—'}</b>
-              <span>Email</span><b>{selectedSchool.admin_email || '—'}</b>
-              <span>WhatsApp</span><b>{selectedSchool.admin_phone || '—'}</b>
-              <span>NPSN</span><b>{selectedSchool.npsn || '—'}</b>
-              <span>Alamat</span><b>{selectedSchool.address || '—'}</b>
-              <span>Paket</span><b>{packageLabel(selectedSchool.package_type)}</b>
-              <span>Terdaftar</span><b>{formatDate(selectedSchool.created_at)}</b>
-              <span>Domain</span><b>—</b>
+            <div className="school-detail-heading">
+              <div><h2 id="school-detail-title">Detail Sekolah</h2><p>{schoolDetail?.school.name || selectedSchool.name}</p></div>
+              <button type="button" className="icon-button" onClick={() => { setSelectedSchool(null); setResetResult(null); }} aria-label="Tutup detail"><X size={18} /></button>
             </div>
+            {detailLoading && <div className="loading-state"><div className="spinner" />Memuat detail sekolah...</div>}
+            {detailError && <div className="error-box school-detail-error" role="alert">{detailError}</div>}
+            {schoolDetail && (
+              <>
+                {detailNotice && <div className="success-box school-detail-notice" role="status"><Check size={15} />{detailNotice}</div>}
+                <section className="school-detail-section">
+                  <h3>Informasi Sekolah</h3>
+                  <div className="school-detail-grid">
+                    <span>Nama sekolah</span><b>{schoolDetail.school.name}</b>
+                    <span>Kode sekolah</span>
+                    <form className="school-code-editor" onSubmit={(event) => { event.preventDefault(); saveSchoolCode(); }}>
+                      <input
+                        value={schoolCode}
+                        onChange={(event) => { setSchoolCode(event.target.value.toUpperCase()); setDetailError(''); }}
+                        maxLength={4}
+                        pattern="[A-Za-z0-9]{4}"
+                        aria-label="Kode sekolah"
+                        required
+                      />
+                      <button
+                        type="submit"
+                        className="school-detail-save"
+                        disabled={savingSchoolCode || !/^[A-Z0-9]{4}$/.test(schoolCode.trim().toUpperCase()) || schoolCode.trim().toUpperCase() === schoolDetail.school.school_code}
+                      >
+                        {savingSchoolCode ? 'Menyimpan...' : <><Check size={14} />Simpan</>}
+                      </button>
+                    </form>
+                    <span>NPSN</span><b>{schoolDetail.school.npsn || '—'}</b>
+                    <span>Telepon</span><b>{schoolDetail.school.phone || '—'}</b>
+                    <span>Email</span><b>{schoolDetail.school.email || '—'}</b>
+                    <span>Website</span><b>{schoolDetail.school.website || '—'}</b>
+                    <span>Alamat</span><b>{schoolDetail.school.address || '—'}</b>
+                    <span>Kepala sekolah</span><b>{schoolDetail.school.principal_name || '—'}</b>
+                    <span>NIP kepala sekolah</span><b>{schoolDetail.school.principal_nip || '—'}</b>
+                    <span>Kepala perpustakaan</span><b>{schoolDetail.school.librarian_name || '—'}</b>
+                    <span>NIP kepala perpustakaan</span><b>{schoolDetail.school.librarian_nip || '—'}</b>
+                    <span>Paket</span><b>{packageLabel(schoolDetail.school.package_type)}</b>
+                    <span>Status</span><b>{schoolStatus(schoolDetail.school).label}</b>
+                    <span>Terdaftar</span><b>{formatDate(schoolDetail.school.created_at)}</b>
+                  </div>
+                </section>
+                <section className="school-detail-section">
+                  <h3>Ringkasan</h3>
+                  <div className="school-detail-summary-grid">
+                    <article><span>Total akun</span><b>{number(schoolDetail.summary.totalUsers)}</b></article>
+                    <article><span>Anggota aktif</span><b>{number(schoolDetail.summary.activeMembers)}</b></article>
+                    <article><span>Judul buku</span><b>{number(schoolDetail.summary.bookTitles)}</b></article>
+                    <article><span>Total stok katalog</span><b>{number(schoolDetail.summary.bookStock)}</b></article>
+                    <article><span>Eksemplar fisik</span><b>{number(schoolDetail.summary.bookItems)}</b></article>
+                    <article><span>Peminjaman aktif</span><b>{number(schoolDetail.summary.activeLoans)}</b></article>
+                    <article><span>Usulan menunggu</span><b>{number(schoolDetail.summary.pendingProcurements)}</b></article>
+                    <article><span>Total kunjungan</span><b>{number(schoolDetail.summary.totalVisitors)}</b></article>
+                  </div>
+                </section>
+                <section className="school-detail-section">
+                  <h3>Akun Admin Sekolah</h3>
+                  {resetResult && (
+                    <div className="school-temporary-password" role="status">
+                      <div><b>Kata sandi sementara untuk {resetResult.name}</b><span>Sampaikan secara aman. Kata sandi ini hanya ditampilkan pada dialog ini.</span></div>
+                      <code>{resetResult.temporaryPassword}</code>
+                      <button type="button" className="school-detail-save" onClick={copyTemporaryPassword}><Copy size={14} />Salin</button>
+                      {copyNotice && <small>{copyNotice}</small>}
+                    </div>
+                  )}
+                  {schoolDetail.admins.length ? (
+                    <div className="school-admin-account-list">
+                      {schoolDetail.admins.map((admin) => (
+                        <article key={admin.id}>
+                          <div>
+                            <b>{admin.name}</b>
+                            <span>{admin.email || 'Email belum tersedia'}{admin.phone ? ` · ${admin.phone}` : ''}</span>
+                            <small>{admin.status === 'active' ? 'Aktif' : admin.status === 'blocked' ? 'Diblokir' : 'Tidak aktif'} · Terdaftar {formatDate(admin.created_at)}</small>
+                          </div>
+                          <button
+                            type="button"
+                            className="school-admin-reset-button"
+                            onClick={() => { setResetTarget(admin); setResetError(''); setResetResult(null); setCopyNotice(''); }}
+                            aria-label={`Reset kata sandi ${admin.name}`}
+                          >
+                            <KeyRound size={15} />Reset sandi
+                          </button>
+                        </article>
+                      ))}
+                    </div>
+                  ) : <p className="school-detail-empty">Belum ada akun admin pada sekolah ini.</p>}
+                </section>
+              </>
+            )}
+            {resetTarget && (
+              <div className="school-password-reset-backdrop" onClick={(event) => {
+                event.stopPropagation();
+                if (event.target === event.currentTarget && !resettingPassword) {
+                  setResetTarget(null);
+                  setResetError('');
+                }
+              }}>
+                <section className="school-password-reset-dialog" role="alertdialog" aria-modal="true" aria-labelledby="school-password-reset-title" onClick={(event) => event.stopPropagation()}>
+                  <ShieldCheck size={25} />
+                  <h3 id="school-password-reset-title">Reset kata sandi admin?</h3>
+                  <p>Kata sandi untuk <b>{resetTarget.name}</b> akan diganti dengan kata sandi sementara yang baru.</p>
+                  {resetError && <div className="error-box" role="alert">{resetError}</div>}
+                  <div>
+                    <button type="button" className="subtle-button" onClick={() => { setResetTarget(null); setResetError(''); }} disabled={resettingPassword}>Batal</button>
+                    <button type="button" className="primary-button" onClick={confirmPasswordReset} disabled={resettingPassword}>
+                      {resettingPassword ? 'Mereset...' : 'Reset Kata Sandi'}
+                    </button>
+                  </div>
+                </section>
+              </div>
+            )}
           </section>
         </div>
       )}

@@ -3,11 +3,19 @@ CREATE TABLE IF NOT EXISTS tenants_schools (
   name VARCHAR(180) NOT NULL,
   school_code CHAR(4) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
   npsn CHAR(8) NULL,
+  phone VARCHAR(30) NULL,
+  email VARCHAR(190) NULL,
+  website VARCHAR(255) NULL,
   address TEXT NULL,
-  logo VARCHAR(500) NULL,
+  principal_name VARCHAR(180) NULL,
+  principal_nip VARCHAR(30) NULL,
+  librarian_name VARCHAR(180) NULL,
+  librarian_nip VARCHAR(30) NULL,
+  logo MEDIUMTEXT NULL,
   package_type ENUM('trial', 'basic', 'premium', 'lifetime') NOT NULL DEFAULT 'trial',
   status ENUM('active', 'suspended', 'pending') NOT NULL DEFAULT 'pending',
   students_count INT UNSIGNED NOT NULL DEFAULT 0,
+  fine_per_day INT UNSIGNED NOT NULL DEFAULT 1000,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   UNIQUE KEY uq_tenants_schools_school_code (school_code),
@@ -66,6 +74,18 @@ CREATE TABLE IF NOT EXISTS school_role_permissions (
   UNIQUE KEY uq_school_role_feature (school_id, role, feature_key),
   KEY idx_school_role_permissions_role (school_id, role),
   CONSTRAINT fk_school_role_permissions_school FOREIGN KEY (school_id) REFERENCES tenants_schools (id)
+    ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS school_settings (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  school_id BIGINT UNSIGNED NOT NULL,
+  `key` VARCHAR(80) NOT NULL,
+  `value` MEDIUMTEXT NOT NULL,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_school_settings_key (school_id, `key`),
+  CONSTRAINT fk_school_settings_school FOREIGN KEY (school_id) REFERENCES tenants_schools (id)
     ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -176,6 +196,7 @@ CREATE TABLE IF NOT EXISTS book_stock_movements (
   quantity_added INT UNSIGNED NOT NULL,
   previous_qty INT UNSIGNED NOT NULL,
   resulting_qty INT UNSIGNED NOT NULL,
+  stock_date DATE NOT NULL,
   note VARCHAR(1000) NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
@@ -199,6 +220,7 @@ CREATE TABLE IF NOT EXISTS loans (
   status ENUM('Pending', 'Borrowed', 'Returned', 'Rejected') NOT NULL DEFAULT 'Pending',
   fine_amount DECIMAL(12,2) NOT NULL DEFAULT 0,
   fine_status ENUM('unpaid', 'paid', 'waived') NOT NULL DEFAULT 'unpaid',
+  renewal_count TINYINT UNSIGNED NOT NULL DEFAULT 0,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   KEY idx_loans_school_status_due (school_id, status, due_date),
@@ -212,6 +234,26 @@ CREATE TABLE IF NOT EXISTS loans (
   CONSTRAINT fk_loans_user FOREIGN KEY (school_id, user_id) REFERENCES users (school_id, id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS loan_fine_payments (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  school_id BIGINT UNSIGNED NOT NULL,
+  loan_id BIGINT UNSIGNED NOT NULL,
+  paid_by BIGINT UNSIGNED NULL,
+  amount DECIMAL(12,2) NOT NULL,
+  payment_method ENUM('cash') NOT NULL DEFAULT 'cash',
+  note VARCHAR(500) NULL,
+  paid_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_loan_fine_payments_loan (loan_id),
+  KEY idx_loan_fine_payments_school_paid (school_id, paid_at),
+  CONSTRAINT fk_loan_fine_payments_school FOREIGN KEY (school_id) REFERENCES tenants_schools (id)
+    ON DELETE CASCADE,
+  CONSTRAINT fk_loan_fine_payments_loan FOREIGN KEY (loan_id) REFERENCES loans (id)
+    ON DELETE CASCADE,
+  CONSTRAINT fk_loan_fine_payments_actor FOREIGN KEY (paid_by) REFERENCES users (id)
+    ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS procurements (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   school_id BIGINT UNSIGNED NOT NULL,
@@ -219,9 +261,13 @@ CREATE TABLE IF NOT EXISTS procurements (
   title VARCHAR(255) NOT NULL,
   author VARCHAR(180) NULL,
   publisher VARCHAR(180) NULL,
+  `year` SMALLINT UNSIGNED NULL,
+  quantity_needed INT UNSIGNED NOT NULL DEFAULT 1,
+  estimated_price DECIMAL(12,2) NULL,
   request_date DATE NOT NULL,
   status ENUM('Pending', 'Diterima', 'Ditolak') NOT NULL DEFAULT 'Pending',
   notes TEXT NULL,
+  review_notes TEXT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   KEY idx_procurements_school_status (school_id, status, created_at),
@@ -271,9 +317,12 @@ CREATE TABLE IF NOT EXISTS book_reservations (
   book_id BIGINT UNSIGNED NOT NULL,
   user_id BIGINT UNSIGNED NOT NULL,
   reservation_date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  expired_date DATETIME NULL,
+  ready_notified_at DATETIME NULL,
   status ENUM('Active', 'Fulfilled', 'Cancelled') NOT NULL DEFAULT 'Active',
   PRIMARY KEY (id),
   KEY idx_reservations_school_status_date (school_id, status, reservation_date),
+  KEY idx_reservations_school_expired (school_id, status, expired_date),
   KEY idx_reservations_school_user (school_id, user_id, status),
   CONSTRAINT fk_reservations_school FOREIGN KEY (school_id) REFERENCES tenants_schools (id)
     ON DELETE CASCADE,
@@ -283,16 +332,65 @@ CREATE TABLE IF NOT EXISTS book_reservations (
     ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS school_notifications (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  school_id BIGINT UNSIGNED NOT NULL,
+  user_id BIGINT UNSIGNED NOT NULL,
+  type VARCHAR(40) NOT NULL,
+  title VARCHAR(180) NOT NULL,
+  message VARCHAR(500) NOT NULL,
+  link VARCHAR(500) NULL,
+  dedupe_key VARCHAR(120) NULL,
+  read_at DATETIME NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_school_notifications_dedupe (school_id, user_id, dedupe_key),
+  KEY idx_school_notifications_user_created (school_id, user_id, created_at),
+  CONSTRAINT fk_school_notifications_school FOREIGN KEY (school_id) REFERENCES tenants_schools (id)
+    ON DELETE CASCADE,
+  CONSTRAINT fk_school_notifications_user FOREIGN KEY (school_id, user_id) REFERENCES users (school_id, id)
+    ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS announcements (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   school_id BIGINT UNSIGNED NOT NULL,
+  admin_id BIGINT UNSIGNED NULL,
   title VARCHAR(255) NOT NULL,
   content TEXT NOT NULL,
+  category VARCHAR(80) NOT NULL DEFAULT 'Informasi',
+  target_audience ENUM('all', 'students', 'staff') NOT NULL DEFAULT 'all',
+  status ENUM('Draft', 'Published') NOT NULL DEFAULT 'Draft',
+  start_date DATETIME NULL,
+  end_date DATETIME NULL,
+  banner MEDIUMTEXT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   KEY idx_announcements_school_created (school_id, created_at),
+  KEY idx_announcements_school_status_dates (school_id, status, start_date, end_date),
   CONSTRAINT fk_announcements_school FOREIGN KEY (school_id) REFERENCES tenants_schools (id)
-    ON DELETE CASCADE
+    ON DELETE CASCADE,
+  CONSTRAINT fk_announcements_admin FOREIGN KEY (admin_id) REFERENCES users (id)
+    ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS school_years (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  school_id BIGINT UNSIGNED NOT NULL,
+  label VARCHAR(40) NOT NULL,
+  start_date DATE NOT NULL,
+  end_date DATE NOT NULL,
+  is_active TINYINT(1) NOT NULL DEFAULT 0,
+  created_by BIGINT UNSIGNED NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_school_years_school_label (school_id, label),
+  KEY idx_school_years_school_dates (school_id, start_date, end_date),
+  CONSTRAINT fk_school_years_school FOREIGN KEY (school_id) REFERENCES tenants_schools (id)
+    ON DELETE CASCADE,
+  CONSTRAINT fk_school_years_creator FOREIGN KEY (created_by) REFERENCES users (id)
+    ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS tenant_invoices (

@@ -127,7 +127,8 @@ router.post('/school/login', async (req, res, next) => {
   try {
     const [rows] = await pool.execute(
       `SELECT u.id, u.school_id, u.name, u.email, u.password, u.role,
-              s.name AS school_name, s.school_code, s.status AS school_status
+              s.name AS school_name, s.school_code, s.logo AS school_logo,
+              s.status AS school_status
        FROM users u
        JOIN tenants_schools s ON s.id = u.school_id
        WHERE s.school_code = ? AND u.email = ? AND u.status = 'active'
@@ -161,7 +162,7 @@ router.post('/school/login', async (req, res, next) => {
         name: account.name,
         email: account.email,
         role: account.role,
-        school: { id: account.school_id, name: account.school_name, code: account.school_code }
+        school: { id: account.school_id, name: account.school_name, code: account.school_code, logo: account.school_logo }
       }
     });
   } catch (error) {
@@ -187,7 +188,7 @@ router.get('/school/me', async (req, res, next) => {
   try {
     const [rows] = await pool.execute(
       `SELECT u.id, u.name, u.email, u.role, s.id AS school_id, s.name AS school_name,
-              s.school_code, s.status AS school_status
+              s.school_code, s.logo AS school_logo, s.status AS school_status
        FROM users u
        JOIN tenants_schools s ON s.id = u.school_id
        WHERE u.id = ? AND u.school_id = ? AND u.status = 'active' AND s.status = 'active'
@@ -202,7 +203,7 @@ router.get('/school/me', async (req, res, next) => {
         name: account.name,
         email: account.email,
         role: account.role,
-        school: { id: account.school_id, name: account.school_name, code: account.school_code }
+        school: { id: account.school_id, name: account.school_name, code: account.school_code, logo: account.school_logo }
       }
     });
   } catch (error) {

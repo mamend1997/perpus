@@ -29,6 +29,117 @@ try {
   const schema = await readFile(fileURLToPath(schemaUrl), 'utf8');
   await connection.query(schema);
 
+  const [reservationColumns] = await connection.execute(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'book_reservations'`
+  );
+  const reservationColumnNames = new Set(reservationColumns.map((column) => column.COLUMN_NAME));
+  for (const [columnName, definition] of [
+    ['expired_date', 'DATETIME NULL AFTER reservation_date'],
+    ['ready_notified_at', 'DATETIME NULL AFTER expired_date']
+  ]) {
+    if (!reservationColumnNames.has(columnName)) {
+      await connection.query(`ALTER TABLE book_reservations ADD COLUMN ${columnName} ${definition}`);
+    }
+  }
+  const [reservationIndexes] = await connection.execute(
+    `SELECT INDEX_NAME FROM information_schema.STATISTICS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'book_reservations'
+       AND INDEX_NAME = 'idx_reservations_school_expired'`
+  );
+  if (reservationIndexes.length === 0) {
+    await connection.query(
+      'ALTER TABLE book_reservations ADD KEY idx_reservations_school_expired (school_id, status, expired_date)'
+    );
+  }
+
+  const [announcementColumns] = await connection.execute(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'announcements'`
+  );
+  const announcementColumnNames = new Set(announcementColumns.map((column) => column.COLUMN_NAME));
+  for (const [columnName, definition] of [
+    ['admin_id', 'BIGINT UNSIGNED NULL AFTER school_id'],
+    ['category', "VARCHAR(80) NOT NULL DEFAULT 'Informasi' AFTER content"],
+    ["target_audience", "ENUM('all', 'students', 'staff') NOT NULL DEFAULT 'all' AFTER category"],
+    ["status", "ENUM('Draft', 'Published') NOT NULL DEFAULT 'Draft' AFTER target_audience"],
+    ['start_date', 'DATETIME NULL AFTER status'],
+    ['end_date', 'DATETIME NULL AFTER start_date'],
+    ['banner', 'MEDIUMTEXT NULL AFTER end_date'],
+    ['updated_at', 'TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER created_at']
+  ]) {
+    if (!announcementColumnNames.has(columnName)) {
+      await connection.query(`ALTER TABLE announcements ADD COLUMN ${columnName} ${definition}`);
+    }
+  }
+  const [announcementIndexes] = await connection.execute(
+    `SELECT INDEX_NAME FROM information_schema.STATISTICS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'announcements'
+       AND INDEX_NAME = 'idx_announcements_school_status_dates'`
+  );
+  if (announcementIndexes.length === 0) {
+    await connection.query(
+      'ALTER TABLE announcements ADD KEY idx_announcements_school_status_dates (school_id, status, start_date, end_date)'
+    );
+  }
+  const [announcementAdminConstraint] = await connection.execute(
+    `SELECT CONSTRAINT_NAME FROM information_schema.REFERENTIAL_CONSTRAINTS
+     WHERE CONSTRAINT_SCHEMA = DATABASE() AND TABLE_NAME = 'announcements'
+       AND CONSTRAINT_NAME = 'fk_announcements_admin'`
+  );
+  if (announcementAdminConstraint.length === 0) {
+    await connection.query(
+      `ALTER TABLE announcements ADD CONSTRAINT fk_announcements_admin
+       FOREIGN KEY (admin_id) REFERENCES users (id) ON DELETE SET NULL`
+    );
+  }
+
+  const [stockMovementColumns] = await connection.execute(
+    `SELECT COLUMN_NAME, IS_NULLABLE FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'book_stock_movements'`
+  );
+  if (!stockMovementColumns.some((column) => column.COLUMN_NAME === 'stock_date')) {
+    await connection.query(
+      'ALTER TABLE book_stock_movements ADD COLUMN stock_date DATE NULL AFTER resulting_qty'
+    );
+    await connection.query(
+      'UPDATE book_stock_movements SET stock_date = DATE(created_at) WHERE stock_date IS NULL'
+    );
+    await connection.query(
+      'ALTER TABLE book_stock_movements MODIFY stock_date DATE NOT NULL'
+    );
+  } else if (stockMovementColumns.some((column) => column.COLUMN_NAME === 'stock_date' && column.IS_NULLABLE === 'YES')) {
+    await connection.query(
+      'UPDATE book_stock_movements SET stock_date = DATE(created_at) WHERE stock_date IS NULL'
+    );
+    await connection.query(
+      'ALTER TABLE book_stock_movements MODIFY stock_date DATE NOT NULL'
+    );
+  }
+
+  const [procurementColumns] = await connection.execute(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'procurements'`
+  );
+  const procurementColumnNames = new Set(procurementColumns.map((column) => column.COLUMN_NAME));
+  const isMigratingReviewNotes = !procurementColumnNames.has('review_notes');
+  const procurementFields = [
+    ['year', '`year` SMALLINT UNSIGNED NULL AFTER publisher'],
+    ['quantity_needed', 'quantity_needed INT UNSIGNED NOT NULL DEFAULT 1 AFTER `year`'],
+    ['estimated_price', 'estimated_price DECIMAL(12,2) NULL AFTER quantity_needed'],
+    ['review_notes', 'review_notes TEXT NULL AFTER notes']
+  ];
+  for (const [columnName, definition] of procurementFields) {
+    if (!procurementColumnNames.has(columnName)) {
+      await connection.query(`ALTER TABLE procurements ADD COLUMN ${definition}`);
+    }
+  }
+  if (isMigratingReviewNotes) {
+    await connection.query(
+      'UPDATE procurements SET review_notes = notes, notes = NULL WHERE notes IS NOT NULL'
+    );
+  }
+
   const [userColumns] = await connection.execute(
     `SELECT COLUMN_NAME FROM information_schema.COLUMNS
      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users'`
@@ -36,6 +147,30 @@ try {
   const userColumnNames = new Set(userColumns.map((column) => column.COLUMN_NAME));
   if (!userColumnNames.has('avatar')) {
     await connection.query('ALTER TABLE users ADD COLUMN avatar MEDIUMTEXT NULL AFTER email');
+  }
+
+  const [schoolColumns] = await connection.execute(
+    `SELECT COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tenants_schools'`
+  );
+  const schoolColumnNames = new Set(schoolColumns.map((column) => column.COLUMN_NAME));
+  const identityColumns = [
+    ['phone', 'VARCHAR(30) NULL AFTER npsn'],
+    ['email', 'VARCHAR(190) NULL AFTER phone'],
+    ['website', 'VARCHAR(255) NULL AFTER email'],
+    ['principal_name', 'VARCHAR(180) NULL AFTER address'],
+    ['principal_nip', 'VARCHAR(30) NULL AFTER principal_name'],
+    ['librarian_name', 'VARCHAR(180) NULL AFTER principal_nip'],
+    ['librarian_nip', 'VARCHAR(30) NULL AFTER librarian_name'],
+    ['fine_per_day', 'INT UNSIGNED NOT NULL DEFAULT 1000 AFTER students_count']
+  ];
+  for (const [columnName, definition] of identityColumns) {
+    if (!schoolColumnNames.has(columnName)) {
+      await connection.query(`ALTER TABLE tenants_schools ADD COLUMN ${columnName} ${definition}`);
+    }
+  }
+  if (schoolColumns.some((column) => column.COLUMN_NAME === 'logo' && column.DATA_TYPE !== 'mediumtext')) {
+    await connection.query('ALTER TABLE tenants_schools MODIFY logo MEDIUMTEXT NULL');
   }
 
   const [masterCategoryColumns] = await connection.execute(
@@ -150,6 +285,11 @@ try {
     await connection.query(
       `ALTER TABLE loans ADD COLUMN fine_status
        ENUM('unpaid', 'paid', 'waived') NOT NULL DEFAULT 'unpaid' AFTER fine_amount`
+    );
+  }
+  if (!loanColumns.some((column) => column.COLUMN_NAME === 'renewal_count')) {
+    await connection.query(
+      'ALTER TABLE loans ADD COLUMN renewal_count TINYINT UNSIGNED NOT NULL DEFAULT 0 AFTER fine_status'
     );
   }
   for (const [indexName, columnName] of [
