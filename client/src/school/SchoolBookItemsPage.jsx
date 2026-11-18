@@ -90,6 +90,7 @@ function BookItemBarcodePrint({ items, schoolName, schoolIdentity, onClose }) {
   const svgRefs = useRef({});
 
   useEffect(() => {
+    document.body.classList.add('is-printing-barcode');
     items.forEach((item) => {
       const svg = svgRefs.current[String(item.id)];
       if (svg) JsBarcode(svg, itemBarcodeValue(item), { format: 'CODE128', displayValue: false, height: 42, width: 1.5, margin: 0 });
@@ -100,6 +101,7 @@ function BookItemBarcodePrint({ items, schoolName, schoolIdentity, onClose }) {
     return () => {
       window.clearTimeout(printTimer);
       window.removeEventListener('afterprint', afterPrint);
+      document.body.classList.remove('is-printing-barcode');
     };
   }, [items, onClose]);
 

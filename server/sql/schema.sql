@@ -68,6 +68,20 @@ CREATE TABLE IF NOT EXISTS users (
     ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS school_classes (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  school_id BIGINT UNSIGNED NOT NULL,
+  grade_level VARCHAR(16) NULL,
+  name VARCHAR(80) NOT NULL,
+  class_name VARCHAR(80) NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_school_classes_name (school_id, class_name),
+  KEY idx_school_classes_grade (school_id, grade_level, name),
+  CONSTRAINT fk_school_classes_school FOREIGN KEY (school_id) REFERENCES tenants_schools (id)
+    ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS school_role_permissions (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   school_id BIGINT UNSIGNED NOT NULL,

@@ -71,6 +71,16 @@ export default function SchoolReportsPage({ rights }) {
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState('');
 
+  function printReport() {
+    const cleanup = () => {
+      document.body.classList.remove('is-printing-school-reports');
+      window.removeEventListener('afterprint', cleanup);
+    };
+    document.body.classList.add('is-printing-school-reports');
+    window.addEventListener('afterprint', cleanup);
+    window.print();
+  }
+
   useEffect(() => {
     const timer = window.setTimeout(() => {
       setSearch(queryInput.trim());
@@ -196,7 +206,7 @@ export default function SchoolReportsPage({ rights }) {
         </label>}
         <label className="school-report-search"><span>Cari data</span><span className="master-search"><Search size={15} /><input value={queryInput} onChange={(event) => setQueryInput(event.target.value)} placeholder="Kata kunci..." maxLength={100} /></span></label>
         <div className="school-report-actions">
-          <button type="button" className="master-button master-button-light" onClick={() => window.print()} disabled={!report}><Printer size={15} />Cetak / PDF</button>
+          <button type="button" className="master-button master-button-light" onClick={printReport} disabled={!report}><Printer size={15} />Cetak / PDF</button>
           <button type="button" className="master-button master-button-primary" onClick={exportExcel} disabled={exporting || loading || !report}>
             {exporting ? <LoaderCircle size={15} className="book-stock-spinner" /> : <Download size={15} />}{exporting ? 'Mengekspor...' : 'Export Excel'}
           </button>

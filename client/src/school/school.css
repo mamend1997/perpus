@@ -1781,7 +1781,13 @@
 }
 
 @media print {
-  body > #root { display: none !important; }
+  html,
+  body,
+  body > #root,
+  .school-app-shell,
+  .school-main-area,
+  .school-page-content { background: #fff !important; }
+  body.is-printing-barcode > #root { display: none !important; }
   body > .barcode-print-layout { display: block !important; padding: 0; color: #111; }
   .barcode-print-layout .school-print-header { margin-bottom: 6mm; }
   .barcode-print-grid { grid-template-columns: repeat(3, 1fr); gap: 6mm; }
@@ -2231,7 +2237,8 @@
 
 @media print {
   @page { size: A4; margin: 14mm; }
-  body * { visibility: hidden !important; }
+  body.is-printing-circulation * { visibility: hidden !important; }
+  body.is-printing-circulation .school-global-print-header { display: none !important; }
   .circulation-print-report,
   .circulation-print-report * { visibility: visible !important; }
   .circulation-print-report { position: absolute; inset: 0 auto auto 0; display: block !important; width: 100%; color: #1f2937; font: 10pt/1.45 Arial, sans-serif; }
@@ -2514,9 +2521,10 @@
 }
 
 @media print {
-  body * { visibility: hidden !important; }
-  .school-reports-page,
-  .school-reports-page * { visibility: visible !important; }
+  body.is-printing-school-reports .school-app-shell * { visibility: hidden !important; }
+  body.is-printing-school-reports .school-reports-page,
+  body.is-printing-school-reports .school-reports-page * { visibility: visible !important; }
+  body.is-printing-school-reports .school-global-print-header { display: none !important; }
   .school-reports-page { position: absolute; inset: 0 auto auto 0; width: 100%; padding: 0 !important; color: #111827; }
   .school-report-tabs,
   .school-report-filter-panel,
@@ -2866,6 +2874,7 @@
   .school-print-identity-error { display: none !important; }
   .school-app-shell.is-printing-students .school-global-print-header { display: none !important; }
   .school-app-shell.is-printing-visitors * { visibility: hidden !important; }
+  .school-app-shell.is-printing-visitors .school-global-print-header { display: none !important; }
   .school-app-shell.is-printing-visitors .visitor-print-report,
   .school-app-shell.is-printing-visitors .visitor-print-report * { visibility: visible !important; }
 }

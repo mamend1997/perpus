@@ -598,6 +598,7 @@ function BookDetailModal({ bookId, onClose, role }) {
 function BookBarcodePrint({ books, schoolName, schoolIdentity, onClose }) {
   const svgRefs = useRef({});
   useEffect(() => {
+    document.body.classList.add('is-printing-barcode');
     books.forEach((book) => {
       const svg = svgRefs.current[String(book.id)];
       if (svg) JsBarcode(svg, barcodeValue(book), { format: 'CODE128', displayValue: false, height: 42, width: 2, margin: 0 });
@@ -608,6 +609,7 @@ function BookBarcodePrint({ books, schoolName, schoolIdentity, onClose }) {
     return () => {
       window.clearTimeout(printTimer);
       window.removeEventListener('afterprint', afterPrint);
+      document.body.classList.remove('is-printing-barcode');
     };
   }, [books, onClose]);
 

@@ -115,11 +115,13 @@ async function exportAnalytics(data) {
 
 function AnalyticsPrintReport({ data, schoolName, schoolIdentity, onClose }) {
   useEffect(() => {
+    document.body.classList.add('is-printing-circulation');
     const timer = window.setTimeout(() => window.print(), 250);
     window.addEventListener('afterprint', onClose);
     return () => {
       window.clearTimeout(timer);
       window.removeEventListener('afterprint', onClose);
+      document.body.classList.remove('is-printing-circulation');
     };
   }, [onClose]);
 
