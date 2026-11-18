@@ -85,6 +85,15 @@ export const schoolNavigation = [
   }
 ];
 
+export const mobileNavbarOptions = schoolNavigation.flatMap((section) => section.items
+  .flatMap((item) => item.children || [item])
+  .map(({ label }) => label));
+
+export const defaultMobileNavbarSettings = {
+  items: ['Dashboard', 'Daftar Pustaka', 'Buku Tamu Digital', 'Peminjaman', 'Denda'],
+  highlight: 'Buku Tamu Digital'
+};
+
 export const schoolModuleDetails = {
   Bahasa: {
     description: 'Kelola pilihan bahasa yang digunakan pada katalog dan data bibliografi.',

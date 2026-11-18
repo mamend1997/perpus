@@ -1059,6 +1059,10 @@ export default function App() {
       setSchoolAccount(null);
       return undefined;
     }
+    if (schoolAccount) {
+      setSchoolSessionLoading(false);
+      return undefined;
+    }
     let active = true;
     setSchoolSessionLoading(true);
     request('/api/auth/school/me', {
@@ -1076,7 +1080,7 @@ export default function App() {
         if (active) setSchoolSessionLoading(false);
       });
     return () => { active = false; };
-  }, [page]);
+  }, [page, schoolAccount]);
 
   useEffect(() => {
     const token = localStorage.getItem('super-admin-token');
@@ -1139,6 +1143,7 @@ export default function App() {
       section={section || 'check'}
       account={schoolAccount}
       onAccountUpdated={setSchoolAccount}
+      onNavigate={navigate}
       onLogout={() => {
         localStorage.removeItem('school-token');
         setSchoolAccount(null);

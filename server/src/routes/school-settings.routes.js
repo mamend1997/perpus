@@ -6,9 +6,71 @@ import { encryptSchoolSecret, readLibrarySettings } from '../utils/school-settin
 const router = Router();
 router.use(requireSchool);
 
+const mobileNavbarOptions = [
+  'Dashboard', 'Daftar Pustaka', 'Tambah Stok Buku', 'Pindah Rak', 'Eksemplar',
+  'Pengadaan Buku', 'Analitik Sirkulasi', 'Peminjaman', 'Denda', 'Identitas Sekolah',
+  'Kop Sekolah', 'Tahun Pelajaran', 'Data Siswa & Rombel', 'Bahasa', 'Jenis',
+  'Koleksi', 'Klasifikasi', 'Topik', 'Rak', 'Pengarang', 'Penerbit', 'Agen',
+  'Buku Tamu Digital', 'Booking Buku', 'Ulasan & Rating', 'Portal Publik',
+  'Pengumuman', 'Laporan', 'Pengaturan'
+];
+const defaultMobileNavbarSettings = {
+  items: ['Dashboard', 'Daftar Pustaka', 'Buku Tamu Digital', 'Peminjaman', 'Denda'],
+  highlight: 'Buku Tamu Digital'
+};
+
 function isBoolean(value) {
   return typeof value === 'boolean';
 }
+
+function validMobileNavbarSettings(settings) {
+  return settings && Array.isArray(settings.items) && settings.items.length === 5
+    && settings.items.every((item) => mobileNavbarOptions.includes(item))
+    && new Set(settings.items).size === 5
+    && settings.items.includes(settings.highlight);
+}
+
+router.get('/mobile-navbar', async (req, res, next) => {
+  try {
+    const [rows] = await pool.execute(
+      'SELECT `value` FROM school_settings WHERE school_id = ? AND `key` = ? LIMIT 1',
+      [req.school.id, 'mobile_navbar']
+    );
+    if (!rows[0]) return res.json({ settings: defaultMobileNavbarSettings });
+    let settings;
+    try {
+      settings = JSON.parse(rows[0].value);
+    } catch {
+      return res.status(500).json({ message: 'Pengaturan navbar ponsel tersimpan dalam format yang tidak valid.' });
+    }
+    if (!validMobileNavbarSettings(settings)) {
+      return res.status(500).json({ message: 'Konfigurasi navbar ponsel tidak valid. Hubungi admin sekolah.' });
+    }
+    return res.json({ settings });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.put('/mobile-navbar', canManageSettings, async (req, res, next) => {
+  const settings = req.body;
+  if (!validMobileNavbarSettings(settings)) {
+    return res.status(400).json({
+      message: 'Pilih tepat lima menu yang berbeda dan tandai salah satunya sebagai tombol highlight.'
+    });
+  }
+  try {
+    await pool.execute(
+      `INSERT INTO school_settings (school_id, \`key\`, \`value\`)
+       VALUES (?, 'mobile_navbar', ?)
+       ON DUPLICATE KEY UPDATE \`value\` = VALUES(\`value\`)`,
+      [req.school.id, JSON.stringify(settings)]
+    );
+    return res.json({ settings, message: 'Pengaturan navbar ponsel berhasil disimpan.' });
+  } catch (error) {
+    return next(error);
+  }
+});
 
 function readInput(body) {
   const maxLoansPerMember = Number(body?.maxLoansPerMember);

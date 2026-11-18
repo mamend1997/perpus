@@ -62,3 +62,14 @@ export async function saveLibrarySettings(settings) {
     body: JSON.stringify(settings)
   });
 }
+
+export async function fetchMobileNavbarSettings() {
+  return schoolRequest('/settings/mobile-navbar');
+}
+
+export async function saveMobileNavbarSettings(settings) {
+  return schoolRequest('/settings/mobile-navbar', {
+    method: 'PUT',
+    body: JSON.stringify(settings)
+  });
+}

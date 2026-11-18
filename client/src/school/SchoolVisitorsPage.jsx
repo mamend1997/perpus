@@ -384,7 +384,11 @@ export default function SchoolVisitorsPage({ rights, role, account, schoolName, 
               </select>
             </label>
             {purpose === 'Lainnya' && <label className="visitor-purpose-field">Tuliskan keperluan kunjungan
-              <input value={otherPurpose} onChange={(event) => setOtherPurpose(event.target.value)} maxLength={255} required disabled={!canEdit} placeholder="Masukkan keperluan lainnya" />
+              <textarea value={otherPurpose} onChange={(event) => {
+                setOtherPurpose(event.target.value);
+                setCheckInError('');
+              }} maxLength={255} rows={3} required disabled={!canEdit} placeholder="Jelaskan keperluan kunjungan lainnya..." />
+              <small>{otherPurpose.length}/255 karakter · tarik sudut kotak untuk mengatur ukurannya</small>
             </label>}
             {checkInError && <p className="master-form-error" role="alert">{checkInError}</p>}
             {!canEdit && <p className="visitor-readonly-note">Akun Anda belum diberi izin untuk mencatat kunjungan.</p>}

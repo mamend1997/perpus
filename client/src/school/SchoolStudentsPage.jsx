@@ -14,6 +14,17 @@ const pageSize = 25;
 const templateHeaders = ['NIS/NISN', 'Nama Lengkap', 'Email', 'Kata Sandi', 'Kelas/Rombel', 'Jenis Kelamin', 'No. WhatsApp', 'Status'];
 const emptyStudent = { nis_nisn: '', name: '', email: '', password: '', rombel: '', gender: '', phone: '', status: 'active' };
 
+function normalizePagination(value) {
+  const page = Number(value?.page);
+  const total = Number(value?.total);
+  const totalPages = Number(value?.totalPages);
+  return {
+    page: Number.isSafeInteger(page) && page > 0 ? page : 1,
+    total: Number.isSafeInteger(total) && total >= 0 ? total : 0,
+    totalPages: Number.isSafeInteger(totalPages) && totalPages >= 0 ? totalPages : 0
+  };
+}
+
 function studentStatusLabel(status) {
   return ({ active: 'Aktif', inactive: 'Nonaktif', blocked: 'Diblokir' })[status] || status;
 }
@@ -288,7 +299,7 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
       .then((result) => {
         if (controller.signal.aborted) return;
         setArchives(result.students || []);
-        setArchivePagination(result.pagination || { page: 1, total: 0, totalPages: 0 });
+        setArchivePagination(normalizePagination(result.pagination));
       })
       .catch((loadError) => { if (!controller.signal.aborted) setError(loadError.message); })
       .finally(() => { if (!controller.signal.aborted) setArchiveLoading(false); });
@@ -303,8 +314,9 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
       .then((result) => {
         if (controller.signal.aborted) return;
         setStudents(result.students || []);
-        setPagination(result.pagination || { page: 1, total: 0, totalPages: 0 });
-        if (result.pagination?.totalPages && page > result.pagination.totalPages) setPage(result.pagination.totalPages);
+        const nextPagination = normalizePagination(result.pagination);
+        setPagination(nextPagination);
+        if (nextPagination.totalPages && page > nextPagination.totalPages) setPage(nextPagination.totalPages);
       })
       .catch((loadError) => { if (!controller.signal.aborted) setError(loadError.message); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });

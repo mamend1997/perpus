@@ -20,8 +20,8 @@ import SchoolPublicPortalPage from './SchoolPublicPortalPage.jsx';
 import SchoolAnnouncementsPage from './SchoolAnnouncementsPage.jsx';
 import SchoolAcademicYearsPage from './SchoolAcademicYearsPage.jsx';
 import { fetchSchoolIdentity, fetchSchoolProfile } from './schoolAccountApi.js';
-import { fetchMySchoolPermissions } from './schoolSettingsApi.js';
-import { masterCategoryTypes, schoolNavigation } from './schoolNavigation.js';
+import { fetchMobileNavbarSettings, fetchMySchoolPermissions } from './schoolSettingsApi.js';
+import { defaultMobileNavbarSettings, masterCategoryTypes, schoolNavigation } from './schoolNavigation.js';
 import { defaultSchoolPermissions, schoolPermissionByLabel } from './schoolPermissions.js';
 import SchoolPrintHeader from './SchoolPrintHeader.jsx';
 import './school.css';
@@ -65,6 +65,11 @@ export default function SchoolPortal({ account, onLogout, onAccountUpdated }) {
     npsn: account.school?.npsn || ''
   }));
   const [printIdentityError, setPrintIdentityError] = useState('');
+  const [mobileNavbarSettings, setMobileNavbarSettings] = useState(() => ({
+    items: [...defaultMobileNavbarSettings.items],
+    highlight: defaultMobileNavbarSettings.highlight
+  }));
+  const [mobileNavbarError, setMobileNavbarError] = useState('');
   const [permissions, setPermissions] = useState(null);
   const [permissionsLoading, setPermissionsLoading] = useState(account.role !== 'admin');
   const [permissionsError, setPermissionsError] = useState('');
@@ -94,11 +99,38 @@ export default function SchoolPortal({ account, onLogout, onAccountUpdated }) {
       ? item.children.length > 0
       : item.roles.includes(role) && (!item.permission || canView(item.permission)))
   })).filter((section) => section.items.length > 0), [role, permissions]);
+  const mobileNavbarItems = useMemo(() => {
+    const accessibleItems = visibleNavigation.flatMap((section) => section.items
+      .flatMap((item) => item.children || [item]));
+    const accessibleByLabel = new Map(accessibleItems.map((item) => [item.label, item]));
+    const configured = mobileNavbarSettings.items
+      .filter((label) => accessibleByLabel.has(label))
+      .map((label) => accessibleByLabel.get(label));
+    const configuredLabels = new Set(configured.map((item) => item.label));
+    const fallback = accessibleItems.filter((item) => !configuredLabels.has(item.label));
+    return [...configured, ...fallback].slice(0, 5);
+  }, [visibleNavigation, mobileNavbarSettings]);
+  const mobileNavbarHighlight = mobileNavbarItems.some((item) => item.label === mobileNavbarSettings.highlight)
+    ? mobileNavbarSettings.highlight
+    : mobileNavbarItems[0]?.label;
 
   const activePermissionFeature = activeMasterType ? `master.${activeMasterType}` : schoolPermissionByLabel[active];
   const activeRights = role === 'admin'
     ? { view: true, edit: true, delete: true }
     : permissions?.[activePermissionFeature] || defaultSchoolPermissions()[activePermissionFeature];
+
+  useEffect(() => {
+    let activeRequest = true;
+    fetchMobileNavbarSettings()
+      .then(({ settings }) => {
+        if (activeRequest) {
+          setMobileNavbarSettings({ items: [...settings.items], highlight: settings.highlight });
+          setMobileNavbarError('');
+        }
+      })
+      .catch((error) => { if (activeRequest) setMobileNavbarError(error.message); });
+    return () => { activeRequest = false; };
+  }, []);
 
   useEffect(() => {
     if (!profileOpen) return undefined;
@@ -314,7 +346,7 @@ export default function SchoolPortal({ account, onLogout, onAccountUpdated }) {
             ) : permissionsError ? (
               <div className="library-error" role="alert">{permissionsError}</div>
             ) : active === 'Pengaturan' && role === 'admin' ? (
-              <SchoolSettingsPage />
+              <SchoolSettingsPage onMobileNavbarSettingsSaved={setMobileNavbarSettings} />
             ) : role !== 'admin' && !activeRights?.view ? (
               <div className="library-error" role="alert">Anda tidak memiliki izin untuk membuka halaman ini.</div>
             ) : active === 'Dashboard' ? (
@@ -372,6 +404,16 @@ export default function SchoolPortal({ account, onLogout, onAccountUpdated }) {
           <footer className="page-footer"><span>© {new Date().getFullYear()} PerpusKita</span><span>{schoolName}</span></footer>
         </div>
       </main>
+      {mobileNavbarError && <p className="school-mobile-navbar-error" role="alert">Navbar ponsel gagal dimuat: {mobileNavbarError}</p>}
+      {mobileNavbarItems.length > 0 && <nav className="school-mobile-navbar" aria-label="Navigasi cepat">
+        {mobileNavbarItems.map(({ label, icon: Icon }) => (
+          <button type="button" key={label} title={label} aria-label={label}
+            className={`school-mobile-navbar-button ${label === mobileNavbarHighlight ? 'is-highlight' : ''} ${active === label ? 'is-active' : ''}`}
+            onClick={() => selectMenu(label)}>
+            <Icon size={19} aria-hidden="true" />
+          </button>
+        ))}
+      </nav>}
       {profileEditorOpen && <SchoolProfileEditor
         profile={profile}
         onClose={() => setProfileEditorOpen(false)}

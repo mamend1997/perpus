@@ -1,16 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  AlertCircle, Bell, BookOpen, Check, Clock3, Pencil, Plus, Save, ShieldCheck,
-  Trash2, UserPlus, Users, Wallet, X
+  AlertCircle, Bell, BookOpen, Check, Clock3, MoveDown, MoveUp, Pencil, Plus,
+  Save, ShieldCheck, Smartphone, Star, Trash2, UserPlus, Users, Wallet, X
 } from 'lucide-react';
 import {
-  createSchoolUser, deleteSchoolUser, fetchLibrarySettings, fetchRolePermissions,
-  fetchSchoolUsers, saveLibrarySettings, saveRolePermissions, updateSchoolUser
+  createSchoolUser, deleteSchoolUser, fetchLibrarySettings, fetchMobileNavbarSettings,
+  fetchRolePermissions, fetchSchoolUsers, saveLibrarySettings, saveMobileNavbarSettings,
+  saveRolePermissions, updateSchoolUser
 } from './schoolSettingsApi.js';
 import {
   defaultSchoolPermissions, schoolPermissionFeatures, schoolPermissionRoles
 } from './schoolPermissions.js';
+import { defaultMobileNavbarSettings, mobileNavbarOptions } from './schoolNavigation.js';
 import SchoolConfirmDialog from './SchoolConfirmDialog.jsx';
 
 const roleLabels = Object.fromEntries(schoolPermissionRoles.map(({ key, label }) => [key, label]));
@@ -266,7 +268,116 @@ function LibrarySettingsPanel() {
   );
 }
 
-export default function SchoolSettingsPage() {
+function MobileNavbarSettingsPanel({ onSettingsSaved }) {
+  const [settings, setSettings] = useState(() => ({
+    items: [...defaultMobileNavbarSettings.items],
+    highlight: defaultMobileNavbarSettings.highlight
+  }));
+  const [loading, setLoading] = useState(true);
+  const [loaded, setLoaded] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    fetchMobileNavbarSettings()
+      .then(({ settings: result }) => {
+        if (!active) return;
+        setSettings({ items: [...result.items], highlight: result.highlight });
+        setLoaded(true);
+      })
+      .catch((loadError) => { if (active) setError(loadError.message); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, []);
+
+  function updateItem(index, value) {
+    setSettings((current) => {
+      const previousItem = current.items[index];
+      return {
+        items: current.items.map((item, itemIndex) => itemIndex === index ? value : item),
+        highlight: current.highlight === previousItem ? value : current.highlight
+      };
+    });
+    setError('');
+    setNotice('');
+  }
+
+  function moveItem(index, direction) {
+    const targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= settings.items.length) return;
+    setSettings((current) => {
+      const items = [...current.items];
+      [items[index], items[targetIndex]] = [items[targetIndex], items[index]];
+      return { ...current, items };
+    });
+    setNotice('');
+  }
+
+  async function submit(event) {
+    event.preventDefault();
+    setSaving(true);
+    setError('');
+    setNotice('');
+    try {
+      const result = await saveMobileNavbarSettings(settings);
+      const saved = { items: [...result.settings.items], highlight: result.settings.highlight };
+      setSettings(saved);
+      onSettingsSaved?.(saved);
+      setNotice(result.message || 'Pengaturan navbar ponsel berhasil disimpan.');
+    } catch (saveError) {
+      setError(saveError.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form className="master-data-panel school-mobile-navbar-settings" onSubmit={submit}>
+      <div className="school-settings-panel-heading">
+        <div><h2>Navbar Ponsel</h2><p>Pilih lima menu, atur urutannya, lalu tentukan satu tombol sorotan berwarna biru.</p></div>
+      </div>
+      {error && <div className="master-message master-message-error" role="alert"><AlertCircle size={16} />{error}</div>}
+      {notice && <div className="master-message master-message-success" role="status"><Check size={16} />{notice}</div>}
+      <div className="school-mobile-navbar-preview" aria-hidden="true">
+        {settings.items.map((item) => <span className={item === settings.highlight ? 'is-highlight' : ''} key={item}>{item}</span>)}
+      </div>
+      <ol className="school-mobile-navbar-settings-list">
+        {settings.items.map((item, index) => (
+          <li key={`navbar-position-${index}`}>
+            <span className="school-mobile-navbar-position">{index + 1}</span>
+            <label>
+              <span>Menu posisi {index + 1}</span>
+              <select value={item} onChange={(event) => updateItem(index, event.target.value)} disabled={loading || saving}>
+                {mobileNavbarOptions.filter((option) => !settings.items.includes(option) || option === item)
+                  .map((option) => <option key={option} value={option}>{option}</option>)}
+              </select>
+            </label>
+            <button type="button" className={`school-mobile-navbar-highlight ${settings.highlight === item ? 'selected' : ''}`}
+              onClick={() => { setSettings((current) => ({ ...current, highlight: item })); setNotice(''); }}
+              disabled={loading || saving} aria-pressed={settings.highlight === item} title={`Jadikan ${item} sebagai tombol highlight`}>
+              <Star size={15} fill={settings.highlight === item ? 'currentColor' : 'none'} />
+              <span>{settings.highlight === item ? 'Highlight' : 'Sorot'}</span>
+            </button>
+            <div className="school-mobile-navbar-order">
+              <button type="button" onClick={() => moveItem(index, -1)} disabled={loading || saving || index === 0} aria-label={`Naikkan ${item}`} title="Naikkan posisi"><MoveUp size={16} /></button>
+              <button type="button" onClick={() => moveItem(index, 1)} disabled={loading || saving || index === settings.items.length - 1} aria-label={`Turunkan ${item}`} title="Turunkan posisi"><MoveDown size={16} /></button>
+            </div>
+          </li>
+        ))}
+      </ol>
+      <div className="school-library-settings-savebar">
+        <span><Clock3 size={14} />{loading ? 'Memuat konfigurasi navbar...' : 'Navbar tampil pada layar ponsel.'}</span>
+        <button type="submit" className="master-button master-button-primary" disabled={loading || !loaded || saving}>
+          <Save size={15} />{saving ? 'Menyimpan...' : 'Simpan Navbar'}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+export default function SchoolSettingsPage({ onMobileNavbarSettingsSaved }) {
   const [tab, setTab] = useState('accounts');
   const [users, setUsers] = useState([]);
   const [usersLoading, setUsersLoading] = useState(true);
@@ -389,6 +500,9 @@ export default function SchoolSettingsPage() {
         <button type="button" role="tab" aria-selected={tab === 'library'} className={tab === 'library' ? 'selected' : ''} onClick={() => setTab('library')}>
           <BookOpen size={16} />Aturan Perpustakaan
         </button>
+        <button type="button" role="tab" aria-selected={tab === 'navbar'} className={tab === 'navbar' ? 'selected' : ''} onClick={() => setTab('navbar')}>
+          <Smartphone size={16} />Navbar Ponsel
+        </button>
       </div>
 
       {tab === 'accounts' ? (
@@ -467,6 +581,8 @@ export default function SchoolSettingsPage() {
             </button>
           </div>
         </section>
+      ) : tab === 'navbar' ? (
+        <MobileNavbarSettingsPanel onSettingsSaved={onMobileNavbarSettingsSaved} />
       ) : <LibrarySettingsPanel />}
 
       {accountModalOpen && <AccountModal key={editingAccount?.id || 'new-account'} account={editingAccount} onClose={() => { setAccountModalOpen(false); setEditingAccount(null); }} onSaved={handleAccountSaved} />}

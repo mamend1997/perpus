@@ -12,7 +12,7 @@ const portalSections = [
 ];
 
 export default function PublicLibraryPortal({
-  schoolCode, section = 'check', account, onAccountUpdated, onLogout
+  schoolCode, section = 'check', account, onAccountUpdated, onLogout, onNavigate
 }) {
   const [school, setSchool] = useState(null);
   const [loadingSchool, setLoadingSchool] = useState(true);
@@ -201,7 +201,14 @@ export default function PublicLibraryPortal({
         </div>
         <div className="public-library-nav">
           {appLinks.map(({ key, label, href, icon: Icon }) => (
-            <a key={key} href={href} className={activeSection === key ? 'active' : ''}><Icon size={15} />{label}</a>
+            <a key={key} href={href} className={activeSection === key ? 'active' : ''}
+              onClick={(event) => {
+                if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || !onNavigate) return;
+                event.preventDefault();
+                onNavigate(href);
+              }}>
+              <Icon size={15} />{label}
+            </a>
           ))}
         </div>
       </header>
