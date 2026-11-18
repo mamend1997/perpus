@@ -23,7 +23,7 @@ export const schoolPermissionFeatures = [
   { key: 'reservations', label: 'Booking Buku', section: 'Layanan Perpustakaan' },
   { key: 'reviews', label: 'Ulasan & Rating', section: 'Layanan Perpustakaan' },
   { key: 'announcements', label: 'Pengumuman', section: 'Layanan Perpustakaan' },
-  { key: 'reports.monthly', label: 'Laporan Bulanan', section: 'Analisis' }
+  { key: 'reports.monthly', label: 'Laporan', section: 'Analisis' }
 ];
 
 export const schoolPermissionRoles = [
@@ -37,6 +37,7 @@ export const schoolPermissionByLabel = Object.fromEntries(
 );
 schoolPermissionByLabel['Pindah Rak'] = 'books.stock';
 schoolPermissionByLabel['Kop Sekolah'] = 'master.identity';
+schoolPermissionByLabel['Portal Publik'] = 'master.identity';
 
 export function defaultSchoolPermissions() {
   const memberEditable = new Set(['visitors', 'reservations', 'reviews']);

@@ -74,6 +74,8 @@ try {
   );
   const reservationColumnNames = new Set(reservationColumns.map((column) => column.COLUMN_NAME));
   for (const [columnName, definition] of [
+    ['quantity', 'INT UNSIGNED NOT NULL DEFAULT 1 AFTER user_id'],
+    ['notes', 'TEXT NULL AFTER quantity'],
     ['expired_date', 'DATETIME NULL AFTER reservation_date'],
     ['ready_notified_at', 'DATETIME NULL AFTER expired_date']
   ]) {

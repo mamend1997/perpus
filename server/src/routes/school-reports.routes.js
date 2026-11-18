@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { pool } from '../config/database.js';
 import { requireSchoolPermission } from '../middleware/require-school-permission.js';
+import { parseSchoolLetterhead } from '../utils/school-letterhead.js';
 
 const router = Router();
 const reportTypes = new Set(['loans', 'fines', 'visitors', 'inventory']);
@@ -198,7 +199,7 @@ router.get('/', requireSchoolPermission('reports.monthly', 'view'), async (req, 
       ];
     }
 
-    const [countRows, rows, summaryRows, schoolRows] = await Promise.all([
+    const [countRows, rows, summaryRows, schoolRows, letterheadRows] = await Promise.all([
       pool.execute(countSql, values),
       pool.execute(rowsSql, [...values, limit, (page - 1) * limit]),
       pool.execute(summarySql, values),
@@ -206,6 +207,10 @@ router.get('/', requireSchoolPermission('reports.monthly', 'view'), async (req, 
         `SELECT name, npsn, address, principal_name, principal_nip, librarian_name, librarian_nip, logo
          FROM tenants_schools WHERE id = ? LIMIT 1`,
         [req.school.id]
+      ),
+      pool.execute(
+        'SELECT `value` FROM school_settings WHERE school_id = ? AND `key` = ? LIMIT 1',
+        [req.school.id, 'school_letterhead']
       )
     ]);
     if (!schoolRows[0][0]) return res.status(404).json({ message: 'Data sekolah tidak ditemukan.' });
@@ -227,7 +232,7 @@ router.get('/', requireSchoolPermission('reports.monthly', 'view'), async (req, 
       summary: Object.fromEntries(
         Object.entries(summaryRows[0][0]).map(([key, value]) => [key, Number(value || 0)])
       ),
-      school: schoolRows[0][0],
+      school: { ...schoolRows[0][0], letterhead: parseSchoolLetterhead(letterheadRows[0][0]?.value) },
       pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
     });
   } catch (error) {

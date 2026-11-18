@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   BadgeCheck, CalendarClock, Check, ChevronLeft, ChevronRight, CircleDollarSign,
-  History, LoaderCircle, RefreshCw, Search, Wallet, X
+  History, LoaderCircle, RefreshCw, Search, X
 } from 'lucide-react';
-import { fetchFines, updateFinePerDay, updateLoanFineStatus } from './schoolLoanApi.js';
+import { fetchFines, updateLoanFineStatus } from './schoolLoanApi.js';
 
 const pageSize = 25;
 const numberFormat = new Intl.NumberFormat('id-ID');
@@ -130,9 +130,7 @@ export default function SchoolFinesPage({ rights }) {
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  const [finePerDay, setFinePerDay] = useState('');
   const [loading, setLoading] = useState(true);
-  const [savingRule, setSavingRule] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
@@ -157,7 +155,6 @@ export default function SchoolFinesPage({ rights }) {
         if (controller.signal.aborted) return;
         setFines(result.fines || []);
         setPagination(result.pagination || { page: 1, total: 0, totalPages: 0 });
-        setFinePerDay(String(result.finePerDay ?? 1000));
         if (result.pagination?.totalPages && page > result.pagination.totalPages) {
           setPage(result.pagination.totalPages);
         }
@@ -170,27 +167,6 @@ export default function SchoolFinesPage({ rights }) {
       });
     return () => controller.abort();
   }, [page, search, statusFilter, refreshKey]);
-
-  async function saveRule(event) {
-    event.preventDefault();
-    const parsedRate = Number(finePerDay);
-    if (!Number.isSafeInteger(parsedRate) || parsedRate < 0 || parsedRate > 1000000) {
-      setError('Tarif harus berupa bilangan bulat antara Rp0 dan Rp1.000.000 per hari.');
-      return;
-    }
-    setSavingRule(true);
-    setError('');
-    setNotice('');
-    try {
-      const result = await updateFinePerDay(parsedRate);
-      setFinePerDay(String(result.finePerDay));
-      setNotice(result.message);
-    } catch (saveError) {
-      setError(saveError.message);
-    } finally {
-      setSavingRule(false);
-    }
-  }
 
   async function confirmPayment(note) {
     setBusyLoanId(paymentFine.id);
@@ -218,31 +194,6 @@ export default function SchoolFinesPage({ rights }) {
 
       {notice && <div className="book-stock-success" role="status"><Check size={16} />{notice}</div>}
       {error && <div className="library-error" role="alert"><span>{error}</span><button type="button" onClick={() => setRefreshKey((current) => current + 1)}><RefreshCw size={14} />Coba lagi</button></div>}
-
-      <section className="library-panel fine-rule-panel">
-        <div className="fine-rule-copy">
-          <span className="fine-rule-icon"><Wallet size={19} /></span>
-          <div><span className="library-eyebrow">PENGATURAN</span><h2>Tarif denda keterlambatan</h2><p>Tarif ini berlaku untuk pengembalian buku berikutnya di sekolah ini.</p></div>
-        </div>
-        <form className="fine-rule-form" onSubmit={saveRule}>
-          <label>
-            Denda per hari (Rp)
-            <input
-              type="number"
-              min="0"
-              max="1000000"
-              step="1"
-              required
-              value={finePerDay}
-              onChange={(event) => setFinePerDay(event.target.value)}
-              disabled={!canEdit || savingRule || loading}
-            />
-          </label>
-          {canEdit && <button type="submit" className="master-button master-button-primary" disabled={savingRule || loading}>
-            {savingRule ? 'Menyimpan...' : 'Simpan Tarif'}
-          </button>}
-        </form>
-      </section>
 
       <section className="catalog-toolbar-panel fine-toolbar">
         <label className="master-search fine-table-search">

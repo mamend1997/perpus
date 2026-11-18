@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { checkInVisitor, fetchVisitorRecords, searchVisitorMembers } from './schoolVisitorApi.js';
 import CameraBarcodeScanner from './CameraBarcodeScanner.jsx';
+import SchoolPrintHeader from './SchoolPrintHeader.jsx';
 
 const pageSize = 25;
 const visitPurposes = [
@@ -72,7 +73,7 @@ function VisitorPreviewModal({ visit, onClose }) {
   );
 }
 
-export default function SchoolVisitorsPage({ rights, role, account, schoolName }) {
+export default function SchoolVisitorsPage({ rights, role, account, schoolName, schoolIdentity }) {
   const canEdit = Boolean(rights?.edit);
   const canViewRecords = Boolean(rights?.view) && role !== 'member';
   const isMember = role === 'member';
@@ -84,6 +85,7 @@ export default function SchoolVisitorsPage({ rights, role, account, schoolName }
     : null);
   const [memberLoading, setMemberLoading] = useState(false);
   const [purpose, setPurpose] = useState('');
+  const [otherPurpose, setOtherPurpose] = useState('');
   const [checkInLoading, setCheckInLoading] = useState(false);
   const [checkInError, setCheckInError] = useState('');
   const [successVisit, setSuccessVisit] = useState(null);
@@ -204,16 +206,18 @@ export default function SchoolVisitorsPage({ rights, role, account, schoolName }
       setCheckInError('Anda tidak memiliki izin untuk mencatat kunjungan.');
       return;
     }
-    if (!selectedMember || !purpose) {
+    const visitPurpose = purpose === 'Lainnya' ? otherPurpose.trim() : purpose;
+    if (!selectedMember || !visitPurpose) {
       setCheckInError('Pilih anggota dan keperluan kunjungan terlebih dahulu.');
       return;
     }
     setCheckInLoading(true);
     setCheckInError('');
     try {
-      const result = await checkInVisitor({ userId: selectedMember.id, purpose });
+      const result = await checkInVisitor({ userId: selectedMember.id, purpose: visitPurpose });
       setSuccessVisit(result.visit);
       setPurpose('');
+      setOtherPurpose('');
       if (!isMember) {
         setSelectedMember(null);
         memberInputRef.current?.focus();
@@ -371,11 +375,17 @@ export default function SchoolVisitorsPage({ rights, role, account, schoolName }
             )}
 
             <label className="visitor-purpose-field">Keperluan Kunjungan
-              <select value={purpose} onChange={(event) => setPurpose(event.target.value)} required disabled={!canEdit}>
+              <select value={purpose} onChange={(event) => {
+                setPurpose(event.target.value);
+                if (event.target.value !== 'Lainnya') setOtherPurpose('');
+              }} required disabled={!canEdit}>
                 <option value="">Pilih keperluan kunjungan</option>
                 {visitPurposes.map((visitPurpose) => <option key={visitPurpose} value={visitPurpose}>{visitPurpose}</option>)}
               </select>
             </label>
+            {purpose === 'Lainnya' && <label className="visitor-purpose-field">Tuliskan keperluan kunjungan
+              <input value={otherPurpose} onChange={(event) => setOtherPurpose(event.target.value)} maxLength={255} required disabled={!canEdit} placeholder="Masukkan keperluan lainnya" />
+            </label>}
             {checkInError && <p className="master-form-error" role="alert">{checkInError}</p>}
             {!canEdit && <p className="visitor-readonly-note">Akun Anda belum diberi izin untuk mencatat kunjungan.</p>}
             <button type="submit" className="master-button master-button-primary visitor-checkin-button" disabled={!canEdit || checkInLoading || !selectedMember}>
@@ -437,9 +447,11 @@ export default function SchoolVisitorsPage({ rights, role, account, schoolName }
 
       {previewVisit && <VisitorPreviewModal visit={previewVisit} onClose={() => setPreviewVisit(null)} />}
       {printRows && <section className="visitor-print-report" aria-hidden="true">
-        <h1>Laporan Kunjungan Perpustakaan</h1>
-        <h2>{schoolName || 'Perpustakaan Sekolah'}</h2>
-        <p>Periode: {date ? formatDate(date) : 'Semua tanggal'} · Total {numberFormat.format(printRows.length)} kunjungan</p>
+        <SchoolPrintHeader
+          identity={schoolIdentity || { name: schoolName }}
+          title="Laporan Kunjungan Perpustakaan"
+          subtitle={`Periode: ${date ? formatDate(date) : 'Semua tanggal'} · Total ${numberFormat.format(printRows.length)} kunjungan`}
+        />
         <table>
           <thead><tr><th>No</th><th>Waktu Masuk</th><th>Nama Pengunjung</th><th>NIS / NISN</th><th>Rombel / Kelas</th><th>Keperluan</th></tr></thead>
           <tbody>{printRows.map((visit, index) => <tr key={visit.id}>

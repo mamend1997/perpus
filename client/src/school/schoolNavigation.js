@@ -1,6 +1,6 @@
 import {
   BookOpen, Building2, FileBarChart2, FileText, LayoutDashboard, MessageSquare,
-  CalendarDays, PackagePlus, Repeat2, Settings, Star, Tags, Ticket, Users, Wallet
+  CalendarDays, PackagePlus, QrCode, Repeat2, Settings, Star, Tags, Ticket, Users, Wallet
 } from 'lucide-react';
 
 const allRoles = ['admin', 'kepsek', 'kapus', 'member'];
@@ -71,12 +71,13 @@ export const schoolNavigation = [
       { label: 'Buku Tamu Digital', icon: Users, roles: allRoles, permission: 'visitors' },
       { label: 'Booking Buku', icon: Ticket, roles: allRoles, permission: 'reservations' },
       { label: 'Ulasan & Rating', icon: Star, roles: allRoles, permission: 'reviews' },
+      { label: 'Portal Publik', icon: QrCode, roles: staffRoles, permission: 'master.identity' },
       { label: 'Pengumuman', icon: MessageSquare, roles: allRoles, permission: 'announcements' }
     ]
   },
   {
     section: 'ANALISIS',
-    items: [{ label: 'Laporan Bulanan', icon: FileBarChart2, roles: allRoles, permission: 'reports.monthly' }]
+    items: [{ label: 'Laporan', icon: FileBarChart2, roles: allRoles, permission: 'reports.monthly' }]
   },
   {
     section: 'AKUN',
@@ -177,7 +178,7 @@ export const schoolModuleDetails = {
     description: 'Sampaikan informasi layanan perpustakaan kepada anggota sekolah.',
     features: ['Buat pengumuman', 'Tanggal publikasi', 'Informasi tenggat pengembalian', 'Integrasi notifikasi WhatsApp']
   },
-  'Laporan Bulanan': {
+  Laporan: {
     description: 'Tinjau rekap layanan berdasarkan rentang tanggal dan peran pengguna.',
     features: ['Rekap anggota', 'Rekap koleksi judul dan satuan', 'Rekap pengunjung', 'Rekap peminjam aktif dan unduh laporan']
   }

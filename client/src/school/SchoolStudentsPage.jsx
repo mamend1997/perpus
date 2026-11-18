@@ -4,6 +4,7 @@ import {
   Download, FileSpreadsheet, LoaderCircle, Pencil, Plus, Printer, Search, Trash2, Upload, Users
 } from 'lucide-react';
 import SchoolConfirmDialog from './SchoolConfirmDialog.jsx';
+import SchoolPrintHeader from './SchoolPrintHeader.jsx';
 import {
   createStudent, deleteStudent, deleteStudents, fetchStudentAcademicYears, fetchStudentArchives,
   fetchStudentClasses, fetchStudents, importStudents, updateStudent
@@ -185,7 +186,7 @@ function ImportStudentsModal({ onClose, onImport }) {
   );
 }
 
-export default function SchoolStudentsPage({ rights }) {
+export default function SchoolStudentsPage({ rights, schoolIdentity }) {
   const canEdit = Boolean(rights?.edit);
   const canDelete = Boolean(rights?.delete);
   const [tab, setTab] = useState('students');
@@ -546,7 +547,11 @@ export default function SchoolStudentsPage({ rights }) {
 
       <section className="school-student-print-heading"><h1>Data Siswa {selectedClass ? `· ${selectedClass.className}` : ''}</h1><p>PerpusKita · Rekapitulasi anggota perpustakaan</p></section>
       {pdfRows && <section className="school-student-print-sheet">
-        <header><h1>Rekapitulasi Data Siswa</h1><p>PerpusKita · {classFilter || 'Semua Kelas'} · {new Date().toLocaleDateString('id-ID', { dateStyle: 'long' })}</p></header>
+        <SchoolPrintHeader
+          identity={schoolIdentity}
+          title="Rekapitulasi Data Siswa"
+          subtitle={`${classFilter || 'Semua Kelas'} · ${new Date().toLocaleDateString('id-ID', { dateStyle: 'long' })}`}
+        />
         <table className="master-table"><thead><tr><th>No</th><th>NIS / NISN</th><th>Nama Lengkap</th><th>Kelas / Rombel</th><th>Jenis Kelamin</th><th>Kontak WhatsApp</th><th>Status Akun</th></tr></thead>
           <tbody>{pdfRows.length ? pdfRows.map((student, index) => <tr key={student.id}><td>{index + 1}</td><td>{student.nis_nisn}</td><td>{student.name}</td><td>{student.rombel || 'Belum diatur'}</td><td>{genderLabel(student.gender)}</td><td>{student.phone || '—'}</td><td>{studentStatusLabel(student.status)}</td></tr>)
             : <tr><td colSpan={7}>Tidak ada data siswa yang cocok.</td></tr>}</tbody>

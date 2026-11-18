@@ -8,6 +8,7 @@ import { pool } from './config/database.js';
 import authRoutes from './routes/auth.routes.js';
 import schoolRoutes from './routes/school.routes.js';
 import superAdminRoutes from './routes/super-admin.routes.js';
+import publicLibraryRoutes from './routes/public-library.routes.js';
 
 if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
   throw new Error('JWT_SECRET must be set to a random string of at least 32 characters.');
@@ -27,6 +28,7 @@ app.get('/api/health', async (_req, res, next) => {
   }
 });
 app.use('/api/auth', authRoutes);
+app.use('/api/public/library', publicLibraryRoutes);
 app.use('/api/school', schoolRoutes);
 app.use('/api/super-admin', superAdminRoutes);
 

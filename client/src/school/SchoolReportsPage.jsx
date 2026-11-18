@@ -122,9 +122,27 @@ export default function SchoolReportsPage({ rights }) {
       }
       const workbook = new ExcelJS.Workbook();
       const sheet = workbook.addWorksheet(title.slice(0, 31));
-      sheet.addRow([report.school.name]);
-      sheet.addRow([`Laporan ${title}`]);
-      sheet.addRow([`Periode ${report.dateRange.startDate} s.d. ${report.dateRange.endDate}`]);
+      const addHeaderRow = (text, { fontSize = 12, bold = false, italic = false, align = 'center' } = {}) => {
+        const row = sheet.addRow([text]);
+        if (report.columns.length > 1) sheet.mergeCells(row.number, 1, row.number, report.columns.length);
+        row.font = { size: fontSize, bold, italic };
+        row.alignment = { horizontal: align };
+      };
+      if (report.school.letterhead?.mode === 'manual') {
+        report.school.letterhead.lines.forEach((line) => addHeaderRow(line.text, {
+          fontSize: line.fontSize,
+          bold: line.bold,
+          italic: line.italic,
+          align: line.align
+        }));
+      } else {
+        addHeaderRow(report.school.name, { fontSize: 16, bold: true });
+        if (report.school.address || report.school.npsn) {
+          addHeaderRow([report.school.address, report.school.npsn && `NPSN ${report.school.npsn}`].filter(Boolean).join(' · '), { fontSize: 10 });
+        }
+      }
+      addHeaderRow(`Laporan ${title}`, { fontSize: 14, bold: true });
+      addHeaderRow(`Periode ${report.dateRange.startDate} s.d. ${report.dateRange.endDate}`, { fontSize: 11 });
       sheet.addRow([]);
       sheet.addRow(report.columns.map((column) => column.label));
       allRows.forEach((row) => sheet.addRow(report.columns.map((column) => formatValue(row[column.key], column.key))));
@@ -192,9 +210,21 @@ export default function SchoolReportsPage({ rights }) {
       <section className="library-panel school-report-table-panel">
         <div className="school-report-print-heading">
           {report?.school?.logo && <img src={report.school.logo} alt="" />}
-          <div><h2>{report?.school?.name || 'Sekolah'}</h2><p>{report?.school?.address || ''}{report?.school?.npsn ? ` · NPSN ${report.school.npsn}` : ''}</p>
+          {report?.school?.letterhead?.mode === 'manual' ? (
+            <div className="school-report-letterhead-content is-manual">
+              {report.school.letterhead.lines.map((line, index) => <span key={`report-letterhead-${index + 1}`} style={{
+                fontSize: `${line.fontSize}px`,
+                fontWeight: line.bold ? 700 : 400,
+                fontStyle: line.italic ? 'italic' : 'normal',
+                textAlign: line.align
+              }}>{line.text || '\u00a0'}</span>)}
+              <b>LAPORAN {title.toUpperCase()}</b><small>Periode {report?.dateRange?.startDate} s.d. {report?.dateRange?.endDate}</small>
+            </div>
+          ) : <div className="school-report-letterhead-content">
+            <h2>{report?.school?.name || 'Sekolah'}</h2>
+            <p>{report?.school?.address || ''}{report?.school?.npsn ? ` · NPSN ${report.school.npsn}` : ''}</p>
             <b>LAPORAN {title.toUpperCase()}</b><small>Periode {report?.dateRange?.startDate} s.d. {report?.dateRange?.endDate}</small>
-          </div>
+          </div>}
         </div>
         <div className="catalog-table-heading"><div><h2>Data Preview · {title}</h2><p>{report?.pagination?.total?.toLocaleString('id-ID') || 0} baris</p></div></div>
         <div className="master-table-scroll">

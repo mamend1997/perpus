@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
+import SchoolPrintHeader from './SchoolPrintHeader.jsx';
 import {
   Activity, BookOpen, CalendarDays, Download, FileBarChart2, RefreshCw, RotateCcw, Wallet
 } from 'lucide-react';
@@ -112,7 +113,7 @@ async function exportAnalytics(data) {
   URL.revokeObjectURL(url);
 }
 
-function AnalyticsPrintReport({ data, schoolName, onClose }) {
+function AnalyticsPrintReport({ data, schoolName, schoolIdentity, onClose }) {
   useEffect(() => {
     const timer = window.setTimeout(() => window.print(), 250);
     window.addEventListener('afterprint', onClose);
@@ -124,11 +125,7 @@ function AnalyticsPrintReport({ data, schoolName, onClose }) {
 
   return createPortal(
     <div className="circulation-print-report">
-      <header>
-        <h1>{schoolName || 'Perpustakaan Sekolah'}</h1>
-        <h2>Laporan Analitik Sirkulasi</h2>
-        <p>Periode {data.period.startDate} s.d. {data.period.endDate}</p>
-      </header>
+      <SchoolPrintHeader identity={schoolIdentity || { name: schoolName }} title="Laporan Analitik Sirkulasi" subtitle={`Periode ${data.period.startDate} s.d. ${data.period.endDate}`} />
       <h3>Ringkasan</h3>
       <table>
         <tbody>
@@ -166,7 +163,7 @@ function AnalyticsPrintReport({ data, schoolName, onClose }) {
   );
 }
 
-export default function SchoolCirculationAnalyticsPage({ rights, schoolName }) {
+export default function SchoolCirculationAnalyticsPage({ rights, schoolName, schoolIdentity }) {
   const [period, setPeriod] = useState('month');
   const [customRange, setCustomRange] = useState(initialCustomRange);
   const [analytics, setAnalytics] = useState(null);
@@ -335,7 +332,7 @@ export default function SchoolCirculationAnalyticsPage({ rights, schoolName }) {
         </div>
       </section>
 
-      {printOpen && analytics && <AnalyticsPrintReport data={analytics} schoolName={schoolName} onClose={() => setPrintOpen(false)} />}
+      {printOpen && analytics && <AnalyticsPrintReport data={analytics} schoolName={schoolName} schoolIdentity={schoolIdentity} onClose={() => setPrintOpen(false)} />}
     </div>
   );
 }

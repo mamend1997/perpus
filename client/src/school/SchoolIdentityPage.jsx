@@ -20,6 +20,33 @@ const emptyIdentity = {
   logo: null
 };
 const identityTextFields = Object.keys(emptyIdentity).filter((field) => field !== 'logo');
+const defaultLetterhead = {
+  mode: 'identity',
+  lines: Array.from({ length: 5 }, () => ({
+    text: '',
+    fontSize: 14,
+    bold: false,
+    italic: false,
+    align: 'center'
+  }))
+};
+const letterheadFontSizes = [10, 12, 14, 16, 18, 20, 24, 28, 32];
+
+function normalizeLetterhead(value) {
+  if (!value || !['identity', 'manual'].includes(value.mode) || !Array.isArray(value.lines) || value.lines.length !== 5) {
+    return defaultLetterhead;
+  }
+  return {
+    mode: value.mode,
+    lines: value.lines.map((line) => ({
+      text: typeof line.text === 'string' ? line.text : '',
+      fontSize: letterheadFontSizes.includes(Number(line.fontSize)) ? Number(line.fontSize) : 14,
+      bold: line.bold === true,
+      italic: line.italic === true,
+      align: line.align === 'left' ? 'left' : 'center'
+    }))
+  };
+}
 
 function normalizeIdentity(value) {
   return {
@@ -27,7 +54,7 @@ function normalizeIdentity(value) {
     ...Object.fromEntries(identityTextFields.map((field) => [
       field,
       field === 'website'
-        ? String(value[field] || '').replace(/^https?:\/\//i, '')
+      ? String(value[field] || '').replace(/^https?:\/\//i, '').replace(/\/+$/, '')
         : value[field] || ''
     ])),
     logo: value.logo || null
@@ -84,6 +111,7 @@ export default function SchoolIdentityPage({ rights, onSaved, mode = 'identity' 
   const isLetterhead = mode === 'letterhead';
   const canEdit = Boolean(rights?.edit);
   const [identity, setIdentity] = useState(emptyIdentity);
+  const [letterhead, setLetterhead] = useState(defaultLetterhead);
   const [loading, setLoading] = useState(true);
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -103,6 +131,7 @@ export default function SchoolIdentityPage({ rights, onSaved, mode = 'identity' 
       .then(({ identity: result }) => {
         if (active) {
           setIdentity(normalizeIdentity(result));
+          setLetterhead(normalizeLetterhead(result.letterhead));
           setLoaded(true);
         }
       })
@@ -117,7 +146,10 @@ export default function SchoolIdentityPage({ rights, onSaved, mode = 'identity' 
 
   function updateField(event) {
     const { name, value } = event.target;
-    setIdentity((current) => ({ ...current, [name]: value }));
+    const nextValue = name === 'website'
+      ? value.replace(/^https?:\/\//i, '').replace(/\/+$/, '')
+      : value;
+    setIdentity((current) => ({ ...current, [name]: nextValue }));
     setError('');
   }
 
@@ -143,8 +175,9 @@ export default function SchoolIdentityPage({ rights, onSaved, mode = 'identity' 
     setError('');
     setNotice('');
     try {
-      const result = await updateSchoolIdentity(identity);
+      const result = await updateSchoolIdentity(isLetterhead ? { ...identity, letterhead } : identity);
       setIdentity(normalizeIdentity(result.identity));
+      setLetterhead(normalizeLetterhead(result.identity.letterhead));
       setNotice(result.message);
       onSaved?.(result.identity);
     } catch (saveError) {
@@ -168,6 +201,17 @@ export default function SchoolIdentityPage({ rights, onSaved, mode = 'identity' 
       {loadError && <div className="library-error" role="alert"><span>{loadError}</span><button type="button" onClick={() => setRefreshKey((current) => current + 1)}><RefreshCw size={14} />Coba lagi</button></div>}
 
       <form className="library-panel school-identity-panel" onSubmit={saveIdentity}>
+        {isLetterhead && <label className="school-letterhead-mode-select">Format kop sekolah
+          <select
+            value={letterhead.mode}
+            onChange={(event) => setLetterhead((current) => ({ ...current, mode: event.target.value }))}
+            disabled={!canEdit || saving || loading || !loaded}
+          >
+            <option value="identity">Gunakan data identitas sekolah</option>
+            <option value="manual">Isi kop secara manual</option>
+          </select>
+        </label>}
+        {(!isLetterhead || letterhead.mode === 'identity') && <>
         <div className="school-identity-section-heading">
           <span className="school-identity-section-icon"><Building2 size={18} /></span>
           <div><h2>Informasi Sekolah</h2><p>Data ini akan digunakan sebagai identitas perpustakaan sekolah.</p></div>
@@ -213,15 +257,67 @@ export default function SchoolIdentityPage({ rights, onSaved, mode = 'identity' 
             <input name="librarian_nip" value={identity.librarian_nip} onChange={updateField} maxLength={30} disabled={!canEdit || saving || loading || !loaded} />
           </label>
         </div>
+        </>}
 
-        {isLetterhead && <section className="school-letterhead-preview" aria-label="Pratinjau kop sekolah">
+        {isLetterhead && letterhead.mode === 'manual' && <section className="school-letterhead-manual-editor">
+          <div className="school-identity-section-heading">
+            <span className="school-identity-section-icon"><Building2 size={18} /></span>
+            <div><h2>Isi Kop Manual</h2><p>Atur lima baris teks. Setiap baris dapat memiliki ukuran dan gaya sendiri.</p></div>
+          </div>
+          <div className="school-letterhead-lines">
+            {letterhead.lines.map((line, index) => (
+              <div className="school-letterhead-line-editor" key={`line-${index + 1}`}>
+                <label>Baris {index + 1}
+                  <input value={line.text} maxLength={180} onChange={(event) => setLetterhead((current) => ({
+                    ...current,
+                    lines: current.lines.map((item, lineIndex) => lineIndex === index ? { ...item, text: event.target.value } : item)
+                  }))} disabled={!canEdit || saving || loading || !loaded} />
+                </label>
+                <label>Ukuran
+                  <select value={line.fontSize} onChange={(event) => setLetterhead((current) => ({
+                    ...current,
+                    lines: current.lines.map((item, lineIndex) => lineIndex === index ? { ...item, fontSize: Number(event.target.value) } : item)
+                  }))} disabled={!canEdit || saving || loading || !loaded}>
+                    {letterheadFontSizes.map((size) => <option value={size} key={size}>{size} px</option>)}
+                  </select>
+                </label>
+                <label className="school-letterhead-style-option"><input type="checkbox" checked={line.bold} onChange={(event) => setLetterhead((current) => ({
+                  ...current,
+                  lines: current.lines.map((item, lineIndex) => lineIndex === index ? { ...item, bold: event.target.checked } : item)
+                }))} disabled={!canEdit || saving || loading || !loaded} />Bold</label>
+                <label className="school-letterhead-style-option"><input type="checkbox" checked={line.italic} onChange={(event) => setLetterhead((current) => ({
+                  ...current,
+                  lines: current.lines.map((item, lineIndex) => lineIndex === index ? { ...item, italic: event.target.checked } : item)
+                }))} disabled={!canEdit || saving || loading || !loaded} />Italic</label>
+                <label>Perataan
+                  <select value={line.align} onChange={(event) => setLetterhead((current) => ({
+                    ...current,
+                    lines: current.lines.map((item, lineIndex) => lineIndex === index ? { ...item, align: event.target.value } : item)
+                  }))} disabled={!canEdit || saving || loading || !loaded}>
+                    <option value="center">Tengah</option>
+                    <option value="left">Kiri</option>
+                  </select>
+                </label>
+              </div>
+            ))}
+          </div>
+        </section>}
+
+        {isLetterhead && <section className={`school-letterhead-preview ${letterhead.mode === 'manual' ? 'is-manual' : ''}`} aria-label="Pratinjau kop sekolah">
           {identity.logo && <img src={identity.logo} alt="" />}
-          <div>
+          {letterhead.mode === 'manual' ? <div className="school-letterhead-preview-lines">
+            {letterhead.lines.map((line, index) => <span key={`preview-${index + 1}`} style={{
+              fontSize: `${line.fontSize}px`,
+              fontWeight: line.bold ? 700 : 400,
+              fontStyle: line.italic ? 'italic' : 'normal',
+              textAlign: line.align
+            }}>{line.text || '\u00a0'}</span>)}
+          </div> : <div>
             <b>{identity.name || 'NAMA SEKOLAH'}</b>
             {identity.npsn && <span>NPSN {identity.npsn}</span>}
             <span>{identity.address || 'Alamat sekolah'}</span>
             <span>{[identity.phone, identity.email, identity.website].filter(Boolean).join(' · ') || 'Telepon · Email · Website'}</span>
-          </div>
+          </div>}
         </section>}
 
         <section className="school-identity-logo-section">
@@ -248,9 +344,9 @@ export default function SchoolIdentityPage({ rights, onSaved, mode = 'identity' 
 
         {error && <p className="master-form-error" role="alert">{error}</p>}
         {canEdit && <footer className="school-identity-savebar">
-          <span>Pastikan data identitas sekolah sudah benar sebelum disimpan.</span>
+          <span>{isLetterhead ? 'Pratinjau kop dan perubahan akan digunakan pada cetak laporan.' : 'Pastikan data identitas sekolah sudah benar sebelum disimpan.'}</span>
           <button type="submit" className="master-button master-button-primary" disabled={saving || loading || logoLoading || !loaded}>
-            {saving ? 'Menyimpan...' : <><Check size={15} />Simpan Identitas Sekolah</>}
+            {saving ? 'Menyimpan...' : <><Check size={15} />{isLetterhead ? 'Simpan Kop Sekolah' : 'Simpan Identitas Sekolah'}</>}
           </button>
         </footer>}
       </form>

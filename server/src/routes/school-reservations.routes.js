@@ -120,7 +120,7 @@ router.get('/', requireSchoolPermission('reservations', 'view'), async (req, res
     const [[count], [rows]] = await Promise.all([
       pool.execute(`SELECT COUNT(*) AS total ${from} WHERE ${where}`, values),
       pool.execute(
-        `SELECT br.id, br.book_id, br.user_id, br.reservation_date, br.status,
+        `SELECT br.id, br.book_id, br.user_id, br.quantity, br.notes, br.reservation_date, br.status,
                 br.expired_date, br.ready_notified_at, b.title AS book_title,
                 b.cover_image, u.name AS member_name, u.nis_nisn
          ${from}
@@ -143,7 +143,13 @@ router.get('/', requireSchoolPermission('reservations', 'view'), async (req, res
 
 router.post('/', requireSchoolPermission('reservations', 'edit'), async (req, res, next) => {
   const bookId = String(req.body?.bookId ?? '');
+  const quantity = req.body?.quantity == null ? 1 : Number(req.body.quantity);
+  const notes = typeof req.body?.notes === 'string' ? req.body.notes.trim() : '';
   if (!validId(bookId)) return res.status(400).json({ message: 'Pilih buku yang valid.' });
+  if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 100) {
+    return res.status(400).json({ message: 'Jumlah booking harus antara 1 dan 100 eksemplar.' });
+  }
+  if (notes.length > 1000) return res.status(400).json({ message: 'Keterangan booking maksimal 1.000 karakter.' });
 
   let connection;
   let transactionStarted = false;
@@ -172,6 +178,14 @@ router.post('/', requireSchoolPermission('reservations', 'edit'), async (req, re
       transactionStarted = false;
       return res.status(403).json({ message: 'Hanya anggota aktif yang dapat membuat booking.' });
     }
+    const settings = await readLibrarySettings(req.school.id, connection);
+    if (quantity > Number(settings.max_loans_per_member)) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(400).json({
+        message: `Jumlah booking tidak boleh melebihi batas maksimal ${settings.max_loans_per_member} buku per anggota.`
+      });
+    }
     const [copies] = await connection.execute(
       `SELECT bi.id FROM book_items bi
        WHERE bi.school_id = ? AND bi.book_id = ? AND bi.status = 'Tersedia'
@@ -179,8 +193,8 @@ router.post('/', requireSchoolPermission('reservations', 'edit'), async (req, re
            SELECT 1 FROM loans l WHERE l.school_id = bi.school_id
              AND l.book_item_id = bi.id AND l.status IN ('Pending', 'Borrowed')
          )
-       LIMIT 1`,
-      [req.school.id, bookId]
+       LIMIT ?`,
+      [req.school.id, bookId, quantity]
     );
     if (copies.length) {
       await connection.rollback();
@@ -199,14 +213,14 @@ router.post('/', requireSchoolPermission('reservations', 'edit'), async (req, re
       return res.status(409).json({ message: 'Anda sudah memiliki booking aktif untuk buku ini.' });
     }
     const [result] = await connection.execute(
-      `INSERT INTO book_reservations (school_id, book_id, user_id, status)
-       VALUES (?, ?, ?, 'Active')`,
-      [req.school.id, bookId, req.school.userId]
+      `INSERT INTO book_reservations (school_id, book_id, user_id, quantity, notes, status)
+       VALUES (?, ?, ?, ?, ?, 'Active')`,
+      [req.school.id, bookId, req.school.userId, quantity, notes || null]
     );
     await connection.commit();
     transactionStarted = false;
     return res.status(201).json({
-      reservation: { id: String(result.insertId), book_id: bookId, user_id: String(req.school.userId), status: 'Active' },
+      reservation: { id: String(result.insertId), book_id: bookId, user_id: String(req.school.userId), quantity, notes: notes || null, status: 'Active' },
       message: 'Booking buku berhasil dibuat.'
     });
   } catch (error) {
@@ -264,7 +278,7 @@ router.post('/:id/ready', requireSchoolPermission('reservations', 'edit'), async
       return res.status(404).json({ message: 'Buku tidak ditemukan.' });
     }
     const [reservations] = await connection.execute(
-      `SELECT id, book_id, user_id, status, ready_notified_at
+      `SELECT id, book_id, user_id, quantity, status, ready_notified_at
        FROM book_reservations WHERE id = ? AND school_id = ? FOR UPDATE`,
       [id, req.school.id]
     );
@@ -286,13 +300,13 @@ router.post('/:id/ready', requireSchoolPermission('reservations', 'edit'), async
            SELECT 1 FROM loans l WHERE l.school_id = bi.school_id
              AND l.book_item_id = bi.id AND l.status IN ('Pending', 'Borrowed')
          )
-       ORDER BY bi.id LIMIT 1 FOR UPDATE`,
-      [req.school.id, reservation.book_id]
+       ORDER BY bi.id LIMIT ? FOR UPDATE`,
+      [req.school.id, reservation.book_id, reservation.quantity]
     );
-    if (!copies.length) {
+    if (copies.length < Number(reservation.quantity)) {
       await connection.rollback();
       transactionStarted = false;
-      return res.status(409).json({ message: 'Belum ada eksemplar tersedia untuk memenuhi booking.' });
+      return res.status(409).json({ message: `Belum tersedia ${reservation.quantity} eksemplar untuk memenuhi booking.` });
     }
     await connection.execute(
       `UPDATE book_reservations
@@ -304,9 +318,9 @@ router.post('/:id/ready', requireSchoolPermission('reservations', 'edit'), async
       `INSERT IGNORE INTO school_notifications
        (school_id, user_id, type, title, message, link, dedupe_key)
        VALUES (?, ?, 'reservation_ready', 'Buku booking Anda tersedia',
-               'Buku yang Anda booking sudah tersedia. Silakan ambil dalam 2 hari.',
+               ?, 
                '/reservations', ?)`,
-      [req.school.id, reservation.user_id, `reservation:${reservation.id}`]
+      [req.school.id, reservation.user_id, `Buku yang Anda booking (${reservation.quantity} eksemplar) sudah tersedia. Silakan ambil dalam 2 hari.`, `reservation:${reservation.id}`]
     );
     await connection.commit();
     transactionStarted = false;
@@ -349,7 +363,7 @@ router.post('/:id/fulfill', requireSchoolPermission('reservations', 'edit'), asy
       return res.status(404).json({ message: 'Buku tidak ditemukan.' });
     }
     const [reservations] = await connection.execute(
-      `SELECT id, book_id, user_id, status, ready_notified_at, expired_date,
+      `SELECT id, book_id, user_id, quantity, status, ready_notified_at, expired_date,
               (expired_date > NOW()) AS is_unexpired
        FROM book_reservations WHERE id = ? AND school_id = ? FOR UPDATE`,
       [id, req.school.id]
@@ -383,10 +397,10 @@ router.post('/:id/fulfill', requireSchoolPermission('reservations', 'edit'), asy
       [req.school.id, reservation.user_id]
     );
     const maxLoans = Number(settings.max_loans_per_member);
-    if (Number(activeLoans[0].total) >= maxLoans) {
+    if (Number(activeLoans[0].total) + Number(reservation.quantity) > maxLoans) {
       await connection.rollback();
       transactionStarted = false;
-      return res.status(409).json({ message: `Anggota sudah mencapai batas maksimal ${maxLoans} peminjaman aktif.` });
+      return res.status(409).json({ message: `Jumlah booking melampaui batas maksimal ${maxLoans} peminjaman aktif per anggota.` });
     }
     const [items] = await connection.execute(
       `SELECT bi.id FROM book_items bi
@@ -395,25 +409,30 @@ router.post('/:id/fulfill', requireSchoolPermission('reservations', 'edit'), asy
            SELECT 1 FROM loans l WHERE l.school_id = bi.school_id
              AND l.book_item_id = bi.id AND l.status IN ('Pending', 'Borrowed')
          )
-       ORDER BY bi.id LIMIT 1 FOR UPDATE`,
-      [req.school.id, reservation.book_id]
+       ORDER BY bi.id LIMIT ? FOR UPDATE`,
+      [req.school.id, reservation.book_id, reservation.quantity]
     );
-    if (!items[0]) {
+    if (items.length < Number(reservation.quantity)) {
       await connection.rollback();
       transactionStarted = false;
-      return res.status(409).json({ message: 'Eksemplar tersedia sudah tidak ada.' });
+      return res.status(409).json({ message: 'Eksemplar tersedia tidak cukup untuk memenuhi jumlah booking.' });
     }
+    const loanPlaceholders = items.map(() => (
+      `(?, ?, ?, CURRENT_DATE, DATE_ADD(CURRENT_DATE, INTERVAL ${Number(settings.loan_duration_days)} DAY), 'Borrowed')`
+    )).join(', ');
+    const loanValues = items.flatMap((item) => [req.school.id, item.id, reservation.user_id]);
     const [result] = await connection.execute(
       `INSERT INTO loans (school_id, book_item_id, user_id, borrow_date, due_date, status)
-       VALUES (?, ?, ?, CURRENT_DATE, DATE_ADD(CURRENT_DATE, INTERVAL ${Number(settings.loan_duration_days)} DAY), 'Borrowed')`,
-      [req.school.id, items[0].id, reservation.user_id]
+       VALUES ${loanPlaceholders}`,
+      loanValues
     );
+    const itemIds = items.map((item) => String(item.id));
     const [itemUpdate] = await connection.execute(
       `UPDATE book_items SET status = 'Dipinjam'
-       WHERE id = ? AND school_id = ? AND status = 'Tersedia'`,
-      [items[0].id, req.school.id]
+       WHERE school_id = ? AND status = 'Tersedia' AND id IN (${itemIds.map(() => '?').join(', ')})`,
+      [req.school.id, ...itemIds]
     );
-    if (!itemUpdate.affectedRows) throw new Error('Eksemplar berubah saat booking dipenuhi.');
+    if (itemUpdate.affectedRows !== items.length) throw new Error('Eksemplar berubah saat booking dipenuhi.');
     await connection.execute(
       `UPDATE book_reservations SET status = 'Fulfilled'
        WHERE id = ? AND school_id = ? AND status = 'Active'`,
@@ -424,11 +443,12 @@ router.post('/:id/fulfill', requireSchoolPermission('reservations', 'edit'), asy
     return res.json({
       loan: {
         id: String(result.insertId),
-        bookItemId: String(items[0].id),
+        bookItemIds: itemIds,
+        quantity: Number(reservation.quantity),
         status: 'Borrowed',
         dueInDays: Number(settings.loan_duration_days)
       },
-      message: 'Booking dipenuhi dan peminjaman berhasil dicatat.'
+      message: `Booking untuk ${reservation.quantity} eksemplar dipenuhi dan peminjaman berhasil dicatat.`
     });
   } catch (error) {
     if (transactionStarted && connection) await connection.rollback();

@@ -16,12 +16,14 @@ import SchoolProfileEditor from './SchoolProfileEditor.jsx';
 import SchoolSettingsPage from './SchoolSettingsPage.jsx';
 import SchoolReservationsPage from './SchoolReservationsPage.jsx';
 import SchoolReviewsPage from './SchoolReviewsPage.jsx';
+import SchoolPublicPortalPage from './SchoolPublicPortalPage.jsx';
 import SchoolAnnouncementsPage from './SchoolAnnouncementsPage.jsx';
 import SchoolAcademicYearsPage from './SchoolAcademicYearsPage.jsx';
-import { fetchSchoolProfile } from './schoolAccountApi.js';
+import { fetchSchoolIdentity, fetchSchoolProfile } from './schoolAccountApi.js';
 import { fetchMySchoolPermissions } from './schoolSettingsApi.js';
 import { masterCategoryTypes, schoolNavigation } from './schoolNavigation.js';
 import { defaultSchoolPermissions, schoolPermissionByLabel } from './schoolPermissions.js';
+import SchoolPrintHeader from './SchoolPrintHeader.jsx';
 import './school.css';
 
 const SchoolCirculationAnalyticsPage = lazy(() => import('./SchoolCirculationAnalyticsPage.jsx'));
@@ -57,6 +59,12 @@ export default function SchoolPortal({ account, onLogout, onAccountUpdated }) {
   const [profileLoaded, setProfileLoaded] = useState(false);
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileError, setProfileError] = useState('');
+  const [printIdentity, setPrintIdentity] = useState(() => ({
+    name: account.school?.name || 'Sekolah',
+    logo: account.school?.logo || null,
+    npsn: account.school?.npsn || ''
+  }));
+  const [printIdentityError, setPrintIdentityError] = useState('');
   const [permissions, setPermissions] = useState(null);
   const [permissionsLoading, setPermissionsLoading] = useState(account.role !== 'admin');
   const [permissionsError, setPermissionsError] = useState('');
@@ -168,6 +176,30 @@ export default function SchoolPortal({ account, onLogout, onAccountUpdated }) {
     };
   }, [school.logo]);
 
+  useEffect(() => {
+    if (role !== 'admin' && !permissions?.['master.identity']?.view) {
+      setPrintIdentity({
+        name: school.name || 'Sekolah',
+        logo: school.logo || null,
+        npsn: school.npsn || ''
+      });
+      setPrintIdentityError('');
+      return undefined;
+    }
+    let activeRequest = true;
+    fetchSchoolIdentity()
+      .then(({ identity }) => {
+        if (activeRequest) {
+          setPrintIdentity(identity);
+          setPrintIdentityError('');
+        }
+      })
+      .catch((error) => {
+        if (activeRequest) setPrintIdentityError(error.message);
+      });
+    return () => { activeRequest = false; };
+  }, [role, permissions, school.name, school.logo, school.npsn]);
+
   function selectMenu(label) {
     setActive(label);
     setMobileOpen(false);
@@ -183,6 +215,8 @@ export default function SchoolPortal({ account, onLogout, onAccountUpdated }) {
   }
 
   function handleSchoolIdentityUpdated(identity) {
+    setPrintIdentity(identity);
+    setPrintIdentityError('');
     onAccountUpdated?.({
       ...account,
       school: { ...school, name: identity.name, npsn: identity.npsn, logo: identity.logo }
@@ -201,7 +235,7 @@ export default function SchoolPortal({ account, onLogout, onAccountUpdated }) {
   }
 
   return (
-    <div className={`school-app-shell library-app-frame ${collapsed ? 'sidebar-collapsed' : ''}`}>
+    <div className={`school-app-shell library-app-frame ${collapsed ? 'sidebar-collapsed' : ''} ${active === 'Data Siswa & Rombel' ? 'is-printing-students' : ''} ${active === 'Buku Tamu Digital' ? 'is-printing-visitors' : ''}`}>
       {mobileOpen && <button className="school-sidebar-scrim" onClick={() => setMobileOpen(false)} aria-label="Tutup menu sekolah" />}
       <aside
         className={`school-sidebar ${mobileOpen ? 'mobile-open' : ''} ${collapsed ? 'collapsed' : ''} ${collapsed && hoverExpanded ? 'hover-expanded' : ''}`}
@@ -248,6 +282,9 @@ export default function SchoolPortal({ account, onLogout, onAccountUpdated }) {
       </aside>
 
       <main className="school-main-area">
+        <div className="school-global-print-header">
+          <SchoolPrintHeader identity={printIdentity} title={active} />
+        </div>
         <header className="school-topbar">
           <div className="school-topbar-left">
             <button type="button" className="school-mobile-menu" onClick={() => setMobileOpen(true)} aria-label="Buka menu sekolah"><Menu size={20} /></button>
@@ -270,6 +307,7 @@ export default function SchoolPortal({ account, onLogout, onAccountUpdated }) {
         </header>
 
         <div className="school-page-content">
+          {printIdentityError && <p className="school-print-identity-error" role="alert">Kop sekolah belum dapat dimuat untuk cetak: {printIdentityError}</p>}
           <div className="library-page-transition" key={active}>
             {permissionsLoading ? (
               <div className="library-empty-state">Memuat hak akses...</div>
@@ -282,28 +320,28 @@ export default function SchoolPortal({ account, onLogout, onAccountUpdated }) {
             ) : active === 'Dashboard' ? (
               <SchoolDashboard account={profile} />
             ) : active === 'Daftar Pustaka' ? (
-              <SchoolBookCatalogPage rights={activeRights} role={role} />
+              <SchoolBookCatalogPage rights={activeRights} role={role} schoolIdentity={printIdentity} />
             ) : active === 'Tambah Stok Buku' ? (
               <SchoolBookStockPage rights={activeRights} />
             ) : active === 'Pindah Rak' ? (
               <SchoolRackTransfersPage rights={activeRights} />
             ) : active === 'Eksemplar' ? (
-              <SchoolBookItemsPage rights={activeRights} schoolName={schoolName} />
+              <SchoolBookItemsPage rights={activeRights} schoolName={schoolName} schoolIdentity={printIdentity} />
             ) : active === 'Pengadaan Buku' ? (
               <SchoolProcurementsPage rights={activeRights} role={role} requester={profile.name} />
             ) : active === 'Buku Tamu Digital' ? (
-              <SchoolVisitorsPage rights={activeRights} role={role} account={profile} schoolName={schoolName} />
+              <SchoolVisitorsPage rights={activeRights} role={role} account={profile} schoolName={schoolName} schoolIdentity={printIdentity} />
             ) : active === 'Peminjaman' ? (
               <SchoolLoansPage rights={activeRights} role={role} account={profile} />
             ) : active === 'Denda' ? (
               <SchoolFinesPage rights={activeRights} />
             ) : active === 'Booking Buku' ? (
-              <SchoolReservationsPage rights={activeRights} role={role} />
+              <SchoolReservationsPage rights={activeRights} role={role} account={profile} />
             ) : active === 'Ulasan & Rating' ? (
               <SchoolReviewsPage rights={activeRights} role={role} />
             ) : active === 'Pengumuman' ? (
               <SchoolAnnouncementsPage rights={activeRights} role={role} />
-            ) : active === 'Laporan Bulanan' ? (
+            ) : active === 'Laporan' ? (
               <Suspense fallback={<div className="library-empty-state">Memuat laporan...</div>}>
                 <SchoolReportsPage rights={activeRights} />
               </Suspense>
@@ -312,17 +350,19 @@ export default function SchoolPortal({ account, onLogout, onAccountUpdated }) {
             ) : active === 'Data Siswa & Rombel' ? (
               <StudentPageErrorBoundary>
                 <Suspense fallback={<div className="library-empty-state">Memuat data siswa...</div>}>
-                  <SchoolStudentsPage rights={activeRights} />
+                  <SchoolStudentsPage rights={activeRights} schoolIdentity={printIdentity} />
                 </Suspense>
               </StudentPageErrorBoundary>
             ) : active === 'Analitik Sirkulasi' ? (
               <Suspense fallback={<div className="library-empty-state">Memuat analitik sirkulasi...</div>}>
-                <SchoolCirculationAnalyticsPage rights={activeRights} schoolName={schoolName} />
+                <SchoolCirculationAnalyticsPage rights={activeRights} schoolName={schoolName} schoolIdentity={printIdentity} />
               </Suspense>
             ) : active === 'Identitas Sekolah' ? (
               <SchoolIdentityPage rights={activeRights} onSaved={handleSchoolIdentityUpdated} />
             ) : active === 'Kop Sekolah' ? (
               <SchoolIdentityPage mode="letterhead" rights={activeRights} onSaved={handleSchoolIdentityUpdated} />
+            ) : active === 'Portal Publik' ? (
+              <SchoolPublicPortalPage schoolCode={school.code} />
             ) : activeMasterType ? (
               <SchoolMasterDataPage active={active} type={activeMasterType} rights={activeRights} />
             ) : (

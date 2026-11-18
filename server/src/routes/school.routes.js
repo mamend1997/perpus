@@ -19,6 +19,9 @@ import {
   defaultSchoolPermissions, schoolPermissionFeatureKeys, schoolPermissionFeatures,
   schoolPermissionRoles
 } from '../utils/school-permissions.js';
+import {
+  parseSchoolLetterhead, validateSchoolLetterhead
+} from '../utils/school-letterhead.js';
 
 const router = Router();
 const masterCategoryTypes = new Set([
@@ -408,14 +411,21 @@ router.delete('/users/:id', requireSchoolAdmin, async (req, res, next) => {
 
 router.get('/identity', requireSchoolPermission('master.identity', 'view'), async (req, res, next) => {
   try {
-    const [rows] = await pool.execute(
-      `SELECT name, npsn, education_level, phone, email, website, address,
-              principal_name, principal_nip, librarian_name, librarian_nip, logo
-       FROM tenants_schools WHERE id = ? LIMIT 1`,
-      [req.school.id]
-    );
+    const [rows, [letterheadRows]] = await Promise.all([
+      pool.execute(
+        `SELECT name, npsn, education_level, phone, email, website, address,
+                principal_name, principal_nip, librarian_name, librarian_nip, logo
+         FROM tenants_schools WHERE id = ? LIMIT 1`,
+        [req.school.id]
+      ),
+      pool.execute(
+        'SELECT `value` FROM school_settings WHERE school_id = ? AND `key` = ? LIMIT 1',
+        [req.school.id, 'school_letterhead']
+      )
+    ]);
     if (!rows[0]) return res.status(404).json({ message: 'Data identitas sekolah tidak ditemukan.' });
-    return res.json({ identity: rows[0] });
+    const letterhead = parseSchoolLetterhead(letterheadRows[0]?.value);
+    return res.json({ identity: { ...rows[0], letterhead } });
   } catch (error) {
     return next(error);
   }
@@ -444,21 +454,32 @@ router.patch('/identity', requireSchoolPermission('master.identity', 'edit'), as
   identity.librarian_name = identity.librarian_name || null;
   identity.librarian_nip = identity.librarian_nip || null;
   const logo = req.body.logo === '' || req.body.logo == null ? null : req.body.logo;
+  const letterhead = req.body.letterhead === undefined
+    ? null
+    : validateSchoolLetterhead(req.body.letterhead);
+  if (req.body.letterhead !== undefined && !letterhead) {
+    return res.status(400).json({ message: 'Pengaturan kop manual tidak valid. Pastikan tersedia lima baris dan format tiap baris sesuai.' });
+  }
 
   let validWebsite = true;
   if (identity.website) {
-    const hasProtocol = /^[a-z][a-z\d+.-]*:/i.test(identity.website);
-    const hasHostPort = /^[^/:?#]+:\d+(?:[/?#]|$)/.test(identity.website);
-    if (hasProtocol && !/^https?:\/\//i.test(identity.website) && !hasHostPort) {
+    const hasUnsupportedProtocol = /^[a-z][a-z\d+.-]*:/i.test(identity.website)
+      && !/^https?:\/\//i.test(identity.website);
+    if (hasUnsupportedProtocol) {
       validWebsite = false;
     } else {
-      const websiteValue = /^https?:\/\//i.test(identity.website)
-        ? identity.website
-        : `https://${identity.website}`;
+      const websiteValue = identity.website
+        .replace(/^https?:\/\//i, '')
+        .replace(/\/+$/, '');
       try {
-        const websiteUrl = new URL(websiteValue);
-        validWebsite = ['http:', 'https:'].includes(websiteUrl.protocol) && Boolean(websiteUrl.hostname);
-        if (validWebsite) identity.website = websiteUrl.toString();
+        const websiteUrl = new URL(`https://${websiteValue}`);
+        validWebsite = Boolean(websiteUrl.hostname)
+          && websiteUrl.pathname === '/'
+          && !websiteUrl.search
+          && !websiteUrl.hash
+          && !websiteUrl.username
+          && !websiteUrl.password;
+        if (validWebsite) identity.website = websiteUrl.host;
       } catch {
         validWebsite = false;
       }
@@ -484,7 +505,10 @@ router.patch('/identity', requireSchoolPermission('master.identity', 'edit'), as
   }
 
   try {
-    await pool.execute(
+    const connection = await pool.getConnection();
+    try {
+      await connection.beginTransaction();
+      await connection.execute(
       `UPDATE tenants_schools
        SET name = ?, npsn = ?, education_level = ?, phone = ?, email = ?, website = ?, address = ?,
            principal_name = ?, principal_nip = ?, librarian_name = ?, librarian_nip = ?, logo = ?
@@ -494,8 +518,26 @@ router.patch('/identity', requireSchoolPermission('master.identity', 'edit'), as
         identity.address, identity.principal_name, identity.principal_nip,
         identity.librarian_name, identity.librarian_nip, logo, req.school.id
       ]
-    );
-    return res.json({ identity: { ...identity, logo }, message: 'Identitas sekolah berhasil disimpan.' });
+      );
+      if (letterhead) {
+        await connection.execute(
+          `INSERT INTO school_settings (school_id, \`key\`, \`value\`)
+           VALUES (?, 'school_letterhead', ?)
+           ON DUPLICATE KEY UPDATE \`value\` = VALUES(\`value\`)`,
+          [req.school.id, JSON.stringify(letterhead)]
+        );
+      }
+      await connection.commit();
+      return res.json({
+        identity: { ...identity, logo, ...(letterhead ? { letterhead } : {}) },
+        message: 'Identitas sekolah berhasil disimpan.'
+      });
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
   } catch (error) {
     if (error.code === 'ER_DUP_ENTRY') {
       return res.status(409).json({ message: 'NPSN tersebut sudah digunakan sekolah lain.' });

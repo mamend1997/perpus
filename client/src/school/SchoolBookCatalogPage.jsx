@@ -12,6 +12,7 @@ import {
 import { downloadBookTemplate, parseBookImport } from './bookCatalogExcel.js';
 import SchoolConfirmDialog from './SchoolConfirmDialog.jsx';
 import { createReview, fetchEligibleReviewBooks, fetchReviews } from './schoolReviewsApi.js';
+import SchoolPrintHeader from './SchoolPrintHeader.jsx';
 
 const formFields = [
   'nomor_induk', 'title',
@@ -285,14 +286,14 @@ function BookFormModal({ book, categories, onClose, onSave }) {
               <input name="city" value={form.city} onChange={update} maxLength={120} />
             </label>
             <div className="catalog-form-wide catalog-file-field"><span>Foto Sampul</span>
-              <label className="catalog-file-upload-button"><Upload size={15} />Upload Berkas
+              <label className="catalog-file-upload-button catalog-file-upload-cover"><Upload size={15} />Upload Sampul
                 <input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => chooseFile(event, 'cover')} />
               </label>
               <small>{coverFile?.name || (book?.has_cover ? 'Foto sampul sudah tersimpan.' : 'JPG, PNG, atau WebP; maksimal 5 MB.')}</small>
               {book?.has_cover && <span className="catalog-file-remove"><input type="checkbox" checked={removeCover} onChange={(event) => setRemoveCover(event.target.checked)} /> Hapus foto sampul</span>}
             </div>
             <div className="catalog-form-wide catalog-file-field"><span>Lampiran Digital (PDF)</span>
-              <label className="catalog-file-upload-button"><Upload size={15} />Upload Berkas
+              <label className="catalog-file-upload-button catalog-file-upload-pdf"><Upload size={15} />Upload PDF
                 <input type="file" accept="application/pdf,.pdf" onChange={(event) => chooseFile(event, 'digital')} />
               </label>
               <small>{digitalFile?.name || (book?.has_digital_attachment ? 'Lampiran PDF sudah tersimpan.' : 'PDF; maksimal 20 MB.')}</small>
@@ -594,7 +595,7 @@ function BookDetailModal({ bookId, onClose, role }) {
   );
 }
 
-function BookBarcodePrint({ books, schoolName, onClose }) {
+function BookBarcodePrint({ books, schoolName, schoolIdentity, onClose }) {
   const svgRefs = useRef({});
   useEffect(() => {
     books.forEach((book) => {
@@ -613,6 +614,7 @@ function BookBarcodePrint({ books, schoolName, onClose }) {
   return createPortal(
     <div className="barcode-print-layout">
       <div className="barcode-print-controls"><button type="button" onClick={onClose}>Tutup</button></div>
+      <SchoolPrintHeader identity={schoolIdentity || { name: schoolName }} title="Label Barcode Buku" />
       <div className="barcode-print-grid">
         {books.map((book) => (
           <article className="barcode-print-label" key={book.id}>
@@ -629,7 +631,7 @@ function BookBarcodePrint({ books, schoolName, onClose }) {
   );
 }
 
-export default function SchoolBookCatalogPage({ rights, role }) {
+export default function SchoolBookCatalogPage({ rights, role, schoolIdentity }) {
   const canEdit = Boolean(rights?.edit);
   const canDelete = Boolean(rights?.delete);
   const [meta, setMeta] = useState({ school: {}, categories: {} });
@@ -920,7 +922,7 @@ export default function SchoolBookCatalogPage({ rights, role }) {
       />}
       {importOpen && <BookImportModal onClose={() => setImportOpen(false)} onImport={handleImport} />}
       {detailBookId && <BookDetailModal bookId={detailBookId} role={role} onClose={() => setDetailBookId(null)} />}
-      {printBooks && <BookBarcodePrint books={printBooks} schoolName={meta.school?.name || 'Perpustakaan Sekolah'} onClose={() => setPrintBooks(null)} />}
+      {printBooks && <BookBarcodePrint books={printBooks} schoolName={meta.school?.name || 'Perpustakaan Sekolah'} schoolIdentity={schoolIdentity} onClose={() => setPrintBooks(null)} />}
       {deleteRequest && <SchoolConfirmDialog
         title={deleteRequest.ids.length === 1 ? 'Hapus Buku?' : 'Hapus Buku Terpilih?'}
         message={deleteRequest.ids.length === 1

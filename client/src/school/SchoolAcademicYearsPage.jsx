@@ -203,7 +203,7 @@ export default function SchoolAcademicYearsPage({ rights }) {
   }
 
   return (
-    <div className="library-module-page">
+    <div className="library-module-page school-academic-years-page">
       <header className="library-module-heading">
         <span className="library-eyebrow">MASTER DATA</span>
         <h1>Tahun Pelajaran</h1>
@@ -218,7 +218,7 @@ export default function SchoolAcademicYearsPage({ rights }) {
           {canEdit && <button type="button" className="master-button master-button-primary" onClick={openCreateForm}><Plus size={15} />Tambah Tahun</button>}
         </div>
         <div className="master-table-scroll">
-          <table className="master-table">
+          <table className="master-table academic-year-table">
             <thead><tr><th>Nama Periode</th><th>Tanggal Mulai</th><th>Tanggal Akhir</th><th>Status</th>{(canEdit || canDelete) && <th>Aksi</th>}</tr></thead>
             <tbody>
               {loading ? <tr><td className="master-empty-cell" colSpan={canEdit || canDelete ? 5 : 4}>Memuat tahun pelajaran...</td></tr>

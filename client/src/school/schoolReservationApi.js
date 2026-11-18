@@ -35,8 +35,8 @@ export function markReservationNotificationRead(id) {
   return requestReservationApi(`/notifications/${encodeURIComponent(id)}/read`, { method: 'POST' });
 }
 
-export function createReservation(bookId) {
-  return requestReservationApi('', { method: 'POST', body: { bookId } });
+export function createReservation({ bookId, quantity = 1, notes = '' }) {
+  return requestReservationApi('', { method: 'POST', body: { bookId, quantity, notes } });
 }
 
 export function cancelReservation(id) {

@@ -7,6 +7,7 @@ import {
   Search, Settings2, ShieldCheck, Sparkles, Ticket, Users, X
 } from 'lucide-react';
 import SchoolPortal from './school/SchoolPortal.jsx';
+import PublicLibraryPortal from './school/PublicLibraryPortal.jsx';
 import './super-admin.css';
 
 const groups = [
@@ -62,6 +63,7 @@ async function request(path, options = {}) {
 
 function currentPage() {
   const path = window.location.pathname;
+  if (/^\/public\/[A-Za-z0-9]{4}(?:\/(?:booking|rating))?$/.test(path)) return path;
   const routes = ['/school/login', '/school/register', '/school/dashboard', '/super-admin/login'];
   if (routes.includes(path)) return path;
   window.history.replaceState({}, '', '/school/login');
@@ -1018,7 +1020,8 @@ export default function App() {
   const [page, setPage] = useState(currentPage);
   const [adminSessionLoading, setAdminSessionLoading] = useState(() => Boolean(localStorage.getItem('super-admin-token')));
   const [schoolSessionLoading, setSchoolSessionLoading] = useState(() => (
-    window.location.pathname.startsWith('/school/') && Boolean(localStorage.getItem('school-token'))
+    (window.location.pathname.startsWith('/school/') || window.location.pathname.startsWith('/public/'))
+      && Boolean(localStorage.getItem('school-token'))
   ));
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
@@ -1046,7 +1049,7 @@ export default function App() {
   }
 
   useEffect(() => {
-    if (!page.startsWith('/school/')) {
+    if (!page.startsWith('/school/') && !page.startsWith('/public/')) {
       setSchoolSessionLoading(false);
       return undefined;
     }
@@ -1126,6 +1129,21 @@ export default function App() {
     setSchoolAccount(null);
     setSchoolSessionLoading(false);
     navigate('/school/login');
+  }
+
+  if (page.startsWith('/public/')) {
+    if (schoolSessionLoading) return <div className="loading-state"><div className="spinner" />Memulihkan sesi anggota...</div>;
+    const [, , schoolCode, section] = page.split('/');
+    return <PublicLibraryPortal
+      schoolCode={schoolCode}
+      section={section || 'check'}
+      account={schoolAccount}
+      onAccountUpdated={setSchoolAccount}
+      onLogout={() => {
+        localStorage.removeItem('school-token');
+        setSchoolAccount(null);
+      }}
+    />;
   }
 
   if (page.startsWith('/school/')) {

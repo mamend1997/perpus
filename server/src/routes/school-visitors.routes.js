@@ -3,14 +3,6 @@ import { pool } from '../config/database.js';
 import { requireSchoolPermission } from '../middleware/require-school-permission.js';
 
 const router = Router();
-const visitPurposes = [
-  'Membaca Buku',
-  'Meminjam / Mengembalikan Buku',
-  'Mengerjakan Tugas / Browsing',
-  'Diskusi Kelompok',
-  'Lainnya'
-];
-
 function parsePageValue(value, fallback, maximum) {
   const parsed = value == null ? fallback : Number(value);
   return Number.isSafeInteger(parsed) && parsed >= 1 && parsed <= maximum ? parsed : null;
@@ -116,7 +108,7 @@ router.post('/', requireSchoolPermission('visitors', 'edit'), async (req, res, n
     ? String(req.school.userId)
     : String(req.body?.userId ?? '');
   const purpose = typeof req.body?.purpose === 'string' ? req.body.purpose.trim() : '';
-  if (!/^[1-9]\d*$/.test(userId) || !visitPurposes.includes(purpose)) {
+  if (!/^[1-9]\d*$/.test(userId) || !purpose || purpose.length > 255) {
     return res.status(400).json({ message: 'Pilih anggota dan keperluan kunjungan yang valid.' });
   }
 

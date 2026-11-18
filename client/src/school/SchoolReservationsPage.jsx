@@ -23,7 +23,7 @@ function statusLabel(status) {
   return ({ Active: 'Aktif', Fulfilled: 'Dipenuhi', Cancelled: 'Dibatalkan' })[status] || status;
 }
 
-export default function SchoolReservationsPage({ rights, role }) {
+export default function SchoolReservationsPage({ rights, role, account }) {
   const isMember = role === 'member';
   const canEdit = Boolean(rights?.edit);
   const canView = Boolean(rights?.view);
@@ -40,6 +40,8 @@ export default function SchoolReservationsPage({ rights, role }) {
   const [bookSearch, setBookSearch] = useState('');
   const [books, setBooks] = useState([]);
   const [selectedBookId, setSelectedBookId] = useState('');
+  const [quantity, setQuantity] = useState('1');
+  const [bookingNotes, setBookingNotes] = useState('');
   const [bookLoading, setBookLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState('');
@@ -139,10 +141,16 @@ export default function SchoolReservationsPage({ rights, role }) {
     setError('');
     setNotice('');
     try {
-      const result = await createReservation(selectedBookId);
+      const result = await createReservation({
+        bookId: selectedBookId,
+        quantity: Number(quantity),
+        notes: bookingNotes
+      });
       setNotice(result.message);
       setSelectedBookId('');
       setBookSearch('');
+      setQuantity('1');
+      setBookingNotes('');
       setPage(1);
       setRefreshKey((value) => value + 1);
     } catch (createError) {
@@ -181,7 +189,7 @@ export default function SchoolReservationsPage({ rights, role }) {
           <div className="catalog-table-heading">
             <div><h2>Buat Booking</h2><p>Buku hanya dapat dipesan ketika tidak ada eksemplar tersedia.</p></div>
           </div>
-          <form onSubmit={submitReservation} style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'end' }}>
+          <form onSubmit={submitReservation} className="reservation-create-form">
             <label style={{ flex: '1 1 280px' }}>
               <span className="loan-form-label">Cari buku yang tidak tersedia</span>
               <span className="master-search" style={{ display: 'flex' }}>
@@ -197,6 +205,18 @@ export default function SchoolReservationsPage({ rights, role }) {
               )}
               {!bookLoading && bookSearch && books.length === 0 && <small>Tidak ada buku yang cocok atau semua eksemplar masih tersedia.</small>}
             </label>
+            <label>
+              <span className="loan-form-label">Jumlah eksemplar</span>
+              <input type="number" min="1" max="100" step="1" value={quantity} onChange={(event) => setQuantity(event.target.value)} required />
+            </label>
+            <label className="reservation-notes-field">
+              <span className="loan-form-label">Keterangan (opsional)</span>
+              <input value={bookingNotes} onChange={(event) => setBookingNotes(event.target.value)} maxLength={1000} placeholder="Catatan untuk petugas" />
+            </label>
+            {isMember && <label className="reservation-account-name">
+              <span className="loan-form-label">Nama anggota</span>
+              <input value={account?.name || ''} readOnly aria-readonly="true" />
+            </label>}
             <button type="submit" className="master-button master-button-primary" disabled={saving || !selectedBookId}>
               {saving ? <><LoaderCircle size={16} className="book-stock-spinner" />Menyimpan...</> : <><Ticket size={16} />Booking buku</>}
             </button>
@@ -253,7 +273,7 @@ export default function SchoolReservationsPage({ rights, role }) {
                     <tr key={reservation.id}>
                       <td>{(page - 1) * pageSize + index + 1}</td>
                       <td>#{reservation.id}</td>
-                      <td><b>{reservation.book_title}</b><small>Booking #{reservation.id}</small></td>
+                      <td><b>{reservation.book_title}</b><small>{Number(reservation.quantity || 1)} eksemplar · Booking #{reservation.id}</small>{reservation.notes && <small>{reservation.notes}</small>}</td>
                       {!isMember && <td>{reservation.member_name}<small>{reservation.nis_nisn || 'Anggota perpustakaan'}</small></td>}
                       <td>{formatDate(reservation.reservation_date, true)}</td>
                       <td><span className={`loan-status-badge ${reservation.status.toLowerCase()}`}>{statusLabel(reservation.status)}</span>
