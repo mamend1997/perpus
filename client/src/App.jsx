@@ -910,7 +910,7 @@ export default function App() {
   }
 
   if (page.startsWith('/school/')) {
-    if (schoolAccount) return <SchoolPortal account={schoolAccount} onLogout={schoolLogout} />;
+    if (schoolAccount) return <SchoolPortal account={schoolAccount} onAccountUpdated={setSchoolAccount} onLogout={schoolLogout} />;
     if (schoolSessionLoading) return <div className="loading-state"><div className="spinner" />Memulihkan sesi sekolah...</div>;
     return <SchoolAuth mode={page === '/school/register' ? 'register' : 'login'} onNavigate={navigate} onLogin={setSchoolAccount} />;
   }

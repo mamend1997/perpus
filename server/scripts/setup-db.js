@@ -29,6 +29,36 @@ try {
   const schema = await readFile(fileURLToPath(schemaUrl), 'utf8');
   await connection.query(schema);
 
+  const [userColumns] = await connection.execute(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users'`
+  );
+  const userColumnNames = new Set(userColumns.map((column) => column.COLUMN_NAME));
+  if (!userColumnNames.has('avatar')) {
+    await connection.query('ALTER TABLE users ADD COLUMN avatar MEDIUMTEXT NULL AFTER email');
+  }
+
+  const [masterCategoryColumns] = await connection.execute(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'master_categories'`
+  );
+  const masterCategoryColumnNames = new Set(masterCategoryColumns.map((column) => column.COLUMN_NAME));
+  if (!masterCategoryColumnNames.has('email')) {
+    await connection.query(
+      'ALTER TABLE master_categories ADD COLUMN email VARCHAR(190) NULL AFTER description'
+    );
+  }
+  if (!masterCategoryColumnNames.has('phone')) {
+    await connection.query(
+      'ALTER TABLE master_categories ADD COLUMN phone VARCHAR(30) NULL AFTER email'
+    );
+  }
+  if (!masterCategoryColumnNames.has('address')) {
+    await connection.query(
+      'ALTER TABLE master_categories ADD COLUMN address TEXT NULL AFTER phone'
+    );
+  }
+
   const [bookColumns] = await connection.execute(
     `SELECT COLUMN_NAME FROM information_schema.COLUMNS
      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'books'`

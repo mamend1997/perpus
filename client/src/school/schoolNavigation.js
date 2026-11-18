@@ -1,57 +1,78 @@
 import {
-  BookOpen, ClipboardList, FileBarChart2, LayoutDashboard, MessageSquare,
-  PackagePlus, Repeat2, Star, Tags, Ticket, Users
+  BookOpen, FileBarChart2, LayoutDashboard, MessageSquare,
+  PackagePlus, Repeat2, Settings, Star, Tags, Ticket, Users, Wallet
 } from 'lucide-react';
 
-const staffRoles = ['admin', 'kepsek', 'kapus'];
-const allRoles = [...staffRoles, 'member'];
+const allRoles = ['admin', 'kepsek', 'kapus', 'member'];
+
+export const masterCategoryTypes = {
+  Bahasa: 'bahasa',
+  Jenis: 'jenis',
+  Koleksi: 'koleksi',
+  Klasifikasi: 'klasifikasi',
+  Topik: 'topik',
+  Rak: 'rak',
+  Pengarang: 'pengarang',
+  Penerbit: 'penerbit',
+  Agen: 'agen'
+};
 
 export const schoolNavigation = [
   {
     section: 'RINGKASAN',
-    items: [{ label: 'Dashboard', icon: LayoutDashboard, roles: allRoles }]
+    items: [{ label: 'Dashboard', icon: LayoutDashboard, roles: allRoles, permission: 'dashboard' }]
   },
   {
-    section: 'PENGELOLAAN KOLEKSI',
+    section: 'PENGELOLAAN PERPUSTAKAAN',
+    items: [
+      {
+        label: 'Data Buku',
+        icon: BookOpen,
+        children: [
+          { label: 'Daftar Pustaka', icon: BookOpen, roles: allRoles, permission: 'books.catalog' },
+          { label: 'Tambah Stok Buku', icon: PackagePlus, roles: allRoles, permission: 'books.stock' },
+          { label: 'Eksemplar', icon: BookOpen, roles: allRoles, permission: 'books.items' },
+          { label: 'Pengadaan Buku', icon: PackagePlus, roles: allRoles, permission: 'procurements' }
+        ]
+      },
+      {
+        label: 'Sirkulasi Buku',
+        icon: Repeat2,
+        children: [
+          { label: 'Analitik Sirkulasi', icon: FileBarChart2, roles: allRoles, permission: 'circulation.analytics' },
+          { label: 'Peminjaman', icon: Repeat2, roles: allRoles, permission: 'circulation.loans' },
+          { label: 'Denda', icon: Wallet, roles: allRoles, permission: 'circulation.fines' }
+        ]
+      }
+    ]
+  },
+  {
+    section: 'MASTER DATA',
     items: [
       {
         label: 'Master Data',
         icon: Tags,
-        children: ['Bahasa', 'Jenis', 'Koleksi', 'Klasifikasi', 'Topik', 'Rak', 'Pengarang', 'Penerbit', 'Agen']
-          .map((label) => ({ label, icon: Tags, roles: staffRoles }))
-      },
-      {
-        label: 'Data Buku & Inventaris',
-        icon: BookOpen,
-        children: [
-          { label: 'Daftar Pustaka', icon: BookOpen, roles: allRoles },
-          { label: 'Tambah Stok Buku', icon: PackagePlus, roles: staffRoles },
-          { label: 'Eksemplar', icon: ClipboardList, roles: staffRoles }
-        ]
+        children: Object.entries(masterCategoryTypes)
+          .map(([label, type]) => ({ label, icon: Tags, roles: allRoles, permission: `master.${type}` }))
       }
     ]
   },
   {
     section: 'LAYANAN PERPUSTAKAAN',
     items: [
-      {
-        label: 'Sirkulasi & Peminjaman',
-        icon: Repeat2,
-        children: [
-          { label: 'Peminjaman Saya', icon: BookOpen, roles: ['member'] },
-          { label: 'Manajemen Sirkulasi', icon: Repeat2, roles: staffRoles }
-        ]
-      },
-      { label: 'Pengadaan Buku', icon: PackagePlus, roles: allRoles },
-      { label: 'Buku Tamu Digital', icon: Users, roles: allRoles },
-      { label: 'Booking Buku', icon: Ticket, roles: allRoles },
-      { label: 'Ulasan & Rating', icon: Star, roles: allRoles },
-      { label: 'Pengumuman', icon: MessageSquare, roles: allRoles }
+      { label: 'Buku Tamu Digital', icon: Users, roles: allRoles, permission: 'visitors' },
+      { label: 'Booking Buku', icon: Ticket, roles: allRoles, permission: 'reservations' },
+      { label: 'Ulasan & Rating', icon: Star, roles: allRoles, permission: 'reviews' },
+      { label: 'Pengumuman', icon: MessageSquare, roles: allRoles, permission: 'announcements' }
     ]
   },
   {
     section: 'ANALISIS',
-    items: [{ label: 'Laporan Bulanan', icon: FileBarChart2, roles: staffRoles }]
+    items: [{ label: 'Laporan Bulanan', icon: FileBarChart2, roles: allRoles, permission: 'reports.monthly' }]
+  },
+  {
+    section: 'AKUN',
+    items: [{ label: 'Pengaturan', icon: Settings, roles: ['admin'] }]
   }
 ];
 
@@ -98,19 +119,23 @@ export const schoolModuleDetails = {
   },
   'Tambah Stok Buku': {
     description: 'Tambahkan eksemplar pada judul buku yang sudah terdaftar.',
-    features: ['Cari judul buku', 'Input jumlah stok', 'Buat nomor serial otomatis', 'Perbarui jumlah inventaris']
+    features: ['Cari judul buku', 'Input jumlah stok', 'Buat nomor serial otomatis', 'Perbarui stok buku']
   },
   Eksemplar: {
     description: 'Pantau setiap salinan fisik menggunakan nomor serial dan status terkini.',
-    features: ['Nomor serial S00, S01, dan seterusnya', 'Status tersedia/dipinjam/rusak', 'Filter berdasarkan judul', 'Riwayat perubahan']
+    features: ['Nomor serial salinan', 'Status tersedia/dipinjam/rusak', 'Filter berdasarkan judul', 'Riwayat perubahan']
   },
-  'Peminjaman Saya': {
-    description: 'Lihat status peminjaman, tanggal jatuh tempo, dan riwayat pengembalian.',
-    features: ['Daftar peminjaman aktif', 'Informasi jatuh tempo', 'Rincian denda', 'Riwayat peminjaman']
+  'Analitik Sirkulasi': {
+    description: 'Pantau tren peminjaman, pengembalian, dan denda perpustakaan.',
+    features: ['Ringkasan transaksi sirkulasi', 'Tren peminjaman dan pengembalian', 'Filter periode laporan', 'Rekap aktivitas anggota']
   },
-  'Manajemen Sirkulasi': {
-    description: 'Kelola transaksi peminjaman, pengembalian, persetujuan, dan denda.',
-    features: ['Profil anggota dan rombel', 'Peminjaman dan pengembalian', 'Perhitungan denda otomatis', 'Kartu anggota digital']
+  Peminjaman: {
+    description: 'Lihat dan kelola transaksi peminjaman buku sesuai peran pengguna.',
+    features: ['Daftar peminjaman', 'Tanggal pinjam dan jatuh tempo', 'Status pengembalian', 'Riwayat transaksi']
+  },
+  Denda: {
+    description: 'Tinjau dan kelola denda keterlambatan pengembalian buku.',
+    features: ['Daftar denda', 'Nominal dan status pembayaran', 'Filter anggota dan periode', 'Riwayat pelunasan']
   },
   'Pengadaan Buku': {
     description: 'Tinjau usulan buku dan kelola tindak lanjut pengadaan.',

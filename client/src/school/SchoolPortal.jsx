@@ -1,32 +1,59 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { BookOpen, ChevronDown, ChevronRight, LogOut, Menu, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { BookOpen, ChevronDown, ChevronRight, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Users } from 'lucide-react';
 import SchoolDashboard from './SchoolDashboard.jsx';
 import SchoolModulePage from './SchoolModulePage.jsx';
-import { schoolNavigation } from './schoolNavigation.js';
+import SchoolMasterDataPage from './SchoolMasterDataPage.jsx';
+import SchoolProfileEditor from './SchoolProfileEditor.jsx';
+import SchoolSettingsPage from './SchoolSettingsPage.jsx';
+import { fetchSchoolProfile } from './schoolAccountApi.js';
+import { fetchMySchoolPermissions } from './schoolSettingsApi.js';
+import { masterCategoryTypes, schoolNavigation } from './schoolNavigation.js';
+import { defaultSchoolPermissions, schoolPermissionByLabel } from './schoolPermissions.js';
 import './school.css';
 
-export default function SchoolPortal({ account, onLogout }) {
+export default function SchoolPortal({ account, onLogout, onAccountUpdated }) {
   const [active, setActive] = useState('Dashboard');
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [profileEditorOpen, setProfileEditorOpen] = useState(false);
+  const [profile, setProfile] = useState({ id: account.id, name: account.name, email: account.email, avatar: null });
+  const [profileLoaded, setProfileLoaded] = useState(false);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileError, setProfileError] = useState('');
+  const [permissions, setPermissions] = useState(null);
+  const [permissionsLoading, setPermissionsLoading] = useState(account.role !== 'admin');
+  const [permissionsError, setPermissionsError] = useState('');
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('school-sidebar-collapsed') === 'true');
   const [hoverExpanded, setHoverExpanded] = useState(false);
   const [expandedSections, setExpandedSections] = useState({
+    'Data Buku': true,
+    'Sirkulasi Buku': true,
     'Master Data': true,
-    'Data Buku & Inventaris': true
   });
   const profileMenuRef = useRef(null);
   const school = account.school || {};
   const schoolName = school.name || 'Sekolah';
   const role = account.role || 'admin';
+  const activeMasterType = masterCategoryTypes[active];
+
+  function canView(feature) {
+    return role === 'admin' || Boolean(permissions?.[feature]?.view);
+  }
 
   const visibleNavigation = useMemo(() => schoolNavigation.map((section) => ({
     ...section,
     items: section.items.map((item) => ({
       ...item,
-      children: item.children?.filter((child) => child.roles.includes(role))
-    })).filter((item) => item.children ? item.children.length > 0 : item.roles.includes(role))
-  })).filter((section) => section.items.length > 0), [role]);
+      children: item.children?.filter((child) => child.roles.includes(role) && canView(child.permission))
+    })).filter((item) => item.children
+      ? item.children.length > 0
+      : item.roles.includes(role) && (!item.permission || canView(item.permission)))
+  })).filter((section) => section.items.length > 0), [role, permissions]);
+
+  const activePermissionFeature = activeMasterType ? `master.${activeMasterType}` : schoolPermissionByLabel[active];
+  const activeRights = role === 'admin'
+    ? { view: true, edit: true, delete: true }
+    : permissions?.[activePermissionFeature] || defaultSchoolPermissions()[activePermissionFeature];
 
   useEffect(() => {
     if (!profileOpen) return undefined;
@@ -43,9 +70,62 @@ export default function SchoolPortal({ account, onLogout }) {
     };
   }, [profileOpen]);
 
+  useEffect(() => {
+    if (role === 'admin') {
+      setPermissions(null);
+      setPermissionsError('');
+      setPermissionsLoading(false);
+      return undefined;
+    }
+    let activeRequest = true;
+    setPermissionsLoading(true);
+    setPermissionsError('');
+    fetchMySchoolPermissions()
+      .then(({ permissions: currentPermissions }) => {
+        if (activeRequest) setPermissions(currentPermissions);
+      })
+      .catch((error) => {
+        if (activeRequest) setPermissionsError(error.message);
+      })
+      .finally(() => {
+        if (activeRequest) setPermissionsLoading(false);
+      });
+    return () => { activeRequest = false; };
+  }, [role]);
+
+  useEffect(() => {
+    if (!profileOpen || profileLoaded) return undefined;
+    let activeRequest = true;
+    setProfileLoading(true);
+    setProfileError('');
+    fetchSchoolProfile()
+      .then(({ profile: currentProfile }) => {
+        if (!activeRequest) return;
+        setProfile(currentProfile);
+        setProfileLoaded(true);
+        onAccountUpdated?.({ ...account, ...currentProfile });
+      })
+      .catch((error) => {
+        if (activeRequest) setProfileError(error.message);
+      })
+      .finally(() => {
+        if (activeRequest) setProfileLoading(false);
+      });
+    return () => { activeRequest = false; };
+  }, [account, onAccountUpdated, profileLoaded, profileOpen]);
+
   function selectMenu(label) {
     setActive(label);
     setMobileOpen(false);
+  }
+
+  function handleProfileUpdated(updatedProfile) {
+    const updatedAccount = { ...account, ...updatedProfile };
+    setProfile(updatedProfile);
+    setProfileLoaded(true);
+    onAccountUpdated?.(updatedAccount);
+    setProfileEditorOpen(false);
+    setProfileOpen(false);
   }
 
   function toggleSection(label) {
@@ -81,7 +161,8 @@ export default function SchoolPortal({ account, onLogout }) {
         <nav className="school-side-nav" aria-label="Menu perpustakaan sekolah">
           {visibleNavigation.map((section) => (
             <div className="school-nav-section" key={section.section}>
-              <p>{section.section}</p>
+              {!['PENGELOLAAN PERPUSTAKAAN', 'MASTER DATA', 'LAYANAN PERPUSTAKAAN'].includes(section.section)
+                && <p>{section.section}</p>}
               {section.items.map(({ label, icon: Icon, children }) => children ? (
                 <div className="school-nav-parent" key={label}>
                   <button type="button" title={collapsed && !hoverExpanded ? label : undefined} className={`school-nav-item school-nav-group ${children.some((child) => child.label === active) ? 'selected' : ''}`} aria-expanded={Boolean(expandedSections[label])} onClick={() => toggleSection(label)}>
@@ -112,13 +193,16 @@ export default function SchoolPortal({ account, onLogout }) {
             <div><span>{schoolName}</span><b>{active}</b></div>
           </div>
           <div className="school-profile-menu" ref={profileMenuRef}>
-            <button type="button" className="school-profile-trigger" aria-label={`Profil ${account.name}`} aria-expanded={profileOpen} aria-haspopup="menu" onClick={() => setProfileOpen((open) => !open)}>
-              <span className="top-admin-avatar">{account.name.slice(0, 1).toUpperCase()}</span>
-              <span className="school-profile-trigger-copy"><b>{account.name}</b><small>{account.email}</small></span>
-              <ChevronDown size={15} />
+            <button type="button" className="school-profile-trigger school-avatar-only" aria-label={`Profil ${profile.name}`} aria-expanded={profileOpen} aria-haspopup="menu" onClick={() => setProfileOpen((open) => !open)}>
+              {profile.avatar
+                ? <img className="school-profile-avatar-image" src={profile.avatar} alt="" />
+                : <span className="top-admin-avatar">{profile.name?.slice(0, 1).toUpperCase() || 'U'}</span>}
             </button>
             {profileOpen && <div className="school-profile-dropdown" role="menu">
-              <div><b>{account.name}</b><span>{account.email}</span></div>
+              <div><b>{profile.name}</b><span>{profile.email}</span></div>
+              {profileLoading && <small className="school-profile-loading">Memuat profil...</small>}
+              {profileError && <p className="school-profile-error" role="alert">{profileError}</p>}
+              <button type="button" role="menuitem" onClick={() => { setProfileOpen(false); setProfileEditorOpen(true); }}><Users size={15} />Edit Profil</button>
               <button type="button" role="menuitem" onClick={() => { setProfileOpen(false); onLogout(); }}><LogOut size={15} />Keluar</button>
             </div>}
           </div>
@@ -126,11 +210,30 @@ export default function SchoolPortal({ account, onLogout }) {
 
         <div className="school-page-content">
           <div className="library-page-transition" key={active}>
-            {active === 'Dashboard' ? <SchoolDashboard account={account} /> : <SchoolModulePage active={active} />}
+            {permissionsLoading ? (
+              <div className="library-empty-state">Memuat hak akses...</div>
+            ) : permissionsError ? (
+              <div className="library-error" role="alert">{permissionsError}</div>
+            ) : active === 'Pengaturan' && role === 'admin' ? (
+              <SchoolSettingsPage />
+            ) : role !== 'admin' && !activeRights?.view ? (
+              <div className="library-error" role="alert">Anda tidak memiliki izin untuk membuka halaman ini.</div>
+            ) : active === 'Dashboard' ? (
+              <SchoolDashboard account={profile} />
+            ) : activeMasterType ? (
+              <SchoolMasterDataPage active={active} type={activeMasterType} rights={activeRights} />
+            ) : (
+              <SchoolModulePage active={active} />
+            )}
           </div>
           <footer className="page-footer"><span>© {new Date().getFullYear()} PerpusKita</span><span>{schoolName}</span></footer>
         </div>
       </main>
+      {profileEditorOpen && <SchoolProfileEditor
+        profile={profile}
+        onClose={() => setProfileEditorOpen(false)}
+        onProfileUpdated={handleProfileUpdated}
+      />}
     </div>
   );
 }

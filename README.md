@@ -23,10 +23,11 @@ Set `JWT_SECRET` dengan string acak minimal 32 karakter dan isi `SUPER_ADMIN_NAM
 ```powershell
 npm run db:setup
 npm run seed:admin
+npm run seed:master-data -- 6GPJ
 npm run dev
 ```
 
-Buka `http://localhost:5173` untuk portal sekolah. Login Super Admin terpisah di `/super-admin/login`; pendaftaran dan login administrator sekolah tersedia di `/school/register` dan `/school/login`. Pendaftaran meminta nomor WhatsApp Indonesia dan kata sandi minimal 8 karakter yang berisi huruf besar, angka, serta simbol. Setelah pendaftaran, aplikasi menampilkan ringkasan sekolah, kode 4 karakter yang bisa disalin, dan tombol untuk masuk ke dashboard. API berjalan di `http://localhost:4000`; pemeriksaan koneksi tersedia di `/api/health`.
+Buka `http://localhost:5173` untuk portal sekolah. Perintah seed Master Data mengisi contoh data untuk satu sekolah berdasarkan kode sekolah dan aman dijalankan ulang tanpa menggandakan contoh. Login Super Admin terpisah di `/super-admin/login`; pendaftaran dan login akun sekolah tersedia di `/school/register` dan `/school/login`. Pendaftaran meminta nomor WhatsApp Indonesia dan kata sandi minimal 8 karakter yang berisi huruf besar, angka, serta simbol. Setelah pendaftaran, aplikasi menampilkan ringkasan sekolah, kode 4 karakter yang bisa disalin, dan tombol untuk masuk ke dashboard. API berjalan di `http://localhost:4000`; pemeriksaan koneksi tersedia di `/api/health`.
 
 ## Deploy ke Railway
 

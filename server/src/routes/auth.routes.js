@@ -130,7 +130,7 @@ router.post('/school/login', async (req, res, next) => {
               s.name AS school_name, s.school_code, s.status AS school_status
        FROM users u
        JOIN tenants_schools s ON s.id = u.school_id
-       WHERE s.school_code = ? AND u.email = ? AND u.role = 'admin'
+       WHERE s.school_code = ? AND u.email = ? AND u.status = 'active'
        LIMIT 1`,
       [code, normalizedEmail]
     );
@@ -190,7 +190,7 @@ router.get('/school/me', async (req, res, next) => {
               s.school_code, s.status AS school_status
        FROM users u
        JOIN tenants_schools s ON s.id = u.school_id
-       WHERE u.id = ? AND u.school_id = ? AND s.status = 'active'
+       WHERE u.id = ? AND u.school_id = ? AND u.status = 'active' AND s.status = 'active'
        LIMIT 1`,
       [claims.sub, claims.schoolId]
     );

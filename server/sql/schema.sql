@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS users (
   role ENUM('admin', 'kepsek', 'kapus', 'member') NOT NULL DEFAULT 'member',
   name VARCHAR(180) NOT NULL,
   email VARCHAR(190) NULL,
+  avatar MEDIUMTEXT NULL,
   password VARCHAR(255) NOT NULL,
   nis_nisn VARCHAR(40) NULL,
   rombel VARCHAR(80) NULL,
@@ -52,6 +53,22 @@ CREATE TABLE IF NOT EXISTS users (
     ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS school_role_permissions (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  school_id BIGINT UNSIGNED NOT NULL,
+  role ENUM('kepsek', 'kapus', 'member') NOT NULL,
+  feature_key VARCHAR(80) NOT NULL,
+  can_view TINYINT(1) NOT NULL DEFAULT 0,
+  can_edit TINYINT(1) NOT NULL DEFAULT 0,
+  can_delete TINYINT(1) NOT NULL DEFAULT 0,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_school_role_feature (school_id, role, feature_key),
+  KEY idx_school_role_permissions_role (school_id, role),
+  CONSTRAINT fk_school_role_permissions_school FOREIGN KEY (school_id) REFERENCES tenants_schools (id)
+    ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS master_categories (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   school_id BIGINT UNSIGNED NOT NULL,
@@ -59,6 +76,9 @@ CREATE TABLE IF NOT EXISTS master_categories (
   code VARCHAR(50) NULL,
   name VARCHAR(180) NOT NULL,
   description TEXT NULL,
+  email VARCHAR(190) NULL,
+  phone VARCHAR(30) NULL,
+  address TEXT NULL,
   status ENUM('active', 'inactive') NOT NULL DEFAULT 'active',
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),

@@ -8,7 +8,8 @@
     "build": "npm ci --prefix server --include=dev && npm ci --prefix client --include=dev && npm run build --prefix client",
     "start": "npm start --prefix server",
     "db:setup": "npm run db:setup --prefix server",
-    "seed:admin": "npm run seed:admin --prefix server"
+    "seed:admin": "npm run seed:admin --prefix server",
+    "seed:master-data": "node server/scripts/seed-master-data.js"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"
