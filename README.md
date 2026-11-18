@@ -33,7 +33,7 @@ Buka `http://localhost:5173` dan masuk menggunakan kredensial Super Admin dari `
 1. Buat project Railway dan tambahkan layanan **MySQL**.
 2. Tambahkan layanan dari repo GitHub ini (`mamend1997/perpus`, branch `main`). Konfigurasi build, start, dan health check dibaca dari `railway.json`; frontend dan API berjalan di satu layanan/domain.
 3. Tambahkan environment variables layanan aplikasi:
-   - `DATABASE_URL`: reference variable connection URL dari layanan MySQL Railway (`MYSQL_URL`).
+   - Hubungkan variabel MySQL service ke layanan aplikasi. Pilih reference variable `MYSQL_URL` sebagai `DATABASE_URL`, atau reference variabel `MYSQLHOST`, `MYSQLPORT`, `MYSQLUSER`, `MYSQLPASSWORD`, dan `MYSQLDATABASE` secara langsung; backend mendukung keduanya.
    - `JWT_SECRET`: string acak kuat minimal 32 karakter.
    - `SUPER_ADMIN_NAME`, `SUPER_ADMIN_EMAIL`, `SUPER_ADMIN_PASSWORD`: kredensial bootstrap admin; password minimal 12 karakter.
    - `CLIENT_ORIGIN`: URL publik layanan aplikasi, misalnya `https://nama-layanan.up.railway.app`.

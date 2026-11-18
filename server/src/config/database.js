@@ -16,17 +16,21 @@ function getDatabaseConfig() {
     };
   }
 
-  const { DB_HOST, DB_NAME, DB_USER, DB_PASSWORD } = process.env;
-  if (!DB_HOST || !DB_NAME || !DB_USER) {
-    throw new Error('Set DATABASE_URL (Railway) or DB_HOST, DB_NAME, and DB_USER.');
+  const host = process.env.DB_HOST || process.env.MYSQLHOST;
+  const name = process.env.DB_NAME || process.env.MYSQLDATABASE;
+  const user = process.env.DB_USER || process.env.MYSQLUSER;
+  if (!host || !name || !user) {
+    throw new Error(
+      'MySQL configuration is missing. Set DATABASE_URL/MYSQL_URL, DB_HOST/DB_NAME/DB_USER, or Railway MYSQLHOST/MYSQLDATABASE/MYSQLUSER variables.'
+    );
   }
 
   return {
-    host: DB_HOST,
-    port: Number(process.env.DB_PORT || 3306),
-    user: DB_USER,
-    password: DB_PASSWORD || '',
-    database: DB_NAME,
+    host,
+    port: Number(process.env.DB_PORT || process.env.MYSQLPORT || 3306),
+    user,
+    password: process.env.DB_PASSWORD || process.env.MYSQLPASSWORD || '',
+    database: name,
     waitForConnections: true,
     connectionLimit: 10,
     decimalNumbers: true
