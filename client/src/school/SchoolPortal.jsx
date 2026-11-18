@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { Component, lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { BookOpen, ChevronDown, ChevronRight, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Pencil } from 'lucide-react';
 import SchoolDashboard from './SchoolDashboard.jsx';
 import SchoolModulePage from './SchoolModulePage.jsx';
@@ -6,6 +6,7 @@ import SchoolMasterDataPage from './SchoolMasterDataPage.jsx';
 import SchoolIdentityPage from './SchoolIdentityPage.jsx';
 import SchoolBookCatalogPage from './SchoolBookCatalogPage.jsx';
 import SchoolBookStockPage from './SchoolBookStockPage.jsx';
+import SchoolRackTransfersPage from './SchoolRackTransfersPage.jsx';
 import SchoolBookItemsPage from './SchoolBookItemsPage.jsx';
 import SchoolLoansPage from './SchoolLoansPage.jsx';
 import SchoolFinesPage from './SchoolFinesPage.jsx';
@@ -26,6 +27,26 @@ import './school.css';
 const SchoolCirculationAnalyticsPage = lazy(() => import('./SchoolCirculationAnalyticsPage.jsx'));
 const SchoolReportsPage = lazy(() => import('./SchoolReportsPage.jsx'));
 const SchoolStudentsPage = lazy(() => import('./SchoolStudentsPage.jsx'));
+
+class StudentPageErrorBoundary extends Component {
+  state = { error: null, retryKey: 0 };
+
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="library-error" role="alert">
+          <span>Halaman Data Siswa gagal ditampilkan: {this.state.error.message || 'terjadi kesalahan saat memuat data.'}</span>
+          <button type="button" onClick={() => this.setState((state) => ({ error: null, retryKey: state.retryKey + 1 }))}>Coba lagi</button>
+        </div>
+      );
+    }
+    return <div key={this.state.retryKey}>{this.props.children}</div>;
+  }
+}
 
 export default function SchoolPortal({ account, onLogout, onAccountUpdated }) {
   const [active, setActive] = useState('Dashboard');
@@ -264,6 +285,8 @@ export default function SchoolPortal({ account, onLogout, onAccountUpdated }) {
               <SchoolBookCatalogPage rights={activeRights} role={role} />
             ) : active === 'Tambah Stok Buku' ? (
               <SchoolBookStockPage rights={activeRights} />
+            ) : active === 'Pindah Rak' ? (
+              <SchoolRackTransfersPage rights={activeRights} />
             ) : active === 'Eksemplar' ? (
               <SchoolBookItemsPage rights={activeRights} schoolName={schoolName} />
             ) : active === 'Pengadaan Buku' ? (
@@ -287,15 +310,19 @@ export default function SchoolPortal({ account, onLogout, onAccountUpdated }) {
             ) : active === 'Tahun Pelajaran' ? (
               <SchoolAcademicYearsPage rights={activeRights} />
             ) : active === 'Data Siswa & Rombel' ? (
-              <Suspense fallback={<div className="library-empty-state">Memuat data siswa...</div>}>
-                <SchoolStudentsPage rights={activeRights} />
-              </Suspense>
+              <StudentPageErrorBoundary>
+                <Suspense fallback={<div className="library-empty-state">Memuat data siswa...</div>}>
+                  <SchoolStudentsPage rights={activeRights} />
+                </Suspense>
+              </StudentPageErrorBoundary>
             ) : active === 'Analitik Sirkulasi' ? (
               <Suspense fallback={<div className="library-empty-state">Memuat analitik sirkulasi...</div>}>
                 <SchoolCirculationAnalyticsPage rights={activeRights} schoolName={schoolName} />
               </Suspense>
             ) : active === 'Identitas Sekolah' ? (
               <SchoolIdentityPage rights={activeRights} onSaved={handleSchoolIdentityUpdated} />
+            ) : active === 'Kop Sekolah' ? (
+              <SchoolIdentityPage mode="letterhead" rights={activeRights} onSaved={handleSchoolIdentityUpdated} />
             ) : activeMasterType ? (
               <SchoolMasterDataPage active={active} type={activeMasterType} rights={activeRights} />
             ) : (

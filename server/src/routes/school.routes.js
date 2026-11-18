@@ -92,9 +92,14 @@ function normalizeMasterCategory(body, type) {
   const phone = typeof body?.phone === 'string' ? body.phone.trim() : '';
   const address = typeof body?.address === 'string' ? body.address.trim() : '';
   const status = typeof body?.status === 'string' && body.status ? body.status : 'active';
+  const capacityRaw = body?.capacity;
+  const capacity = type === 'rak' && capacityRaw != null && capacityRaw !== '' ? Number(capacityRaw) : null;
 
   if (!masterCategoryTypes.has(type)) {
     return { error: 'Jenis Master Data tidak valid.' };
+  }
+  if (type === 'rak' && capacity != null && (!Number.isSafeInteger(capacity) || capacity < 1 || capacity > 100000)) {
+    return { error: 'Kapasitas rak harus berupa angka bulat antara 1 dan 100.000.' };
   }
   if (type === 'agen') {
     if (name.length < 1 || name.length > 180 || email.length > 190 || phone.length > 30 || address.length > 65535) {
@@ -115,6 +120,7 @@ function normalizeMasterCategory(body, type) {
         email: email || null,
         phone: phone || null,
         address: address || null,
+        capacity: null,
         status
       }
     };
@@ -131,7 +137,9 @@ function normalizeMasterCategory(body, type) {
   return {
     value: {
       type, code: code || null, name, description: description || null,
-      email: null, phone: null, address: null, status
+      email: null, phone: null, address: null,
+      capacity: type === 'rak' ? capacity : null,
+      status
     }
   };
 }
@@ -583,7 +591,7 @@ router.get('/master-categories', requireMasterCategoryPermission('view'), async 
       values.push(...Array(6).fill(`%${search}%`));
     }
     const [categories] = await pool.execute(
-      `SELECT id, type, code, name, description, email, phone, address, status, created_at
+      `SELECT id, type, code, name, description, email, phone, address, capacity, status, created_at
        FROM master_categories
        WHERE school_id = ? AND type = ? ${searchCondition}
        ORDER BY name ASC, id ASC`,
@@ -601,9 +609,9 @@ router.post('/master-categories', requireMasterCategoryPermission('edit'), async
 
   try {
     const [result] = await pool.execute(
-      `INSERT INTO master_categories (school_id, type, code, name, description, email, phone, address, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [req.school.id, value.type, value.code, value.name, value.description, value.email, value.phone, value.address, value.status]
+      `INSERT INTO master_categories (school_id, type, code, name, description, email, phone, address, capacity, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [req.school.id, value.type, value.code, value.name, value.description, value.email, value.phone, value.address, value.capacity, value.status]
     );
     return res.status(201).json({ category: { id: result.insertId, ...value } });
   } catch (error) {
@@ -691,11 +699,21 @@ router.patch('/master-categories/:id', requireMasterCategoryPermission('edit'), 
   if (error) return res.status(400).json({ message: error });
 
   try {
+    if (value.type === 'rak' && value.capacity != null) {
+      const [[usage]] = await pool.execute(
+        `SELECT COUNT(*) AS used FROM book_items
+         WHERE school_id = ? AND rack_id = ? AND status = 'Tersedia'`,
+        [req.school.id, id]
+      );
+      if (Number(usage.used) > value.capacity) {
+        return res.status(409).json({ message: `Kapasitas tidak dapat kurang dari ${Number(usage.used)} eksemplar yang sedang berada di rak ini.` });
+      }
+    }
     const [result] = await pool.execute(
       `UPDATE master_categories
-       SET code = ?, name = ?, description = ?, email = ?, phone = ?, address = ?, status = ?
+       SET code = ?, name = ?, description = ?, email = ?, phone = ?, address = ?, capacity = ?, status = ?
        WHERE id = ? AND school_id = ? AND type = ?`,
-      [value.code, value.name, value.description, value.email, value.phone, value.address, value.status, id, req.school.id, value.type]
+      [value.code, value.name, value.description, value.email, value.phone, value.address, value.capacity, value.status, id, req.school.id, value.type]
     );
     if (result.affectedRows === 0) {
       const [existing] = await pool.execute(

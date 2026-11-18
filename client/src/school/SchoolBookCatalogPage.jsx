@@ -127,7 +127,7 @@ function MasterSelect({
           </div>
         )}
         {allowManual && query.trim() && !options.some((option) => option.name.toLocaleLowerCase('id-ID') === query.trim().toLocaleLowerCase('id-ID')) && (
-          <small>Nama pengarang baru akan disimpan ke Master Data.</small>
+          <small>Nama {label.toLocaleLowerCase('id-ID')} baru akan ditambahkan ke Master Data jika belum tersedia.</small>
         )}
       </div>
     </label>
@@ -136,7 +136,7 @@ function MasterSelect({
 
 function BookFormModal({ book, categories, onClose, onSave }) {
   const [form, setForm] = useState(() => initialForm(book));
-  const [manualAuthor, setManualAuthor] = useState('');
+  const [manualCategoryNames, setManualCategoryNames] = useState({});
   const [coverFile, setCoverFile] = useState(null);
   const [digitalFile, setDigitalFile] = useState(null);
   const [removeCover, setRemoveCover] = useState(false);
@@ -200,14 +200,12 @@ function BookFormModal({ book, categories, onClose, onSave }) {
   async function submit(event) {
     event.preventDefault();
     const invalidCategory = formCategories.find(([name]) => (
-      name === 'author_id'
-        ? !form.author_id && !manualAuthor.trim()
-        : !form[name]
+      !form[name] && (name === 'rack_id' || !manualCategoryNames[name]?.trim())
     ));
     if (invalidCategory) {
-      setError(invalidCategory[1] === 'Pengarang'
-        ? 'Pilih pengarang dari daftar atau ketik nama pengarang.'
-        : `Pilih ${invalidCategory[1]} dari daftar yang tersedia.`);
+      setError(invalidCategory[1] === 'Lokasi Rak'
+        ? 'Pilih lokasi rak dari daftar yang tersedia.'
+        : `Pilih atau masukkan nama ${invalidCategory[1].toLocaleLowerCase('id-ID')}.`);
       return;
     }
     setSaving(true);
@@ -215,7 +213,10 @@ function BookFormModal({ book, categories, onClose, onSave }) {
     try {
       const payload = new FormData();
       formFields.forEach((field) => payload.append(field, form[field] ?? ''));
-      payload.append('author_name', form.author_id ? '' : manualAuthor.trim());
+      payload.append('category_names', JSON.stringify(Object.fromEntries(
+        formCategories.filter(([name]) => !form[name] && manualCategoryNames[name]?.trim())
+          .map(([name]) => [name, manualCategoryNames[name].trim()])
+      )));
       if (coverFile) payload.append('cover', coverFile);
       if (digitalFile) payload.append('digitalAttachment', digitalFile);
       if (removeCover) payload.append('remove_cover', 'true');
@@ -259,9 +260,9 @@ function BookFormModal({ book, categories, onClose, onSave }) {
                 value={form[name]}
                 options={categories[type] || []}
                 onValueChange={updateCategory}
-                allowManual={name === 'author_id'}
-                manualValue={name === 'author_id' ? manualAuthor : ''}
-                onManualChange={setManualAuthor}
+                allowManual={name !== 'rack_id'}
+                manualValue={manualCategoryNames[name] || ''}
+                onManualChange={(nextName) => setManualCategoryNames((current) => ({ ...current, [name]: nextName }))}
                 required
               />
             ))}

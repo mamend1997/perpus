@@ -24,7 +24,12 @@ const identityTextFields = Object.keys(emptyIdentity).filter((field) => field !=
 function normalizeIdentity(value) {
   return {
     ...emptyIdentity,
-    ...Object.fromEntries(identityTextFields.map((field) => [field, value[field] || ''])),
+    ...Object.fromEntries(identityTextFields.map((field) => [
+      field,
+      field === 'website'
+        ? String(value[field] || '').replace(/^https?:\/\//i, '')
+        : value[field] || ''
+    ])),
     logo: value.logo || null
   };
 }
@@ -75,7 +80,8 @@ function resizeSchoolLogo(file) {
   });
 }
 
-export default function SchoolIdentityPage({ rights, onSaved }) {
+export default function SchoolIdentityPage({ rights, onSaved, mode = 'identity' }) {
+  const isLetterhead = mode === 'letterhead';
   const canEdit = Boolean(rights?.edit);
   const [identity, setIdentity] = useState(emptyIdentity);
   const [loading, setLoading] = useState(true);
@@ -152,8 +158,10 @@ export default function SchoolIdentityPage({ rights, onSaved }) {
     <div className="library-module-page school-identity-page">
       <header className="library-module-heading">
         <span className="library-eyebrow">MASTER DATA</span>
-        <h1>Identitas Sekolah</h1>
-        <p>Kelola informasi resmi sekolah dan logo yang digunakan pada layanan perpustakaan.</p>
+        <h1>{isLetterhead ? 'Kop Sekolah' : 'Identitas Sekolah'}</h1>
+        <p>{isLetterhead
+          ? 'Atur identitas dan pratinjau kop yang digunakan pada cetak laporan perpustakaan.'
+          : 'Kelola informasi resmi sekolah dan logo yang digunakan pada layanan perpustakaan.'}</p>
       </header>
 
       {notice && <div className="book-stock-success" role="status"><Check size={16} />{notice}</div>}
@@ -205,6 +213,16 @@ export default function SchoolIdentityPage({ rights, onSaved }) {
             <input name="librarian_nip" value={identity.librarian_nip} onChange={updateField} maxLength={30} disabled={!canEdit || saving || loading || !loaded} />
           </label>
         </div>
+
+        {isLetterhead && <section className="school-letterhead-preview" aria-label="Pratinjau kop sekolah">
+          {identity.logo && <img src={identity.logo} alt="" />}
+          <div>
+            <b>{identity.name || 'NAMA SEKOLAH'}</b>
+            {identity.npsn && <span>NPSN {identity.npsn}</span>}
+            <span>{identity.address || 'Alamat sekolah'}</span>
+            <span>{[identity.phone, identity.email, identity.website].filter(Boolean).join(' · ') || 'Telepon · Email · Website'}</span>
+          </div>
+        </section>}
 
         <section className="school-identity-logo-section">
           <div className="school-identity-section-heading">

@@ -1439,6 +1439,7 @@
 .visitor-purpose-field { color: #59657b; font-size: 10px; font-weight: 700; }
 .visitor-search { width: 100%; height: 43px; box-sizing: border-box; }
 .visitor-search input { width: 100%; min-width: 0; font-size: 11px; }
+.visitor-picker > .camera-scan-trigger { margin-top: 8px; }
 .visitor-member-results { position: absolute; z-index: 5; top: 100%; left: 0; right: 0; max-height: 230px; overflow-y: auto; padding: 4px; border: 1px solid #e2e7ee; border-radius: 9px; background: #fff; box-shadow: 0 12px 28px #25355220; }
 .visitor-member-results button { width: 100%; display: grid; gap: 4px; padding: 9px; border: 0; border-radius: 6px; background: transparent; cursor: pointer; text-align: left; }
 .visitor-member-results button:hover { background: #fff5eb; }
@@ -2248,6 +2249,7 @@
 .loan-modal-backdrop .loan-modal { width: min(610px, 100%); margin: auto 0; max-height: calc(100vh - 40px); max-height: calc(100dvh - 40px); overflow-y: auto; overscroll-behavior: contain; }
 .loan-modal-form { display: grid; gap: 14px; }
 .loan-picker { position: relative; display: grid; gap: 6px; }
+.loan-picker > .camera-scan-trigger { justify-self: start; }
 .loan-form-label { color: #59657b; font-size: 10px; font-weight: 700; }
 .loan-picker-search { box-sizing: border-box; width: 100%; height: 39px; }
 .loan-picker-search input { width: 100%; min-width: 0; }
@@ -2261,6 +2263,47 @@
 .loan-picker-options button:hover { background: #fff5eb; }
 .loan-picker-options b { color: #35415a; font-size: 10px; }
 .loan-picker-options small { color: #8994a6; font-size: 9px; }
+.loan-form-field { display: grid; gap: 6px; }
+.loan-form-field > input { box-sizing: border-box; width: 100%; min-height: 39px; padding: 8px 10px; border: 1px solid #e0e5ed; border-radius: 8px; font: inherit; }
+.loan-form-field > small { color: #8994a6; font-size: 11px; }
+.camera-scan-trigger { justify-self: start; gap: 7px; }
+.camera-scan-backdrop { z-index: 1200; align-items: center; }
+.camera-scan-modal { width: min(520px, 100%); }
+.camera-scan-preview { position: relative; overflow: hidden; min-height: 240px; border-radius: 12px; background: #101827; }
+.camera-scan-preview video { display: block; width: 100%; max-height: 58vh; object-fit: cover; }
+.camera-scan-frame { position: absolute; inset: 30% 12%; border: 2px solid #f97316; border-radius: 12px; box-shadow: 0 0 0 999px #10182733; pointer-events: none; }
+.camera-scan-hint { position: absolute; right: 12px; bottom: 12px; left: 12px; display: flex; justify-content: center; align-items: center; gap: 7px; padding: 8px; border-radius: 8px; background: #101827c9; color: #fff; font-size: 12px; }
+.academic-year-form-modal { max-height: calc(100dvh - 32px); overflow-y: auto; font-family: inherit; }
+.academic-year-form-modal form { display: grid; gap: 5px; }
+.academic-year-form-modal .master-modal-actions { position: sticky; bottom: -16px; padding: 12px 0 0; background: #fff; }
+.school-letterhead-preview { display: flex; align-items: center; gap: 20px; margin: 20px 0; padding: 18px; border: 1px solid #dfe5ec; border-bottom: 4px double #35415a; background: #fff; text-align: center; }
+.school-letterhead-preview img { width: 76px; height: 76px; flex: 0 0 76px; object-fit: contain; }
+.school-letterhead-preview > div { flex: 1; display: grid; gap: 5px; color: #475569; font-size: 12px; }
+.school-letterhead-preview b { color: #1f2937; font-size: 18px; text-transform: uppercase; }
+@media (max-width: 520px) { .school-letterhead-preview { gap: 10px; padding: 12px; } .school-letterhead-preview img { width: 52px; height: 52px; flex-basis: 52px; } .school-letterhead-preview b { font-size: 14px; } }
+.rack-transfer-form { overflow: visible; padding: 18px; }
+.rack-transfer-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 15px; padding: 16px 0; }
+.rack-transfer-grid > label { position: relative; display: grid; align-content: start; gap: 7px; color: #475569; font-size: 13px; font-weight: 650; }
+.rack-transfer-grid input,
+.rack-transfer-grid select { box-sizing: border-box; width: 100%; min-height: 41px; padding: 8px 10px; border: 1px solid #dfe5ec; border-radius: 8px; background: #fff; color: #35415a; font: inherit; font-size: 13px; }
+.rack-transfer-grid .master-search { min-height: 41px; }
+.rack-transfer-grid .master-search input { border: 0; min-height: 0; }
+.rack-transfer-book-field { grid-column: 1 / -1; }
+.rack-transfer-book-field > .camera-scan-trigger { margin-top: 2px; }
+.rack-transfer-book-options { position: absolute; z-index: 20; top: 100%; left: 0; right: 0; max-height: 245px; overflow-y: auto; padding: 5px; border: 1px solid #e1e6ed; border-radius: 9px; background: #fff; box-shadow: 0 12px 30px #23324a26; }
+.rack-transfer-book-options button { width: 100%; display: grid; gap: 4px; padding: 10px; border: 0; border-radius: 7px; background: transparent; color: #35415a; text-align: left; cursor: pointer; }
+.rack-transfer-book-options button:hover { background: #fff5eb; }
+.rack-transfer-book-options small,
+.rack-transfer-book-options > span { color: #7d899b; font-size: 11px; }
+.rack-transfer-selected { grid-column: 1 / -1; display: grid; gap: 4px; padding: 10px 12px; border: 1px solid #fed7aa; border-radius: 8px; background: #fff9f3; color: #35415a; }
+.rack-transfer-selected small,
+.rack-transfer-grid label small { color: #7d899b; font-size: 11px; font-weight: 450; }
+.rack-transfer-note { grid-column: 1 / -1; }
+.rack-transfer-actions { display: flex; justify-content: flex-end; padding-top: 13px; border-top: 1px solid #edf0f4; }
+.rack-transfer-empty-note { margin: 0; color: #b54708; font-size: 13px; }
+.rack-transfer-history { margin-top: 18px; }
+.rack-transfer-history .master-table { min-width: 800px; }
+@media (max-width: 640px) { .rack-transfer-grid { grid-template-columns: 1fr; } .rack-transfer-book-field, .rack-transfer-selected, .rack-transfer-note { grid-column: auto; } .rack-transfer-form { padding: 14px; } }
 .loan-date-preview { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding: 12px; border: 1px solid #e8edf4; border-radius: 9px; background: #fafbfd; }
 .loan-date-preview > div { display: grid; gap: 5px; }
 .loan-date-preview small { color: #8792a4; font-size: 9px; }

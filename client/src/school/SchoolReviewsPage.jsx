@@ -34,7 +34,6 @@ export default function SchoolReviewsPage({ rights, role }) {
   const canDelete = Boolean(rights?.delete) && !isMember;
   const canView = Boolean(rights?.view);
   const [reviews, setReviews] = useState([]);
-  const [aggregate, setAggregate] = useState({ total: 0, averageRating: 0 });
   const [pagination, setPagination] = useState({ page: 1, total: 0, totalPages: 0 });
   const [page, setPage] = useState(1);
   const [searchInput, setSearchInput] = useState('');
@@ -70,7 +69,6 @@ export default function SchoolReviewsPage({ rights, role }) {
       .then((result) => {
         if (controller.signal.aborted) return;
         setReviews(result.reviews || []);
-        setAggregate(result.aggregate || { total: 0, averageRating: 0 });
         setPagination(result.pagination || { page: 1, total: 0, totalPages: 0 });
         if (result.pagination?.totalPages && page > result.pagination.totalPages) setPage(result.pagination.totalPages);
       })
@@ -185,16 +183,6 @@ export default function SchoolReviewsPage({ rights, role }) {
         </section>
       )}
       {isMember && !canEdit && <div className="library-module-notice">Akun Anda belum diberi izin untuk mengirim ulasan.</div>}
-
-      {!isMember && (
-        <section className="library-panel" style={{ padding: 18, marginBottom: 18 }}>
-          <div className="review-aggregate">
-            <div><span className="library-eyebrow">RATING SEKOLAH</span><strong>{Number(aggregate.averageRating || 0).toFixed(1)}</strong></div>
-            <RatingStars rating={Math.round(aggregate.averageRating || 0)} />
-            <span>{aggregate.total} ulasan</span>
-          </div>
-        </section>
-      )}
 
       <section className="catalog-toolbar-panel loan-toolbar">
         <div className="loan-toolbar-top">

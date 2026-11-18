@@ -100,6 +100,7 @@ CREATE TABLE IF NOT EXISTS master_categories (
   email VARCHAR(190) NULL,
   phone VARCHAR(30) NULL,
   address TEXT NULL,
+  capacity INT UNSIGNED NULL,
   status ENUM('active', 'inactive') NOT NULL DEFAULT 'active',
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
@@ -178,15 +179,19 @@ CREATE TABLE IF NOT EXISTS book_items (
   school_id BIGINT UNSIGNED NOT NULL,
   book_id BIGINT UNSIGNED NOT NULL,
   serial_number VARCHAR(50) NOT NULL,
+  rack_id BIGINT UNSIGNED NULL,
   status ENUM('Tersedia', 'Dipinjam', 'Rusak') NOT NULL DEFAULT 'Tersedia',
   PRIMARY KEY (id),
   UNIQUE KEY uq_book_items_serial (book_id, serial_number),
   UNIQUE KEY uq_book_items_school_id_id (school_id, id),
   KEY idx_book_items_school_status (school_id, status),
+  KEY idx_book_items_rack_status (school_id, rack_id, status),
   CONSTRAINT fk_book_items_school FOREIGN KEY (school_id) REFERENCES tenants_schools (id)
     ON DELETE CASCADE,
   CONSTRAINT fk_book_items_book FOREIGN KEY (school_id, book_id) REFERENCES books (school_id, id)
-    ON DELETE CASCADE
+    ON DELETE CASCADE,
+  CONSTRAINT fk_book_items_rack FOREIGN KEY (school_id, rack_id) REFERENCES master_categories (school_id, id)
+    ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS book_stock_movements (
@@ -209,6 +214,26 @@ CREATE TABLE IF NOT EXISTS book_stock_movements (
   CONSTRAINT fk_book_stock_movements_actor FOREIGN KEY (actor_id) REFERENCES users (id)
     ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS book_rack_transfers (
+   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+   school_id BIGINT UNSIGNED NOT NULL,
+   book_id BIGINT UNSIGNED NOT NULL,
+   from_rack_id BIGINT UNSIGNED NULL,
+   to_rack_id BIGINT UNSIGNED NOT NULL,
+   moved_by BIGINT UNSIGNED NULL,
+   quantity INT UNSIGNED NOT NULL,
+   note VARCHAR(500) NULL,
+   moved_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   PRIMARY KEY (id),
+   KEY idx_rack_transfers_school_time (school_id, moved_at),
+   KEY idx_rack_transfers_book_time (school_id, book_id, moved_at),
+   CONSTRAINT fk_rack_transfers_school FOREIGN KEY (school_id) REFERENCES tenants_schools (id) ON DELETE CASCADE,
+   CONSTRAINT fk_rack_transfers_book FOREIGN KEY (school_id, book_id) REFERENCES books (school_id, id) ON DELETE CASCADE,
+   CONSTRAINT fk_rack_transfers_from_rack FOREIGN KEY (school_id, from_rack_id) REFERENCES master_categories (school_id, id) ON DELETE RESTRICT,
+   CONSTRAINT fk_rack_transfers_to_rack FOREIGN KEY (school_id, to_rack_id) REFERENCES master_categories (school_id, id) ON DELETE RESTRICT,
+   CONSTRAINT fk_rack_transfers_actor FOREIGN KEY (moved_by) REFERENCES users (id) ON DELETE SET NULL
+ ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS loans (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,

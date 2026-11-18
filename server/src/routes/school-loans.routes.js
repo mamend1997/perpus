@@ -89,7 +89,16 @@ router.get('/items', requireSchoolPermission('circulation.loans', 'view'), async
   try {
     const [items] = await pool.execute(
       `SELECT bi.id, bi.book_id, bi.serial_number, b.title AS book_title,
-              b.kode_buku, b.nomor_induk
+              b.kode_buku, b.nomor_induk,
+              (SELECT COUNT(*) FROM book_items available
+               WHERE available.school_id = bi.school_id AND available.book_id = bi.book_id
+                 AND available.status = 'Tersedia'
+                 AND NOT EXISTS (
+                   SELECT 1 FROM loans active_loan
+                   WHERE active_loan.school_id = available.school_id
+                     AND active_loan.book_item_id = available.id
+                     AND active_loan.status IN ('Pending', 'Borrowed')
+                 )) AS available_count
        FROM book_items bi
        JOIN books b ON b.school_id = bi.school_id AND b.id = bi.book_id
        WHERE bi.school_id = ? AND bi.status = 'Tersedia'
@@ -327,11 +336,19 @@ router.get('/', requireSchoolPermission('circulation.loans', 'view'), async (req
 
 router.post('/', requireSchoolPermission('circulation.loans', 'edit'), async (req, res, next) => {
   const bookItemId = String(req.body?.bookItemId ?? '');
+  const quantity = req.body?.quantity == null ? 1 : Number(req.body.quantity);
+  const requestedDuration = req.body?.durationDays == null ? null : Number(req.body.durationDays);
   const userId = req.school.role === 'member'
     ? String(req.school.userId)
     : String(req.body?.userId ?? '');
   if (!validId(bookItemId) || !validId(userId)) {
     return res.status(400).json({ message: 'Pilih anggota dan eksemplar buku yang valid.' });
+  }
+  if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 100) {
+    return res.status(400).json({ message: 'Jumlah peminjaman harus antara 1 dan 100 eksemplar.' });
+  }
+  if (requestedDuration != null && (!Number.isSafeInteger(requestedDuration) || requestedDuration < 1 || requestedDuration > 365)) {
+    return res.status(400).json({ message: 'Durasi peminjaman harus antara 1 sampai 365 hari.' });
   }
 
   let connection;
@@ -365,67 +382,70 @@ router.post('/', requireSchoolPermission('circulation.loans', 'edit'), async (re
       return res.status(409).json({ message: 'Eksemplar buku tidak tersedia untuk dipinjam.' });
     }
 
-    const [activeLoans] = await connection.execute(
-      `SELECT id FROM loans
-       WHERE school_id = ? AND book_item_id = ? AND status IN ('Pending', 'Borrowed')
-       LIMIT 1`,
-      [req.school.id, bookItemId]
+    const [availableItems] = await connection.execute(
+      `SELECT bi.id FROM book_items bi
+       WHERE bi.school_id = ? AND bi.book_id = ? AND bi.status = 'Tersedia'
+         AND NOT EXISTS (
+           SELECT 1 FROM loans l
+           WHERE l.school_id = bi.school_id AND l.book_item_id = bi.id
+             AND l.status IN ('Pending', 'Borrowed')
+         )
+       ORDER BY (bi.id = ?) DESC, bi.id ASC
+       LIMIT ? FOR UPDATE`,
+      [req.school.id, item.book_id, bookItemId, quantity]
     );
-    if (activeLoans.length) {
+    if (availableItems.length < quantity) {
       await connection.rollback();
       transactionStarted = false;
-      return res.status(409).json({ message: 'Eksemplar sudah memiliki transaksi peminjaman aktif.' });
+      return res.status(409).json({ message: `Jumlah buku yang tersedia tidak cukup. Hanya ${availableItems.length} eksemplar yang tersedia.` });
     }
 
     const settings = await readLibrarySettings(req.school.id, connection);
     const maximumLoans = Number(settings.max_loans_per_member);
-    const loanDurationDays = Number(settings.loan_duration_days);
+    const loanDurationDays = requestedDuration || Number(settings.loan_duration_days);
     const [memberLoans] = await connection.execute(
       `SELECT COUNT(*) AS total FROM loans
        WHERE school_id = ? AND user_id = ? AND status IN ('Pending', 'Borrowed')`,
       [req.school.id, userId]
     );
-    if (Number(memberLoans[0].total) >= maximumLoans) {
+    if (Number(memberLoans[0].total) + quantity > maximumLoans) {
       await connection.rollback();
       transactionStarted = false;
       return res.status(409).json({
-        message: `Anggota sudah mencapai batas maksimal ${maximumLoans} peminjaman aktif.`
+        message: `Jumlah peminjaman melampaui batas maksimal ${maximumLoans} buku aktif per anggota.`
       });
     }
 
     const loanStatus = req.school.role === 'member' ? 'Pending' : 'Borrowed';
+    const placeholders = availableItems
+      .map(() => `(?, ?, ?, CURRENT_DATE, DATE_ADD(CURRENT_DATE, INTERVAL ${loanDurationDays} DAY), ?)`)
+      .join(', ');
+    const loanValues = availableItems.flatMap((availableItem) => [
+      req.school.id, availableItem.id, userId, loanStatus
+    ]);
     const [result] = await connection.execute(
       `INSERT INTO loans
        (school_id, book_item_id, user_id, borrow_date, due_date, status)
-       VALUES (?, ?, ?, CURRENT_DATE, DATE_ADD(CURRENT_DATE, INTERVAL ${loanDurationDays} DAY), ?)`,
-      [req.school.id, bookItemId, userId, loanStatus]
+       VALUES ${placeholders}`,
+      loanValues
     );
     if (loanStatus === 'Borrowed') {
+      const itemIds = availableItems.map((availableItem) => String(availableItem.id));
       await connection.execute(
         `UPDATE book_items SET status = 'Dipinjam'
-         WHERE id = ? AND school_id = ? AND status = 'Tersedia'`,
-        [bookItemId, req.school.id]
+         WHERE school_id = ? AND status = 'Tersedia' AND id IN (${itemIds.map(() => '?').join(', ')})`,
+        [req.school.id, ...itemIds]
       );
     }
 
-    const [createdRows] = await connection.execute(
-      `SELECT id, borrow_date, due_date FROM loans WHERE id = ? AND school_id = ?`,
-      [result.insertId, req.school.id]
-    );
     await connection.commit();
     transactionStarted = false;
     return res.status(201).json({
-      loan: {
-        id: String(result.insertId),
-        status: loanStatus,
-        memberName: member.name,
-        bookItemId,
-        borrowDate: createdRows[0].borrow_date,
-        dueDate: createdRows[0].due_date
-      },
+      count: quantity,
+      firstLoanId: String(result.insertId),
       message: loanStatus === 'Pending'
-        ? 'Permintaan peminjaman dikirim dan menunggu persetujuan petugas.'
-        : 'Peminjaman berhasil dicatat.'
+        ? `${quantity} permintaan peminjaman dikirim dan menunggu persetujuan petugas.`
+        : `${quantity} eksemplar berhasil dicatat sebagai peminjaman dengan durasi ${loanDurationDays} hari.`
     });
   } catch (error) {
     if (transactionStarted && connection) {

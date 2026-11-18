@@ -5,6 +5,7 @@ import {
   LoaderCircle, LogIn, Printer, RefreshCw, Search, Users, X
 } from 'lucide-react';
 import { checkInVisitor, fetchVisitorRecords, searchVisitorMembers } from './schoolVisitorApi.js';
+import CameraBarcodeScanner from './CameraBarcodeScanner.jsx';
 
 const pageSize = 25;
 const visitPurposes = [
@@ -356,6 +357,11 @@ export default function SchoolVisitorsPage({ rights, role, account, schoolName }
                   />
                   {memberLoading && <LoaderCircle size={16} className="book-stock-spinner" />}
                 </label>
+                <CameraBarcodeScanner label="Scan kamera kartu anggota" onScan={(value) => {
+                  setMemberSearch(value);
+                  setSelectedMember(null);
+                  setCheckInError('');
+                }} />
                 {members.length > 0 && <div className="visitor-member-results" role="listbox" aria-label="Hasil pencarian anggota">
                   {members.map((member) => <button type="button" key={member.id} role="option" onClick={() => chooseMember(member)}>
                     <b>{member.name}</b><small>{visitorClassName(member)}</small>

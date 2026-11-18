@@ -29,6 +29,45 @@ try {
   const schema = await readFile(fileURLToPath(schemaUrl), 'utf8');
   await connection.query(schema);
 
+  const [masterCategoryColumns] = await connection.execute(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'master_categories'`
+  );
+  if (!masterCategoryColumns.some((column) => column.COLUMN_NAME === 'capacity')) {
+    await connection.query('ALTER TABLE master_categories ADD COLUMN capacity INT UNSIGNED NULL AFTER address');
+  }
+  const [bookItemColumns] = await connection.execute(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'book_items'`
+  );
+  if (!bookItemColumns.some((column) => column.COLUMN_NAME === 'rack_id')) {
+    await connection.query('ALTER TABLE book_items ADD COLUMN rack_id BIGINT UNSIGNED NULL AFTER serial_number');
+    await connection.query(
+      `UPDATE book_items bi
+       JOIN books b ON b.school_id = bi.school_id AND b.id = bi.book_id
+       SET bi.rack_id = b.rack_id`
+    );
+  }
+  const [bookItemRackIndexes] = await connection.execute(
+    `SELECT INDEX_NAME FROM information_schema.STATISTICS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'book_items'
+       AND INDEX_NAME = 'idx_book_items_rack_status'`
+  );
+  if (!bookItemRackIndexes.length) {
+    await connection.query('ALTER TABLE book_items ADD KEY idx_book_items_rack_status (school_id, rack_id, status)');
+  }
+  const [bookItemRackConstraints] = await connection.execute(
+    `SELECT CONSTRAINT_NAME FROM information_schema.REFERENTIAL_CONSTRAINTS
+     WHERE CONSTRAINT_SCHEMA = DATABASE() AND TABLE_NAME = 'book_items'
+       AND CONSTRAINT_NAME = 'fk_book_items_rack'`
+  );
+  if (!bookItemRackConstraints.length) {
+    await connection.query(
+      `ALTER TABLE book_items ADD CONSTRAINT fk_book_items_rack
+       FOREIGN KEY (school_id, rack_id) REFERENCES master_categories (school_id, id) ON DELETE RESTRICT`
+    );
+  }
+
   const [reservationColumns] = await connection.execute(
     `SELECT COLUMN_NAME FROM information_schema.COLUMNS
      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'book_reservations'`

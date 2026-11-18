@@ -35,6 +35,8 @@ export const schoolPermissionRoles = [
 export const schoolPermissionByLabel = Object.fromEntries(
   schoolPermissionFeatures.map(({ key, label }) => [label, key])
 );
+schoolPermissionByLabel['Pindah Rak'] = 'books.stock';
+schoolPermissionByLabel['Kop Sekolah'] = 'master.identity';
 
 export function defaultSchoolPermissions() {
   const memberEditable = new Set(['visitors', 'reservations', 'reviews']);

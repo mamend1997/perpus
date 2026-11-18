@@ -1,5 +1,5 @@
 import {
-  BookOpen, Building2, FileBarChart2, LayoutDashboard, MessageSquare,
+  BookOpen, Building2, FileBarChart2, FileText, LayoutDashboard, MessageSquare,
   CalendarDays, PackagePlus, Repeat2, Settings, Star, Tags, Ticket, Users, Wallet
 } from 'lucide-react';
 
@@ -32,6 +32,7 @@ export const schoolNavigation = [
         children: [
           { label: 'Daftar Pustaka', icon: BookOpen, roles: allRoles, permission: 'books.catalog' },
           { label: 'Tambah Stok Buku', icon: PackagePlus, roles: allRoles, permission: 'books.stock' },
+          { label: 'Pindah Rak', icon: Repeat2, roles: staffRoles, permission: 'books.stock' },
           { label: 'Eksemplar', icon: BookOpen, roles: allRoles, permission: 'books.items' },
           { label: 'Pengadaan Buku', icon: PackagePlus, roles: allRoles, permission: 'procurements' }
         ]
@@ -55,6 +56,7 @@ export const schoolNavigation = [
         icon: Tags,
         children: [
           { label: 'Identitas Sekolah', icon: Building2, roles: allRoles, permission: 'master.identity' },
+          { label: 'Kop Sekolah', icon: FileText, roles: staffRoles, permission: 'master.identity' },
           { label: 'Tahun Pelajaran', icon: CalendarDays, roles: allRoles, permission: 'master.academic-years' },
           { label: 'Data Siswa & Rombel', icon: Users, roles: staffRoles, permission: 'master.students' },
           ...Object.entries(masterCategoryTypes)
@@ -126,6 +128,10 @@ export const schoolModuleDetails = {
   'Tambah Stok Buku': {
     description: 'Tambahkan eksemplar pada judul buku yang sudah terdaftar.',
     features: ['Scan atau isi kode barcode', 'Cari nama buku setelah mengetik 3 huruf', 'Tanggal stok otomatis', 'Input jumlah dan keterangan']
+  },
+  'Pindah Rak': {
+    description: 'Pindahkan sejumlah eksemplar antar rak, periksa kapasitas, dan telusuri riwayatnya.',
+    features: ['Scan barcode atau cari buku', 'Rak asal dan tujuan', 'Validasi stok dan kapasitas', 'Riwayat pindah rak']
   },
   Eksemplar: {
     description: 'Pantau setiap salinan fisik menggunakan nomor serial dan status terkini.',

@@ -191,6 +191,7 @@ export default function SchoolStudentsPage({ rights }) {
   const [tab, setTab] = useState('students');
   const [students, setStudents] = useState([]);
   const [classes, setClasses] = useState([]);
+  const [classesError, setClassesError] = useState('');
   const [academicYears, setAcademicYears] = useState([]);
   const [academicYearsLoading, setAcademicYearsLoading] = useState(false);
   const [academicYearsError, setAcademicYearsError] = useState('');
@@ -234,9 +235,10 @@ export default function SchoolStudentsPage({ rights }) {
 
   useEffect(() => {
     const controller = new AbortController();
+    setClassesError('');
     fetchStudentClasses(controller.signal)
       .then(({ classes: result }) => { if (!controller.signal.aborted) setClasses(result || []); })
-      .catch((loadError) => { if (!controller.signal.aborted) setError(loadError.message); });
+      .catch((loadError) => { if (!controller.signal.aborted) setClassesError(loadError.message); });
     return () => controller.abort();
   }, [refreshKey]);
 
@@ -490,6 +492,7 @@ export default function SchoolStudentsPage({ rights }) {
       ) : tab === 'classes' ? (
         <section className="master-data-panel student-classes-panel">
           <div className="school-settings-panel-heading"><div><h2>Data Rombel / Kelas</h2><p>Jumlah siswa dikelompokkan berdasarkan nama kelas.</p></div></div>
+          {classesError && <div className="library-error" role="alert">{classesError}<button type="button" onClick={() => setRefreshKey((value) => value + 1)}>Coba lagi</button></div>}
           <div className="master-table-scroll"><table className="master-table"><thead><tr><th>No</th><th>Nama Rombel</th><th>Jumlah Siswa</th><th>Akun Aktif</th><th>Aksi</th></tr></thead>
             <tbody>{classes.length ? classes.map((item, index) => <tr key={item.className}><td>{index + 1}</td><td><b>{item.className}</b></td><td>{item.studentCount}</td><td>{item.activeCount}</td><td><button type="button" className="master-button master-button-light" onClick={() => { setClassFilter(item.className); setPage(1); setTab('students'); }}>Lihat Siswa</button></td></tr>)
               : <tr><td className="master-empty-cell" colSpan={5}>Belum ada data rombel.</td></tr>}</tbody>

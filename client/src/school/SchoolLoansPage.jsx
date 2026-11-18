@@ -8,6 +8,7 @@ import {
   createLoan, fetchLoans, returnLoan, searchLoanItems, searchLoanMembers,
   updateLoanStatus
 } from './schoolLoanApi.js';
+import CameraBarcodeScanner from './CameraBarcodeScanner.jsx';
 
 const pageSize = 25;
 const numberFormat = new Intl.NumberFormat('id-ID');
@@ -20,7 +21,7 @@ function formatDate(value) {
 }
 
 function LoanSearchPicker({
-  label, placeholder, query, selected, results, loading, onQueryChange, onChoose, onClear, getTitle, getSubtitle, fixed = false
+  label, placeholder, query, selected, results, loading, onQueryChange, onChoose, onClear, getTitle, getSubtitle, onScan, fixed = false
 }) {
   const matchingResult = results.find((result) => {
     const text = `${getTitle(result)} ${getSubtitle(result)}`.toLocaleLowerCase('id-ID');
@@ -30,6 +31,7 @@ function LoanSearchPicker({
   return (
     <div className="loan-picker">
       <span className="loan-form-label">{label}</span>
+      {onScan && <CameraBarcodeScanner label="Scan kamera" onScan={onScan} />}
       {selected ? (
         <div className="loan-picker-selected">
           <div><b>{getTitle(selected)}</b><small>{getSubtitle(selected)}</small></div>
@@ -80,10 +82,13 @@ function NewLoanModal({ account, role, durationDays, onClose, onSave }) {
   const [itemResults, setItemResults] = useState([]);
   const [itemLoading, setItemLoading] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
+  const [quantity, setQuantity] = useState('1');
+  const [manualDuration, setManualDuration] = useState(String(durationDays));
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const duration = Number(manualDuration);
   const dueDate = new Date();
-  dueDate.setDate(dueDate.getDate() + durationDays);
+  dueDate.setDate(dueDate.getDate() + (Number.isInteger(duration) && duration > 0 ? duration : durationDays));
 
   useEffect(() => {
     if (isMember || memberSearch.trim().length < 2) {
@@ -135,6 +140,7 @@ function NewLoanModal({ account, role, durationDays, onClose, onSave }) {
           const exactMatches = results.filter((item) => String(item.serial_number || '').toLocaleLowerCase('id-ID') === term);
           if (exactMatches.length === 1) {
             setSelectedItem(exactMatches[0]);
+            setQuantity('1');
             setItemSearch('');
             setItemResults([]);
           }
@@ -169,7 +175,18 @@ function NewLoanModal({ account, role, durationDays, onClose, onSave }) {
     setSaving(true);
     setError('');
     try {
-      await onSave({ userId: selectedMember.id, bookItemId: selectedItem.id });
+      const count = Number(quantity);
+      if (!Number.isInteger(count) || count < 1 || count > Number(selectedItem.available_count || 1)) {
+        setError(`Jumlah pinjam harus antara 1 dan ${selectedItem.available_count || 1} eksemplar yang tersedia.`);
+        setSaving(false);
+        return;
+      }
+      if (!Number.isInteger(duration) || duration < 1 || duration > 365) {
+        setError('Durasi peminjaman harus antara 1 sampai 365 hari.');
+        setSaving(false);
+        return;
+      }
+      await onSave({ userId: selectedMember.id, bookItemId: selectedItem.id, quantity: count, durationDays: duration });
     } catch (saveError) {
       setError(saveError.message);
     } finally {
@@ -195,6 +212,7 @@ function NewLoanModal({ account, role, durationDays, onClose, onSave }) {
             onQueryChange={(value) => { setMemberSearch(value); setSelectedMember(null); setError(''); }}
             onChoose={(member) => { setSelectedMember(member); setMemberSearch(''); setMemberResults([]); }}
             onClear={() => setSelectedMember(null)}
+            onScan={!isMember ? (value) => { setMemberSearch(value); setSelectedMember(null); setError(''); } : undefined}
             getTitle={(member) => member.name}
             getSubtitle={(member) => member.nis_nisn ? `NIS/NISN ${member.nis_nisn}` : 'Anggota perpustakaan'}
             fixed={isMember}
@@ -207,15 +225,28 @@ function NewLoanModal({ account, role, durationDays, onClose, onSave }) {
             results={itemResults}
             loading={itemLoading}
             onQueryChange={(value) => { setItemSearch(value); setSelectedItem(null); setError(''); }}
-            onChoose={(item) => { setSelectedItem(item); setItemSearch(''); setItemResults([]); }}
-            onClear={() => setSelectedItem(null)}
+            onChoose={(item) => { setSelectedItem(item); setItemSearch(''); setItemResults([]); setQuantity('1'); }}
+            onClear={() => { setSelectedItem(null); setQuantity('1'); }}
+            onScan={(value) => { setItemSearch(value); setSelectedItem(null); setError(''); }}
             getTitle={(item) => item.book_title}
             getSubtitle={(item) => `${item.serial_number}${item.kode_buku ? ` · ${item.kode_buku}` : ''}`}
           />
+          {selectedItem && <>
+            <label className="loan-form-field">
+              <span className="loan-form-label">Jumlah dipinjam</span>
+              <input type="number" min="1" max={Math.min(Number(selectedItem.available_count || 1), 100)} step="1" value={quantity} onChange={(event) => setQuantity(event.target.value)} required />
+              <small>{selectedItem.available_count || 1} eksemplar tersedia; maksimal 100 per transaksi.</small>
+            </label>
+            <label className="loan-form-field">
+              <span className="loan-form-label">Durasi pinjam (hari)</span>
+              <input type="number" min="1" max="365" step="1" value={manualDuration} onChange={(event) => setManualDuration(event.target.value)} required />
+              <small>Durasi standar sekolah: {durationDays} hari. Anda dapat mengubahnya untuk transaksi ini.</small>
+            </label>
+          </>}
           <div className="loan-date-preview">
             <div><small>Tanggal pinjam</small><b>Otomatis hari ini</b></div>
             <div><small>Batas pengembalian</small><b>{formatDate(`${dueDate.getFullYear()}-${String(dueDate.getMonth() + 1).padStart(2, '0')}-${String(dueDate.getDate()).padStart(2, '0')}`)}</b></div>
-            <span>Durasi standar {durationDays} hari</span>
+            <span>Durasi {Number.isInteger(duration) && duration > 0 ? duration : durationDays} hari</span>
           </div>
           <p className="loan-modal-note">{isMember
             ? 'Permintaan akan berstatus Pending sampai disetujui petugas perpustakaan.'

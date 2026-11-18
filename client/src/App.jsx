@@ -71,6 +71,7 @@ function currentPage() {
 function Login({ onLogin }) {
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -99,7 +100,13 @@ function Login({ onLogin }) {
         <h1>Selamat datang kembali</h1>
         <p className="muted">Masuk untuk mengelola platform dan sekolah.</p>
         <label>Username atau email<input autoComplete="username" required value={identifier} onChange={(e) => setIdentifier(e.target.value)} placeholder="username atau admin@platform.id" /></label>
-        <label>Kata sandi<input autoComplete="current-password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Masukkan kata sandi" /></label>
+        <label htmlFor="platform-login-password">Kata sandi</label>
+        <div className="password-field">
+          <input id="platform-login-password" autoComplete="current-password" type={showPassword ? 'text' : 'password'} required value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Masukkan kata sandi" />
+          <button type="button" className="password-toggle" onClick={() => setShowPassword((visible) => !visible)} aria-label={showPassword ? 'Sembunyikan kata sandi' : 'Tampilkan kata sandi'}>
+            {showPassword ? <EyeOff size={19} /> : <Eye size={19} />}
+          </button>
+        </div>
         {error && <div className="error-box">{error}</div>}
         <button className="primary-button login-submit" disabled={busy}>{busy ? 'Memeriksa...' : 'Masuk ke Dashboard'}</button>
       </form>
@@ -127,6 +134,10 @@ function SchoolAuth({ mode, onNavigate, onLogin }) {
     { label: 'Minimal 1 angka', valid: /\d/.test(password) },
     { label: 'Minimal 1 simbol', valid: /[^A-Za-z0-9\s]/.test(password) }
   ];
+  const emailInvalid = Boolean(email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
+  const emailWarning = emailInvalid
+    ? 'Masukkan alamat email dengan format yang benar, misalnya nama@sekolah.sch.id.'
+    : email ? 'Pastikan email ini aktif dan dapat menerima notifikasi akun.' : '';
 
   async function submit(event) {
     event.preventDefault();
@@ -239,7 +250,8 @@ function SchoolAuth({ mode, onNavigate, onLogin }) {
           </label>
         )}
 
-        <label>Email administrator<input autoComplete="username" type="email" required maxLength={190} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="admin@sekolah.sch.id" /></label>
+        <label>Email administrator<input autoComplete="username" type="email" required maxLength={190} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="admin@sekolah.sch.id" aria-describedby={emailWarning ? 'school-email-hint' : undefined} /></label>
+        {emailWarning && <small id="school-email-hint" className={`auth-email-hint ${emailInvalid ? 'is-warning' : ''}`} role="status">{emailWarning}</small>}
         {registering && <label>No. WhatsApp
           <div className="phone-field">
             <span>+62</span>
@@ -259,7 +271,15 @@ function SchoolAuth({ mode, onNavigate, onLogin }) {
               {passwordRules.map((rule) => <li className={rule.valid ? 'valid' : ''} key={rule.label}><span className="password-rule-mark">{rule.valid && <Check size={12} />}</span>{rule.label}</li>)}
             </ul>
           </>
-        ) : <label>Kata sandi<input autoComplete="current-password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Masukkan kata sandi" /></label>}
+        ) : <>
+          <label htmlFor="school-login-password">Kata sandi</label>
+          <div className="password-field">
+            <input id="school-login-password" autoComplete="current-password" type={showPassword ? 'text' : 'password'} required value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Masukkan kata sandi" />
+            <button type="button" className="password-toggle" onClick={() => setShowPassword((visible) => !visible)} aria-label={showPassword ? 'Sembunyikan kata sandi' : 'Tampilkan kata sandi'}>
+              {showPassword ? <EyeOff size={19} /> : <Eye size={19} />}
+            </button>
+          </div>
+        </>}
         {error && <div className="error-box">{error}</div>}
         <button className="primary-button login-submit" disabled={busy}>{busy ? 'Memproses...' : registering ? 'Buat Akun Sekolah' : 'Masuk ke Akun Sekolah'}</button>
         <div className="login-alternatives">

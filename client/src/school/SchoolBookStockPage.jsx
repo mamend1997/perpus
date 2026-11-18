@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { BookOpen, Check, LoaderCircle, PackagePlus, RotateCcw, Search } from 'lucide-react';
 import { addBookStock, findStockBookByBarcode, searchStockBooks } from './schoolBookApi.js';
+import CameraBarcodeScanner from './CameraBarcodeScanner.jsx';
 
 const maximumBookQuantity = 10000;
 
@@ -211,6 +212,13 @@ export default function SchoolBookStockPage({ rights }) {
           <div className="book-stock-fields">
             <div className="book-stock-field" ref={barcodeRef}>
               <label htmlFor="book-stock-barcode">Scan Barcode Buku / Isi Kode Barcode</label>
+              <CameraBarcodeScanner onScan={(value) => {
+                setBarcode(value);
+                setSelectedBook(null);
+                setQuery('');
+                setBarcodeLookupOpen(true);
+                setSubmitError('');
+              }} />
               <div className="book-stock-search-box">
                 <div className={`master-search book-stock-search ${barcodeLookupOpen ? 'is-open' : ''}`}>
                   <Search size={16} aria-hidden="true" />

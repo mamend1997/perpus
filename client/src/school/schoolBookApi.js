@@ -50,6 +50,21 @@ export async function findStockBookByBarcode(barcode, signal) {
   return requestBookApi(`/stock/books?${query}`, { signal });
 }
 
+export async function fetchRackTransferOptions(search = '', signal) {
+  const query = new URLSearchParams();
+  if (search) query.set('search', search);
+  return requestBookApi(`/rack-transfers/options?${query}`, { signal });
+}
+
+export function createRackTransfer(data) {
+  return requestBookApi('/rack-transfers', { method: 'POST', body: data });
+}
+
+export async function fetchRackTransferHistory(signal) {
+  const result = await requestBookApi('/rack-transfers/history', { signal });
+  return result.transfers || [];
+}
+
 export function addBookStock(bookId, quantity, note, stockDate) {
   return requestBookApi('/stock', {
     method: 'POST',

@@ -22,6 +22,7 @@ function MasterCategoryPreviewModal({ type, category, onClose }) {
   const isCodeLess = type === 'koleksi' || type === 'topik' || type === 'penerbit';
   const details = [
     { label: isAgent ? 'Nama Agen' : isAuthor ? 'Nama Pengarang' : 'Nama', value: category.name },
+    ...(type === 'rak' ? [{ label: 'Kapasitas Rak', value: category.capacity ? `${Number(category.capacity).toLocaleString('id-ID')} eksemplar` : 'Belum dibatasi' }] : []),
     ...(!isAgent && !isAuthor && !isCodeLess
       ? [{ label: 'Kode', value: category.code }]
       : []),
@@ -82,6 +83,7 @@ function MasterCategoryModal({ type, category, onClose, onSave }) {
     email: category?.email || '',
     phone: category?.phone || '',
     address: category?.address || '',
+    capacity: category?.capacity ?? '',
     status: category?.status || 'active'
   });
   const [saving, setSaving] = useState(false);
@@ -134,6 +136,11 @@ function MasterCategoryModal({ type, category, onClose, onSave }) {
               {isAgent ? 'Nama Agen' : isAuthor ? 'Nama Pengarang' : 'Nama'}
               <input name="name" value={form.name} onChange={updateField} maxLength={180} required autoFocus />
             </label>
+            {type === 'rak' && <label className="master-form-wide">
+              Kapasitas Rak (eksemplar)
+              <input name="capacity" type="number" min="1" max="100000" step="1" value={form.capacity} onChange={updateField} placeholder="Kosongkan jika tidak dibatasi" />
+              <small>Kapasitas tidak boleh lebih kecil dari stok tersedia yang sudah berada di rak.</small>
+            </label>}
             {isAgent ? (
               <>
                 <label>
@@ -644,7 +651,7 @@ export default function SchoolMasterDataPage({ active, type, rights }) {
                       }} aria-label={`Pilih ${category.name}`} /></td>
                       <td>{index + 1}</td>
                       {!isCodeLess && <td>{category.code || '—'}</td>}
-                      <td><b className="master-primary-text">{category.name}</b>{category.description && <small className="master-secondary-text">{category.description}</small>}</td>
+                      <td><b className="master-primary-text">{category.name}</b>{type === 'rak' && <small className="master-secondary-text">Kapasitas: {category.capacity ? `${Number(category.capacity).toLocaleString('id-ID')} eksemplar` : 'Tidak dibatasi'}</small>}{category.description && <small className="master-secondary-text">{category.description}</small>}</td>
                       <td><span className={`master-status ${category.status === 'active' ? 'is-active' : 'is-inactive'}`}>{displayStatus(category.status)}</span></td>
                       <td>
                         <div className="master-agent-actions">

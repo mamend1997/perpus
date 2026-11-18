@@ -30,6 +30,15 @@ const importedCategoryFields = [
   ['language_id', 'language_name', 'bahasa', 'Bahasa'],
   ['rack_id', 'rack_name', 'rak', 'Rak']
 ];
+const manualCategoryFields = [
+  ['author_id', 'pengarang', 'Pengarang'],
+  ['publisher_id', 'penerbit', 'Penerbit'],
+  ['agent_id', 'agen', 'Agen'],
+  ['topic_id', 'topik', 'Topik'],
+  ['collection_id', 'koleksi', 'Koleksi'],
+  ['type_id', 'jenis', 'Jenis'],
+  ['language_id', 'bahasa', 'Bahasa']
+];
 
 const storage = multer.diskStorage({
   destination(req, _file, callback) {
@@ -205,13 +214,10 @@ function normalizeBook(body) {
   value.received_date = receivedDate.value;
 
   for (const [key, label] of Object.entries(categoryFields)) {
-    const result = idValue(body, key, label, { required: key !== 'author_id' });
+    const result = idValue(body, key, label, { required: key === 'rack_id' });
     if (result.error) return result;
     value[key] = result.value;
   }
-  const authorName = textValue(body, 'author_name', 'Pengarang', 180);
-  if (authorName.error) return authorName;
-  value.author_name = authorName.value;
 
   const year = numberValue(body, 'year', 'Tahun terbit', { minimum: 1000, maximum: 9999, integer: true, required: true });
   const pages = numberValue(body, 'pages', 'Jumlah halaman', { minimum: 1, maximum: 65535, integer: true, required: true });
@@ -248,25 +254,42 @@ async function validateCategoryReferences(connection, schoolId, book) {
   return '';
 }
 
-async function resolveManualAuthor(connection, schoolId, book) {
-  if (book.author_id) return '';
-  if (!book.author_name) return 'Pengarang wajib dipilih atau diisi.';
-  const [matches] = await connection.execute(
-    `SELECT id FROM master_categories
-     WHERE school_id = ? AND type = 'pengarang' AND name = ?
-     ORDER BY id ASC LIMIT 1`,
-    [schoolId, book.author_name]
-  );
-  if (matches[0]) {
-    book.author_id = String(matches[0].id);
-    return '';
+async function resolveManualCategories(connection, schoolId, book, rawNames) {
+  let names = rawNames;
+  if (typeof names === 'string') {
+    try {
+      names = names ? JSON.parse(names) : {};
+    } catch {
+      return 'Data nama kategori buku tidak valid.';
+    }
   }
-  const [result] = await connection.execute(
-    `INSERT INTO master_categories (school_id, type, code, name, status)
-     VALUES (?, 'pengarang', NULL, ?, 'active')`,
-    [schoolId, book.author_name]
-  );
-  book.author_id = String(result.insertId);
+  if (!names || typeof names !== 'object' || Array.isArray(names)) {
+    return 'Data nama kategori buku tidak valid.';
+  }
+
+  for (const [field, type, label] of manualCategoryFields) {
+    if (book[field]) continue;
+    const legacyAuthor = field === 'author_id' ? book.author_name : '';
+    const rawName = names[field] ?? legacyAuthor;
+    const name = typeof rawName === 'string' ? rawName.trim() : '';
+    if (!name || name.length > 180) return `${label} wajib dipilih atau diisi (maksimal 180 karakter).`;
+    const [matches] = await connection.execute(
+      `SELECT id FROM master_categories
+       WHERE school_id = ? AND type = ? AND name = ?
+       ORDER BY id ASC LIMIT 1`,
+      [schoolId, type, name]
+    );
+    if (matches[0]) {
+      book[field] = String(matches[0].id);
+      continue;
+    }
+    const [result] = await connection.execute(
+      `INSERT INTO master_categories (school_id, type, code, name, status)
+       VALUES (?, ?, NULL, ?, 'active')`,
+      [schoolId, type, name]
+    );
+    book[field] = String(result.insertId);
+  }
   return '';
 }
 
@@ -363,11 +386,11 @@ async function insertBook(connection, schoolId, book, files = {}) {
      VALUES (${columns.map(() => '?').join(', ')}, ?)`,
     [schoolId, ...values]
   );
-  await synchronizeBookItems(connection, schoolId, String(result.insertId), book.qty);
+  await synchronizeBookItems(connection, schoolId, String(result.insertId), book.qty, book.rack_id);
   return result.insertId;
 }
 
-async function synchronizeBookItems(connection, schoolId, bookId, desiredQuantity) {
+async function synchronizeBookItems(connection, schoolId, bookId, desiredQuantity, defaultRackId = null) {
   const [items] = await connection.execute(
     `SELECT id, serial_number, status FROM book_items
      WHERE school_id = ? AND book_id = ? ORDER BY id FOR UPDATE`,
@@ -402,11 +425,11 @@ async function synchronizeBookItems(connection, schoolId, bookId, desiredQuantit
     const serialNumber = `S${String(nextSequence).padStart(2, '0')}`;
     if (existingSerials.has(serialNumber)) continue;
     existingSerials.add(serialNumber);
-    rows.push([schoolId, bookId, serialNumber, 'Tersedia']);
+    rows.push([schoolId, bookId, serialNumber, defaultRackId || null, 'Tersedia']);
   }
-  const placeholders = rows.map(() => '(?, ?, ?, ?)').join(', ');
+  const placeholders = rows.map(() => '(?, ?, ?, ?, ?)').join(', ');
   await connection.execute(
-    `INSERT INTO book_items (school_id, book_id, serial_number, status) VALUES ${placeholders}`,
+    `INSERT INTO book_items (school_id, book_id, serial_number, rack_id, status) VALUES ${placeholders}`,
     rows.flat()
   );
 }
@@ -414,7 +437,7 @@ async function synchronizeBookItems(connection, schoolId, bookId, desiredQuantit
 router.get('/meta', requireSchoolPermission('books.catalog', 'view'), async (req, res, next) => {
   try {
     const [otherCategories] = await pool.execute(
-      `SELECT id, type, code, name, status FROM master_categories
+      `SELECT id, type, code, name, capacity, status FROM master_categories
        WHERE school_id = ? AND type IN ('bahasa', 'jenis', 'koleksi', 'rak', 'agen', 'pengarang', 'penerbit', 'topik')
        ORDER BY name`,
       [req.school.id]
@@ -429,6 +452,194 @@ router.get('/meta', requireSchoolPermission('books.catalog', 'view'), async (req
     });
   } catch (error) {
     return next(error);
+  }
+});
+
+router.get('/rack-transfers/options', requireSchoolPermission('books.stock', 'view'), async (req, res, next) => {
+  const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+  if (search.length > 100) return res.status(400).json({ message: 'Pencarian buku maksimal 100 karakter.' });
+  try {
+    const [racks] = await pool.execute(
+      `SELECT r.id, r.name, r.capacity,
+              COUNT(CASE WHEN bi.status = 'Tersedia' THEN 1 END) AS used
+       FROM master_categories r
+       LEFT JOIN book_items bi ON bi.school_id = r.school_id AND bi.rack_id = r.id
+       WHERE r.school_id = ? AND r.type = 'rak' AND r.status = 'active'
+       GROUP BY r.id, r.name, r.capacity
+       ORDER BY r.name ASC`,
+      [req.school.id]
+    );
+    const [bookStocks] = search.length < 2 ? [[]] : await pool.execute(
+      `SELECT b.id AS book_id, b.title, b.kode_buku, b.nomor_induk,
+              bi.rack_id, COALESCE(r.name, 'Belum ditentukan') AS rack_name,
+              MIN(bi.serial_number) AS serial_number, COUNT(*) AS available_qty
+       FROM books b
+       JOIN book_items bi ON bi.school_id = b.school_id AND bi.book_id = b.id
+       LEFT JOIN master_categories r ON r.school_id = bi.school_id AND r.id = bi.rack_id AND r.type = 'rak'
+       WHERE b.school_id = ? AND bi.status = 'Tersedia'
+         AND NOT EXISTS (
+           SELECT 1 FROM loans l
+           WHERE l.school_id = bi.school_id AND l.book_item_id = bi.id
+             AND l.status IN ('Pending', 'Borrowed')
+         )
+         AND (b.title LIKE ? OR b.kode_buku LIKE ? OR b.nomor_induk LIKE ? OR bi.serial_number LIKE ?)
+       GROUP BY b.id, b.title, b.kode_buku, b.nomor_induk, bi.rack_id, r.name
+       ORDER BY b.title ASC, bi.rack_id ASC
+       LIMIT 100`,
+      [req.school.id, ...Array(4).fill(`%${search}%`)]
+    );
+    return res.json({
+      racks: racks.map((rack) => ({
+        id: String(rack.id),
+        name: rack.name,
+        capacity: rack.capacity == null ? null : Number(rack.capacity),
+        used: Number(rack.used)
+      })),
+      books: bookStocks.map((stock) => ({
+        book_id: String(stock.book_id),
+        title: stock.title,
+        kode_buku: stock.kode_buku,
+        nomor_induk: stock.nomor_induk,
+        rack_id: stock.rack_id == null ? 'none' : String(stock.rack_id),
+        rack_name: stock.rack_name,
+        serial_number: stock.serial_number,
+        available_qty: Number(stock.available_qty)
+      }))
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/rack-transfers/history', requireSchoolPermission('books.stock', 'view'), async (req, res, next) => {
+  try {
+    const [transfers] = await pool.execute(
+      `SELECT t.id, t.quantity, t.note, t.moved_at, b.title AS book_title,
+              b.kode_buku,               COALESCE(source.name, 'Belum ditentukan') AS from_rack, target.name AS to_rack, u.name AS moved_by
+       FROM book_rack_transfers t
+       JOIN books b ON b.school_id = t.school_id AND b.id = t.book_id
+       LEFT JOIN master_categories source ON source.school_id = t.school_id AND source.id = t.from_rack_id
+       JOIN master_categories target ON target.school_id = t.school_id AND target.id = t.to_rack_id
+       LEFT JOIN users u ON u.id = t.moved_by
+       WHERE t.school_id = ?
+       ORDER BY t.moved_at DESC, t.id DESC
+       LIMIT 100`,
+      [req.school.id]
+    );
+    return res.json({ transfers: transfers.map((transfer) => ({ ...transfer, id: String(transfer.id), quantity: Number(transfer.quantity) })) });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post('/rack-transfers', requireSchoolPermission('books.stock', 'edit'), async (req, res, next) => {
+  const bookId = String(req.body?.bookId ?? '');
+  const fromRackId = String(req.body?.fromRackId ?? '');
+  const sourceIsUnassigned = fromRackId === 'none';
+  const sourceRackId = sourceIsUnassigned ? null : fromRackId;
+  const toRackId = String(req.body?.toRackId ?? '');
+  const quantity = Number(req.body?.quantity);
+  const note = typeof req.body?.note === 'string' ? req.body.note.trim() : '';
+  if (!/^[1-9]\d*$/.test(bookId) || (!sourceIsUnassigned && !/^[1-9]\d*$/.test(fromRackId))
+    || !/^[1-9]\d*$/.test(toRackId) || (!sourceIsUnassigned && fromRackId === toRackId)
+    || !Number.isSafeInteger(quantity) || quantity < 1 || quantity > MAX_BOOK_QUANTITY
+    || note.length > 500) {
+    return res.status(400).json({ message: 'Buku, rak asal/tujuan, jumlah, atau keterangan pindah rak tidak valid.' });
+  }
+
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    const [books] = await connection.execute(
+      'SELECT id, title FROM books WHERE id = ? AND school_id = ? FOR UPDATE',
+      [bookId, req.school.id]
+    );
+    if (!books[0]) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Buku tidak ditemukan pada sekolah ini.' });
+    }
+
+    const rackIds = sourceIsUnassigned ? [toRackId] : [fromRackId, toRackId];
+    const [racks] = await connection.execute(
+      `SELECT id, name, capacity, status FROM master_categories
+       WHERE school_id = ? AND type = 'rak' AND id IN (${rackIds.map(() => '?').join(', ')})
+       ORDER BY id FOR UPDATE`,
+      [req.school.id, ...rackIds]
+    );
+    const sourceRack = sourceIsUnassigned ? null : racks.find((rack) => String(rack.id) === fromRackId);
+    const targetRack = racks.find((rack) => String(rack.id) === toRackId);
+    if ((!sourceIsUnassigned && !sourceRack) || !targetRack || targetRack.status !== 'active') {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Rak asal atau tujuan tidak aktif atau tidak ditemukan.' });
+    }
+
+    const sourceCondition = sourceIsUnassigned ? 'bi.rack_id IS NULL' : 'bi.rack_id = ?';
+    const sourceValues = sourceIsUnassigned ? [] : [fromRackId];
+    const [items] = await connection.execute(
+      `SELECT bi.id FROM book_items bi
+       WHERE bi.school_id = ? AND bi.book_id = ? AND ${sourceCondition}
+         AND bi.status = 'Tersedia'
+         AND NOT EXISTS (
+           SELECT 1 FROM loans l
+           WHERE l.school_id = bi.school_id AND l.book_item_id = bi.id
+             AND l.status IN ('Pending', 'Borrowed')
+         )
+       ORDER BY bi.id ASC LIMIT ? FOR UPDATE`,
+      [req.school.id, bookId, ...sourceValues, quantity]
+    );
+    if (items.length < quantity) {
+      await connection.rollback();
+      return res.status(409).json({ message: `Stok tersedia di rak asal hanya ${items.length} eksemplar.` });
+    }
+
+    if (targetRack.capacity != null) {
+      const [[targetUsage]] = await connection.execute(
+        `SELECT COUNT(*) AS used FROM book_items
+         WHERE school_id = ? AND rack_id = ? AND status = 'Tersedia'`,
+        [req.school.id, toRackId]
+      );
+      if (Number(targetUsage.used) + quantity > Number(targetRack.capacity)) {
+        await connection.rollback();
+        return res.status(409).json({
+          message: `Kapasitas rak tujuan tersisa ${Math.max(Number(targetRack.capacity) - Number(targetUsage.used), 0)} eksemplar.`
+        });
+      }
+    }
+
+    const itemIds = items.map((item) => String(item.id));
+    const updateSource = sourceIsUnassigned ? 'rack_id IS NULL' : 'rack_id = ?';
+    await connection.execute(
+      `UPDATE book_items SET rack_id = ?
+       WHERE school_id = ? AND book_id = ? AND ${updateSource}
+         AND id IN (${itemIds.map(() => '?').join(', ')})`,
+      [toRackId, req.school.id, bookId, ...sourceValues, ...itemIds]
+    );
+    const [[rackSummary]] = await connection.execute(
+      `SELECT COUNT(DISTINCT rack_id) AS rack_count, COUNT(*) - COUNT(rack_id) AS unassigned, MIN(rack_id) AS only_rack
+       FROM book_items WHERE school_id = ? AND book_id = ?`,
+      [req.school.id, bookId]
+    );
+    await connection.execute(
+      'UPDATE books SET rack_id = ? WHERE id = ? AND school_id = ?',
+      [Number(rackSummary.rack_count) === 1 && Number(rackSummary.unassigned) === 0 ? rackSummary.only_rack : null, bookId, req.school.id]
+    );
+    const [result] = await connection.execute(
+      `INSERT INTO book_rack_transfers
+       (school_id, book_id, from_rack_id, to_rack_id, moved_by, quantity, note)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [req.school.id, bookId, sourceRackId, toRackId, req.school.userId, quantity, note || null]
+    );
+    await connection.commit();
+    return res.status(201).json({
+      transfer: { id: String(result.insertId), bookTitle: books[0].title, quantity, fromRack: sourceRack?.name || 'Belum ditentukan', toRack: targetRack.name },
+      message: `${quantity} eksemplar buku berhasil dipindahkan dari ${sourceRack?.name || 'Belum ditentukan'} ke ${targetRack.name}.`
+    });
+  } catch (error) {
+    try { if (connection) await connection.rollback(); } catch (rollbackError) { return next(rollbackError); }
+    return next(error);
+  } finally {
+    if (connection) connection.release();
   }
 });
 
@@ -841,7 +1052,7 @@ router.post('/stock', requireSchoolPermission('books.stock', 'edit'), async (req
     await connection.beginTransaction();
     transactionStarted = true;
     const [rows] = await connection.execute(
-      `SELECT id, title, qty FROM books
+      `SELECT id, title, qty, rack_id FROM books
        WHERE id = ? AND school_id = ? FOR UPDATE`,
       [id, req.school.id]
     );
@@ -866,7 +1077,7 @@ router.post('/stock', requireSchoolPermission('books.stock', 'edit'), async (req
       'UPDATE books SET qty = ? WHERE id = ? AND school_id = ?',
       [resultingQty, id, req.school.id]
     );
-    await synchronizeBookItems(connection, req.school.id, id, resultingQty);
+    await synchronizeBookItems(connection, req.school.id, id, resultingQty, book.rack_id);
     const [movement] = await connection.execute(
       `INSERT INTO book_stock_movements
        (school_id, book_id, actor_id, quantity_added, previous_qty, resulting_qty, stock_date, note)
@@ -965,12 +1176,12 @@ router.post('/', requireSchoolPermission('books.catalog', 'edit'), uploadBookAss
     connection = await pool.getConnection();
     await connection.beginTransaction();
     transactionStarted = true;
-    const authorError = await resolveManualAuthor(connection, req.school.id, normalized.value);
-    if (authorError) {
+    const categoryError = await resolveManualCategories(connection, req.school.id, normalized.value, req.body.category_names);
+    if (categoryError) {
       await connection.rollback();
       transactionStarted = false;
       await removeUploadedFiles(req);
-      return res.status(400).json({ message: authorError });
+      return res.status(400).json({ message: categoryError });
     }
     const referenceError = await validateCategoryReferences(connection, req.school.id, normalized.value);
     if (referenceError) {
@@ -1053,12 +1264,12 @@ router.patch('/:id', requireSchoolPermission('books.catalog', 'edit'), uploadBoo
       await removeUploadedFiles(req);
       return res.status(404).json({ message: 'Buku tidak ditemukan.' });
     }
-    const authorError = await resolveManualAuthor(connection, req.school.id, normalized.value);
-    if (authorError) {
+    const categoryError = await resolveManualCategories(connection, req.school.id, normalized.value, req.body.category_names);
+    if (categoryError) {
       await connection.rollback();
       transactionStarted = false;
       await removeUploadedFiles(req);
-      return res.status(400).json({ message: authorError });
+      return res.status(400).json({ message: categoryError });
     }
     const referenceError = await validateCategoryReferences(connection, req.school.id, normalized.value);
     if (referenceError) {
@@ -1100,7 +1311,7 @@ router.patch('/:id', requireSchoolPermission('books.catalog', 'edit'), uploadBoo
         nextCover, nextDigital, id, req.school.id
       ]
     );
-    await synchronizeBookItems(connection, req.school.id, id, book.qty);
+    await synchronizeBookItems(connection, req.school.id, id, book.qty, book.rack_id);
     await connection.commit();
     transactionStarted = false;
     filesSaved = true;
