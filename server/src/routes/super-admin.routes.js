@@ -240,7 +240,7 @@ router.get('/schools', async (req, res, next) => {
     pending: "s.status = 'pending'",
     lifetime: "s.status = 'active' AND s.package_type = 'lifetime'"
   };
-  if (status !== 'all' && !statusFilters[status]) {
+  if (status !== 'all' && !Object.prototype.hasOwnProperty.call(statusFilters, status)) {
     return res.status(400).json({ message: 'Filter status sekolah tidak valid.' });
   }
 
@@ -251,7 +251,7 @@ router.get('/schools', async (req, res, next) => {
     const term = `%${search}%`;
     values.push(term, term, term);
   }
-  if (statusFilters[status]) conditions.push(statusFilters[status]);
+  if (Object.prototype.hasOwnProperty.call(statusFilters, status)) conditions.push(statusFilters[status]);
 
   try {
     const [[summary]] = await pool.query(`
@@ -296,7 +296,7 @@ router.get('/billing', async (req, res, next) => {
     approved: 'paid',
     rejected: 'rejected'
   };
-  if (status !== 'all' && !statusFilters[status]) {
+  if (status !== 'all' && !Object.prototype.hasOwnProperty.call(statusFilters, status)) {
     return res.status(400).json({ message: 'Filter status pembayaran tidak valid.' });
   }
 
@@ -310,13 +310,14 @@ router.get('/billing', async (req, res, next) => {
         COALESCE(SUM(CASE WHEN status = 'unpaid' THEN amount ELSE 0 END), 0) AS open_amount
       FROM tenant_invoices
     `);
-    const values = statusFilters[status] ? [statusFilters[status]] : [];
+    const filterValue = Object.prototype.hasOwnProperty.call(statusFilters, status) ? statusFilters[status] : null;
+    const values = filterValue ? [filterValue] : [];
     const [invoices] = await pool.execute(`
       SELECT i.id, i.school_id, s.name AS school_name, s.package_type,
              i.amount, i.status, i.due_date, i.created_at
       FROM tenant_invoices i
       JOIN tenants_schools s ON s.id = i.school_id
-      ${statusFilters[status] ? 'WHERE i.status = ?' : ''}
+      ${filterValue ? 'WHERE i.status = ?' : ''}
       ORDER BY i.created_at DESC, i.id DESC
     `, values);
     return res.json({

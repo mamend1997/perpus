@@ -3,7 +3,7 @@ import {
   Activity, ArrowDownRight, ArrowUpRight, Bell, BookOpen, Building2,
   Check, ChevronDown, ChevronRight, CircleHelp, ClipboardList, Copy, Eye, EyeOff,
   CreditCard, Database, FileText, Headphones, LayoutDashboard,
-  LogOut, Menu, MessageSquare, MoreHorizontal, PanelLeftClose, PanelLeftOpen,
+  LogOut, Menu, MessageSquare, MoreHorizontal, PanelLeftClose, PanelLeftOpen, Plus,
   Search, Settings2, ShieldCheck, Sparkles, Ticket, Users, X
 } from 'lucide-react';
 
@@ -345,6 +345,236 @@ function SchoolWelcome({ account, onLogout }) {
   );
 }
 
+function SchoolListPage() {
+  const [schools, setSchools] = useState([]);
+  const [summary, setSummary] = useState({ total: 0, active: 0, trials: 0, suspended: 0 });
+  const [search, setSearch] = useState('');
+  const [status, setStatus] = useState('all');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [selectedSchool, setSelectedSchool] = useState(null);
+  const [retryCount, setRetryCount] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setError('');
+    const query = new URLSearchParams({ search, status });
+    request(`/api/super-admin/schools?${query}`)
+      .then((result) => {
+        if (!active) return;
+        setSchools(result.schools);
+        setSummary(result.summary);
+      })
+      .catch((err) => {
+        if (active) setError(err.message);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => { active = false; };
+  }, [search, status, retryCount]);
+
+  const formatDate = (value) => value
+    ? new Intl.DateTimeFormat('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(value))
+    : '—';
+  const packageLabel = (value) => ({ trial: 'Uji Coba', basic: 'Basic', premium: 'Premium', lifetime: 'Lifetime' })[value] || value;
+  const schoolStatus = (school) => {
+    if (school.status === 'suspended') return { label: 'Ditangguhkan', className: 'suspended' };
+    if (school.status === 'pending') return { label: 'Menunggu', className: 'pending' };
+    if (school.package_type === 'trial') return { label: 'Uji Coba', className: 'trial' };
+    if (school.package_type === 'lifetime') return { label: 'Lifetime', className: 'lifetime' };
+    return { label: 'Aktif', className: 'active' };
+  };
+
+  return (
+    <section className="school-list-page">
+      <header className="management-heading">
+        <div><h1>Daftar Sekolah</h1><p>Manajemen tenant sekolah: paket, status, domain, akun admin, dan kontrol fitur.</p></div>
+        <a className="primary-button school-add-button" href="/school/register" target="_blank" rel="noreferrer"><Plus size={16} />Tambah Sekolah</a>
+      </header>
+      <div className="school-summary-grid">
+        <article className="school-summary-card total"><span>TOTAL</span><b>{number(summary.total)}</b><Building2 size={26} /></article>
+        <article className="school-summary-card active"><span>AKTIF</span><b>{number(summary.active)}</b><ShieldCheck size={26} /></article>
+        <article className="school-summary-card trials"><span>UJI COBA</span><b>{number(summary.trials)}</b><Sparkles size={26} /></article>
+        <article className="school-summary-card suspended"><span>DITANGGUHKAN</span><b>{number(summary.suspended)}</b><ShieldCheck size={26} /></article>
+      </div>
+      <section className="panel school-directory-panel">
+        <div className="school-directory-controls">
+          <label className="school-search"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Cari nama sekolah, kode, email..." aria-label="Cari sekolah" /></label>
+          <select value={status} onChange={(event) => setStatus(event.target.value)} aria-label="Filter status sekolah">
+            <option value="all">Semua status</option>
+            <option value="active">Aktif</option>
+            <option value="trial">Uji Coba</option>
+            <option value="lifetime">Lifetime</option>
+            <option value="pending">Menunggu</option>
+            <option value="suspended">Ditangguhkan</option>
+          </select>
+        </div>
+        {error ? (
+          <div className="error-panel"><ShieldCheck size={20} /><div><b>Daftar sekolah belum dapat dimuat</b><p>{error}</p></div><button className="subtle-button" onClick={() => setRetryCount((current) => current + 1)}>Coba lagi</button></div>
+        ) : loading ? (
+          <div className="loading-state"><div className="spinner" />Memuat daftar sekolah...</div>
+        ) : schools.length ? (
+          <div className="school-directory-scroll">
+            <table className="school-directory-table">
+              <thead><tr><th>KODE</th><th>SEKOLAH</th><th>PAKET</th><th>STATUS</th><th>MASA AKTIF</th><th>DOMAIN</th><th>AKSI</th></tr></thead>
+              <tbody>{schools.map((school) => {
+                const currentStatus = schoolStatus(school);
+                return (
+                  <tr key={school.id}>
+                    <td><span className="school-code-tag">{school.school_code || '—'}</span></td>
+                    <td><div className="directory-school-name"><b>{school.name}</b><span>{school.admin_name || 'Admin belum tersedia'}{school.admin_email ? ` · ${school.admin_email}` : ''}</span></div></td>
+                    <td><span className={`package-tag ${school.package_type}`}>{packageLabel(school.package_type)}</span></td>
+                    <td><span className={`directory-status ${currentStatus.className}`}>{currentStatus.label}</span></td>
+                    <td>{school.package_type === 'lifetime' ? 'Lifetime' : formatDate(school.created_at)}</td>
+                    <td className="directory-domain">—</td>
+                    <td><button className="school-detail-button" onClick={() => setSelectedSchool(school)}><Eye size={14} />Detail Sekolah</button></td>
+                  </tr>
+                );
+              })}</tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="school-directory-empty"><Building2 size={25} /><b>{search || status !== 'all' ? 'Sekolah tidak ditemukan' : 'Belum ada sekolah'}</b><span>{search || status !== 'all' ? 'Coba ubah kata kunci atau filter status.' : 'Sekolah yang mendaftar akan tampil di sini.'}</span></div>
+        )}
+      </section>
+      {selectedSchool && (
+        <div className="school-detail-backdrop" onClick={() => setSelectedSchool(null)}>
+          <section className="panel school-detail-modal" role="dialog" aria-modal="true" aria-labelledby="school-detail-title" onClick={(event) => event.stopPropagation()}>
+            <div className="school-detail-heading"><div><h2 id="school-detail-title">Detail Sekolah</h2><p>{selectedSchool.name}</p></div><button className="icon-button" onClick={() => setSelectedSchool(null)} aria-label="Tutup detail"><X size={18} /></button></div>
+            <div className="school-detail-grid">
+              <span>Kode sekolah</span><b>{selectedSchool.school_code || '—'}</b>
+              <span>Administrator</span><b>{selectedSchool.admin_name || '—'}</b>
+              <span>Email</span><b>{selectedSchool.admin_email || '—'}</b>
+              <span>WhatsApp</span><b>{selectedSchool.admin_phone || '—'}</b>
+              <span>NPSN</span><b>{selectedSchool.npsn || '—'}</b>
+              <span>Alamat</span><b>{selectedSchool.address || '—'}</b>
+              <span>Paket</span><b>{packageLabel(selectedSchool.package_type)}</b>
+              <span>Terdaftar</span><b>{formatDate(selectedSchool.created_at)}</b>
+              <span>Domain</span><b>—</b>
+            </div>
+          </section>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function BillingPage({ billing, onBillingCheck }) {
+  const [filter, setFilter] = useState('all');
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [retryCount, setRetryCount] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setError('');
+    request(`/api/super-admin/billing?status=${encodeURIComponent(filter)}`)
+      .then((result) => {
+        if (active) setData(result);
+      })
+      .catch((err) => {
+        if (active) setError(err.message);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => { active = false; };
+  }, [filter, retryCount]);
+
+  const summary = data?.summary || {};
+  const statusLabel = (value) => ({
+    pending_verification: ['Menunggu Verifikasi', 'pending'],
+    paid: ['Disetujui', 'paid'],
+    unpaid: ['Belum Dibayar', 'unpaid'],
+    rejected: ['Ditolak', 'rejected']
+  })[value] || [value, ''];
+  const dateLabel = (value) => value
+    ? new Intl.DateTimeFormat('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(value))
+    : '—';
+
+  return (
+    <section className="billing-page">
+      <header className="management-heading">
+        <div><h1>Pembayaran & Penagihan</h1><p>Verifikasi bukti pembayaran sekolah dan pantau tagihan yang tercatat.</p></div>
+        <button className="primary-button" onClick={onBillingCheck} disabled={billing?.loading}>{billing?.loading ? 'Memeriksa...' : 'Jalankan Pemeriksaan Tagihan'}</button>
+      </header>
+      <div className="billing-summary-grid">
+        <article className="billing-summary-card pending"><span>MENUNGGU VERIFIKASI</span><b>{number(summary.pendingVerification)}</b></article>
+        <article className="billing-summary-card approved"><span>DISETUJUI</span><b>{number(summary.approved)}</b><small>{rupiah(summary.approvedAmount)}</small></article>
+        <article className="billing-summary-card rejected"><span>DITOLAK</span><b>—</b><small>Status penolakan belum tersedia</small></article>
+        <article className="billing-summary-card open"><span>TAGIHAN TERBUKA</span><b>{number(summary.openInvoices)}</b><small>{rupiah(summary.openAmount)} belum dibayar</small></article>
+      </div>
+      <section className="panel billing-automation-panel">
+        <div className="panel-heading"><div><h3>Pemeriksaan Tagihan</h3><p>Ringkasan status invoice dan jatuh tempo.</p></div></div>
+        <div className="billing-check-grid">
+          <div><span>PEMERIKSAAN TERAKHIR</span><b>{billing?.checkedAt ? new Date(billing.checkedAt).toLocaleString('id-ID') : 'Belum pernah'}</b></div>
+          <div><span>TAGIHAN TERBUKA</span><b>{billing ? number(billing.openInvoices) : number(summary.openInvoices)}</b></div>
+          <div><span>LEWAT JATUH TEMPO</span><b>{billing ? number(billing.overdueInvoices) : '—'}</b></div>
+        </div>
+        <p className="billing-readonly-note">Pemeriksaan ini hanya membaca data. Pembuatan invoice, pengiriman WhatsApp, dan penangguhan otomatis belum diaktifkan.</p>
+        {billing?.error && <div className="error-box">{billing.error}</div>}
+        {billing?.message && <div className="success-box">{billing.message}</div>}
+      </section>
+      <section className="panel billing-table-panel">
+        <div className="billing-tabs" role="tablist" aria-label="Filter pembayaran">
+          {[['pending', 'Menunggu Verifikasi'], ['approved', 'Disetujui'], ['rejected', 'Ditolak'], ['all', 'Semua']].map(([value, label]) => (
+            <button type="button" role="tab" aria-selected={filter === value} className={filter === value ? 'selected' : ''} key={value} onClick={() => setFilter(value)}>{label}</button>
+          ))}
+        </div>
+        {error ? (
+          <div className="error-panel"><CreditCard size={20} /><div><b>Data pembayaran belum dapat dimuat</b><p>{error}</p></div><button className="subtle-button" onClick={() => setRetryCount((current) => current + 1)}>Coba lagi</button></div>
+        ) : loading ? (
+          <div className="loading-state"><div className="spinner" />Memuat data pembayaran...</div>
+        ) : data?.invoices.length ? (
+          <div className="billing-table-scroll">
+            <table className="billing-table">
+              <thead><tr><th>DIAJUKAN</th><th>SEKOLAH</th><th>PAKET</th><th>NOMINAL</th><th>JATUH TEMPO</th><th>STATUS</th></tr></thead>
+              <tbody>{data.invoices.map((invoice) => {
+                const [label, className] = statusLabel(invoice.status);
+                return <tr key={invoice.id}><td>{dateLabel(invoice.created_at)}</td><td><b>{invoice.school_name}</b></td><td>{invoice.package_type}</td><td>{rupiah(invoice.amount)}</td><td>{dateLabel(invoice.due_date)}</td><td><span className={`billing-status ${className}`}>{label}</span></td></tr>;
+              })}</tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="school-directory-empty"><CreditCard size={25} /><b>Belum ada pembayaran</b><span>Tagihan dan pengajuan pembayaran sekolah akan tampil di sini.</span></div>
+        )}
+      </section>
+    </section>
+  );
+}
+
+const moduleDescriptions = {
+  'Paket Langganan': 'Atur paket Basic, Premium, dan Lifetime beserta harga bulanan, semester, atau tahunan.',
+  'Default Menu Sekolah': 'Atur nama, urutan, dan visibilitas menu bawaan untuk sekolah.',
+  'Branding Sistem': 'Atur identitas aplikasi, logo, dan teks yang digunakan pada halaman platform.',
+  'QRIS & Harga': 'Atur metode pembayaran, instruksi, QRIS, dan harga per periode langganan.',
+  'Pusat Tiket': 'Kelola tiket bantuan yang dikirim oleh sekolah.',
+  'Pengumuman & Maintenance': 'Kelola pengumuman dan informasi pemeliharaan sistem.',
+  'Petunjuk Pengguna': 'Lihat dan kelola panduan penggunaan platform.',
+  'Audit Logs': 'Telusuri aktivitas penting yang tercatat pada platform.',
+  'WhatsApp Gateway': 'Atur koneksi WhatsApp untuk notifikasi platform.',
+  'Backup & Restore': 'Kelola informasi pencadangan dan pemulihan data platform.',
+  'Pengaturan Profil': 'Kelola identitas dan keamanan akun Super Admin.',
+  'Syarat & SLA': 'Kelola dokumen Syarat & Ketentuan dan Service Level Agreement.'
+};
+
+function AdminModulePage({ title }) {
+  return (
+    <section className="admin-module-page">
+      <header className="management-heading"><div><h1>{title}</h1><p>{moduleDescriptions[title] || `Kelola ${title.toLowerCase()} pada platform.`}</p></div></header>
+      <section className="panel admin-module-empty">
+        <span><Settings2 size={22} /></span>
+        <h2>{title}</h2>
+        <p>Halaman menu dapat diakses. Data dan tindakan untuk modul ini belum tersedia.</p>
+      </section>
+    </section>
+  );
+}
+
 function StatCard({ title, value, note, icon: Icon, tone, trend }) {
   return (
     <article className="stat-card">
@@ -356,7 +586,7 @@ function StatCard({ title, value, note, icon: Icon, tone, trend }) {
   );
 }
 
-function Dashboard({ data, onBillingCheck, billing, toast }) {
+function Dashboard({ data, onBillingCheck, billing, toast, onShowSchools }) {
   const stats = data.stats;
   const formattedDate = (date) => new Intl.DateTimeFormat('id-ID', {
     day: 'numeric', month: 'short', year: 'numeric'
@@ -396,11 +626,11 @@ function Dashboard({ data, onBillingCheck, billing, toast }) {
         <div className="billing-copy"><div className="billing-title">Penagihan & pembekuan otomatis <span className="scheduled-pill"><span /> TERJADWAL HARIAN</span></div><p>Notifikasi H-7 · Pembuatan tagihan otomatis · Penangguhan setelah masa aktif berakhir</p><div className="billing-stats"><span>Terakhir dijalankan <b>{billing?.checkedAt ? new Date(billing.checkedAt).toLocaleString('id-ID') : 'Belum pernah'}</b></span><i /><span>Tagihan terbuka <b>{billing ? number(billing.openInvoices) : '—'}</b></span><i /><span>Lewat jatuh tempo <b>{billing ? number(billing.overdueInvoices) : '—'}</b></span></div></div>
         <button className="primary-button billing-button" onClick={onBillingCheck} disabled={billing?.loading}>{billing?.loading ? 'Memeriksa...' : 'Jalankan Pemeriksaan'}<ArrowUpRight size={16} /></button>
       </section>
-      {billing?.message && <div className="inline-notice"><Check size={15} />{billing.message}</div>}
+      {billing?.error ? <div className="error-box">{billing.error}</div> : billing?.message && <div className="inline-notice"><Check size={15} />{billing.message}</div>}
 
       <section className="content-grid">
         <article className="panel schools-panel">
-          <div className="panel-heading"><div><h3>Sekolah terbaru</h3><p>Tenant yang baru bergabung di platform</p></div><button className="text-button" onClick={() => toast('Modul Daftar Sekolah siap dikembangkan.')}>Lihat semua <ChevronRight size={16} /></button></div>
+          <div className="panel-heading"><div><h3>Sekolah terbaru</h3><p>Tenant yang baru bergabung di platform</p></div><button className="text-button" onClick={onShowSchools}>Lihat semua <ChevronRight size={16} /></button></div>
           {data.latestSchools.length ? <div className="school-list">{data.latestSchools.map((school, index) => <div className="school-row" key={school.id}><div className={`school-avatar avatar-${index % 5}`}>{school.name.slice(0, 1).toUpperCase()}</div><div className="school-name"><b>{school.name}</b><span>Bergabung {formattedDate(school.created_at)}</span></div><span className={`package-tag ${school.package_type}`}>{packageLabel(school.package_type)}</span><span className={`status-tag ${school.status}`}>{school.status === 'active' ? 'Aktif' : school.status === 'pending' ? 'Menunggu' : 'Ditangguhkan'}</span><button className="icon-button row-more" aria-label={`Opsi ${school.name}`}><MoreHorizontal size={18} /></button></div>)}</div> : <EmptyState text="Sekolah terbaru akan tampil di sini setelah tenant mendaftar." /> }
         </article>
         <article className="panel action-panel">
@@ -694,7 +924,7 @@ export default function App() {
       const result = await request('/api/super-admin/billing-check', { method: 'POST' });
       setBilling({ ...result, loading: false });
     } catch (err) {
-      setBilling({ loading: false, message: err.message });
+      setBilling({ loading: false, error: err.message });
     }
   }
 
@@ -723,17 +953,20 @@ export default function App() {
       <aside className={`sidebar ${mobileOpen ? 'mobile-open' : ''}`}>
         <div className="sidebar-brand"><div className="brand-mark"><BookOpen size={21} /></div>{!collapsed && <div className="brand-text"><b>perpuskita<span>.</span></b><small>PLATFORM ADMIN</small></div>}<button className="collapse-button" onClick={() => setCollapsed(!collapsed)} aria-label="Ciutkan sidebar">{collapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}</button></div>
         <div className="workspace-switch"><div className="workspace-logo">P</div>{!collapsed && <><div><b>PerpusKita</b><span>Platform Owner</span></div><ChevronDown size={15} className="workspace-chevron" /></>}</div>
-        <nav className="side-nav">{groups.map((group) => <div className="nav-group" key={group.title}><div className="nav-group-title">{!collapsed ? group.title : <span className="nav-divider" />}</div>{group.items.map(({ label, icon: Icon, badge }) => <button key={label} title={collapsed ? label : undefined} onClick={() => { setActive(label); setMobileOpen(false); if (!['Dashboard', 'Pengaturan Profil', 'Syarat & SLA'].includes(label)) toast(`${label}: modul ini siap dikembangkan.`); }} className={`nav-item ${active === label ? 'selected' : ''}`}><Icon size={17} /><span className="nav-label">{!collapsed && label}</span>{!collapsed && badge && data && <span className="nav-badge">{number(data.stats[badge])}</span>}</button>)}</div>)}</nav>
+        <nav className="side-nav">{groups.map((group) => <div className="nav-group" key={group.title}><div className="nav-group-title">{!collapsed ? group.title : <span className="nav-divider" />}</div>{group.items.map(({ label, icon: Icon, badge }) => <button key={label} title={collapsed ? label : undefined} onClick={() => { setActive(label); setMobileOpen(false); }} className={`nav-item ${active === label ? 'selected' : ''}`}><Icon size={17} /><span className="nav-label">{!collapsed && label}</span>{!collapsed && badge && data && <span className="nav-badge">{number(data.stats[badge])}</span>}</button>)}</div>)}</nav>
         <div className="sidebar-bottom"><button className="help-card" onClick={() => toast('Hubungi tim platform melalui Pusat Tiket.')}><span className="help-icon"><CircleHelp size={17} /></span>{!collapsed && <span><b>Butuh bantuan?</b><small>Kunjungi pusat bantuan</small></span>}{!collapsed && <ChevronRight size={15} />}</button><button className="profile-card" onClick={logout}><div className="profile-avatar">{admin.name?.slice(0, 1).toUpperCase() || 'P'}</div>{!collapsed && <><span className="profile-info"><b>{admin.name}</b><small>Super Admin</small></span><LogOut size={16} className="logout-icon" /></>}</button></div>
       </aside>
       <main className="main-area">
         <header className="topbar"><div className="topbar-left"><button className="mobile-menu icon-button" onClick={() => setMobileOpen(true)} aria-label="Buka menu"><Menu size={20} /></button><div className="breadcrumbs"><span>Platform</span><ChevronRight size={14} /><b>{active}</b></div></div><div className="topbar-right"><div className="search-box"><Search size={16} /><input placeholder="Cari apa saja..." aria-label="Cari" /><kbd>⌘ K</kbd></div><button className="icon-button notification-button" aria-label="Notifikasi"><Bell size={18} /><i /></button><div className="topbar-separator" /><button className="top-admin"><span className="top-admin-avatar">{admin.name?.slice(0, 1).toUpperCase() || 'P'}</span><span>{admin.name}</span><ChevronDown size={14} /></button></div></header>
         <div className="page-content">
-          {active === 'Pengaturan Profil' ? <ProfilePage admin={admin} onUpdate={setAdmin} />
+          {active === 'Daftar Sekolah' ? <SchoolListPage />
+            : active === 'Pembayaran & Penagihan' ? <BillingPage billing={billing} onBillingCheck={runBillingCheck} />
+            : active === 'Pengaturan Profil' ? <ProfilePage admin={admin} onUpdate={setAdmin} />
             : active === 'Syarat & SLA' ? <LegalDocumentsPage />
-            : error ? <div className="error-panel"><ShieldCheck size={20} /><div><b>Dashboard belum dapat dimuat</b><p>{error}. Pastikan database sudah disiapkan dan tersedia datanya.</p></div><button className="subtle-button" onClick={() => { setError(''); request('/api/super-admin/dashboard').then(setData).catch((err) => setError(err.message)); }}>Coba lagi</button></div>
-              : data ? <Dashboard data={{ ...data, adminName: admin.name }} onBillingCheck={runBillingCheck} billing={billing} toast={toast} />
-                : <div className="loading-state"><div className="spinner" />Memuat ringkasan platform...</div>}
+            : active === 'Dashboard' ? error ? <div className="error-panel"><ShieldCheck size={20} /><div><b>Dashboard belum dapat dimuat</b><p>{error}. Pastikan database sudah disiapkan dan tersedia datanya.</p></div><button className="subtle-button" onClick={() => { setError(''); request('/api/super-admin/dashboard').then(setData).catch((err) => setError(err.message)); }}>Coba lagi</button></div>
+              : data ? <Dashboard data={{ ...data, adminName: admin.name }} onBillingCheck={runBillingCheck} billing={billing} toast={toast} onShowSchools={() => setActive('Daftar Sekolah')} />
+                : <div className="loading-state"><div className="spinner" />Memuat ringkasan platform...</div>
+            : <AdminModulePage title={active} />}
         </div>
       </main>
       {toastText && <div className="toast"><Check size={16} />{toastText}<button onClick={() => setToastText('')} aria-label="Tutup"><X size={15} /></button></div>}
