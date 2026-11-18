@@ -1,6 +1,7 @@
 CREATE TABLE IF NOT EXISTS tenants_schools (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   name VARCHAR(180) NOT NULL,
+  school_code CHAR(4) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
   npsn CHAR(8) NULL,
   address TEXT NULL,
   logo VARCHAR(500) NULL,
@@ -9,6 +10,7 @@ CREATE TABLE IF NOT EXISTS tenants_schools (
   students_count INT UNSIGNED NOT NULL DEFAULT 0,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
+  UNIQUE KEY uq_tenants_schools_school_code (school_code),
   UNIQUE KEY uq_tenants_schools_npsn (npsn),
   KEY idx_tenants_status_created (status, created_at),
   KEY idx_tenants_package (package_type)

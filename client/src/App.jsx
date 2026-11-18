@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   Activity, ArrowDownRight, ArrowUpRight, Bell, BookOpen, Building2,
-  Check, ChevronDown, ChevronRight, CircleHelp, ClipboardList,
+  Check, ChevronDown, ChevronRight, CircleHelp, ClipboardList, Copy, Eye, EyeOff,
   CreditCard, Database, FileText, Headphones, LayoutDashboard,
   LogOut, Menu, MessageSquare, MoreHorizontal, PanelLeftClose, PanelLeftOpen,
   Search, Settings2, ShieldCheck, Sparkles, Ticket, Users, X
@@ -51,6 +51,14 @@ async function request(path, options = {}) {
   return body;
 }
 
+function currentPage() {
+  const path = window.location.pathname;
+  const routes = ['/school/login', '/school/register', '/super-admin/login'];
+  if (routes.includes(path)) return path;
+  window.history.replaceState({}, '', '/school/login');
+  return '/school/login';
+}
+
 function Login({ onLogin }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -86,6 +94,186 @@ function Login({ onLogin }) {
         {error && <div className="error-box">{error}</div>}
         <button className="primary-button login-submit" disabled={busy}>{busy ? 'Memeriksa...' : 'Masuk ke Dashboard'}</button>
       </form>
+    </main>
+  );
+}
+
+function SchoolAuth({ mode, onNavigate, onLogin }) {
+  const registering = mode === 'register';
+  const [schoolName, setSchoolName] = useState('');
+  const [adminName, setAdminName] = useState('');
+  const [address, setAddress] = useState('');
+  const [schoolCode, setSchoolCode] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [registration, setRegistration] = useState(null);
+  const [copyStatus, setCopyStatus] = useState('');
+  const passwordRules = [
+    { label: 'Minimal 8 karakter', valid: password.length >= 8 },
+    { label: 'Minimal 1 huruf besar', valid: /[A-Z]/.test(password) },
+    { label: 'Minimal 1 angka', valid: /\d/.test(password) },
+    { label: 'Minimal 1 simbol', valid: /[^A-Za-z0-9\s]/.test(password) }
+  ];
+
+  async function submit(event) {
+    event.preventDefault();
+    setError('');
+    const waNumber = phone.replace(/^0+/, '');
+    if (registering && !passwordRules.every((rule) => rule.valid)) {
+      setError('Kata sandi harus memenuhi semua persyaratan.');
+      return;
+    }
+    if (registering && !/^\d{8,13}$/.test(waNumber)) {
+      setError('Nomor WhatsApp harus berisi 8–13 angka setelah kode +62.');
+      return;
+    }
+
+    setBusy(true);
+    try {
+      if (registering) {
+        const result = await request('/api/auth/school/register', {
+          method: 'POST',
+          body: JSON.stringify({
+            schoolName,
+            adminName,
+            address,
+            email,
+            phone: `+62${waNumber}`,
+            password
+          })
+        });
+        setRegistration(result);
+      } else {
+        const result = await request('/api/auth/school/login', {
+          method: 'POST',
+          body: JSON.stringify({ schoolCode, email, password })
+        });
+        localStorage.setItem('school-token', result.token);
+        onLogin(result.account);
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function copySchoolCode() {
+    if (!navigator.clipboard?.writeText) {
+      setCopyStatus('Salin kode sekolah secara manual.');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(registration.school.code);
+      setCopyStatus('Kode sekolah berhasil disalin.');
+    } catch {
+      setCopyStatus('Kode gagal disalin. Silakan salin secara manual.');
+    }
+  }
+
+  function enterSchoolDashboard() {
+    localStorage.setItem('school-token', registration.token);
+    onLogin(registration.account);
+  }
+
+  if (registration) {
+    return (
+      <main className="login-shell">
+        <section className="login-card school-success registration-summary">
+          <div className="brand-mark"><Check size={22} /></div>
+          <p className="eyebrow">PENDAFTARAN BERHASIL</p>
+          <h1>{registration.school.name}</h1>
+          <p className="muted">Periksa ringkasan akun dan simpan kode sekolah untuk login berikutnya.</p>
+          <div className="registration-summary-grid">
+            <span>Alamat sekolah</span><b>{registration.school.address}</b>
+            <span>Administrator</span><b>{registration.account.name}</b>
+            <span>Email administrator</span><b>{registration.account.email}</b>
+            <span>No. WhatsApp</span><b>{registration.account.phone}</b>
+          </div>
+          <div className="school-code-panel">
+            <div><span>Kode sekolah</span><b className="school-code-display">{registration.school.code}</b></div>
+            <button type="button" className="copy-code-button" onClick={copySchoolCode}>
+              {copyStatus === 'Kode sekolah berhasil disalin.' ? <Check size={17} /> : <Copy size={17} />}
+              {copyStatus === 'Kode sekolah berhasil disalin.' ? 'Tersalin' : 'Salin kode'}
+            </button>
+          </div>
+          <p className="copy-status" aria-live="polite">{copyStatus || 'Kode ini akan diminta saat Anda login kembali.'}</p>
+          <button className="primary-button login-submit" onClick={enterSchoolDashboard}>Masuk ke Dashboard <ArrowUpRight size={17} /></button>
+        </section>
+      </main>
+    );
+  }
+
+  return (
+    <main className="login-shell">
+      <form className={`login-card school-auth-card ${registering ? 'school-register-card' : ''}`} onSubmit={submit}>
+        <div className="brand-mark"><BookOpen size={22} /></div>
+        <p className="eyebrow">PERPUSKITA · AKUN SEKOLAH</p>
+        <h1>{registering ? 'Daftarkan sekolah' : 'Login akun sekolah'}</h1>
+        {registering && <p className="muted">Buat ruang perpustakaan sekolah Anda. Kode sekolah dibuat otomatis.</p>}
+
+        {registering ? (
+          <>
+            <label>Nama sekolah<input autoComplete="organization" required minLength={2} maxLength={180} value={schoolName} onChange={(e) => setSchoolName(e.target.value)} placeholder="Contoh: SMP Negeri 1" /></label>
+            <label>Alamat sekolah<input autoComplete="street-address" required minLength={3} maxLength={1000} value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Alamat lengkap sekolah" /></label>
+            <label>Nama administrator<input autoComplete="name" required minLength={2} maxLength={180} value={adminName} onChange={(e) => setAdminName(e.target.value)} placeholder="Nama pengelola perpustakaan" /></label>
+          </>
+        ) : (
+          <label>Kode sekolah
+            <input autoComplete="organization" required minLength={4} maxLength={4} pattern="[A-Za-z0-9]{4}" value={schoolCode} onChange={(e) => setSchoolCode(e.target.value.toUpperCase())} placeholder="AB12" />
+          </label>
+        )}
+
+        <label>Email administrator<input autoComplete="username" type="email" required maxLength={190} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="admin@sekolah.sch.id" /></label>
+        {registering && <label>No. WhatsApp
+          <div className="phone-field">
+            <span>+62</span>
+            <input autoComplete="tel-national" type="tel" inputMode="numeric" pattern="[0-9]*" required minLength={8} maxLength={13} value={phone} onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))} placeholder="81234567890" />
+          </div>
+        </label>}
+        {registering ? (
+          <>
+            <label htmlFor="school-register-password">Kata sandi</label>
+            <div className="password-field">
+              <input id="school-register-password" autoComplete="new-password" type={showPassword ? 'text' : 'password'} required value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Buat kata sandi" />
+              <button type="button" className="password-toggle" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? 'Sembunyikan kata sandi' : 'Tampilkan kata sandi'}>
+                {showPassword ? <EyeOff size={19} /> : <Eye size={19} />}
+              </button>
+            </div>
+            <ul className="password-rules" aria-live="polite">
+              {passwordRules.map((rule) => <li className={rule.valid ? 'valid' : ''} key={rule.label}><span className="password-rule-mark">{rule.valid && <Check size={12} />}</span>{rule.label}</li>)}
+            </ul>
+          </>
+        ) : <label>Kata sandi<input autoComplete="current-password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Masukkan kata sandi" /></label>}
+        {error && <div className="error-box">{error}</div>}
+        <button className="primary-button login-submit" disabled={busy}>{busy ? 'Memproses...' : registering ? 'Buat Akun Sekolah' : 'Masuk ke Akun Sekolah'}</button>
+        <div className="login-alternatives">
+          {registering ? <><span>Sudah punya akun?</span><button type="button" onClick={() => onNavigate('/school/login')}>Login sekolah</button></> : <><span>Belum punya akun?</span><button type="button" onClick={() => onNavigate('/school/register')}>Daftarkan sekolah</button></>}
+        </div>
+      </form>
+    </main>
+  );
+}
+
+function SchoolWelcome({ account, onLogout }) {
+  return (
+    <main className="login-shell">
+      <section className="login-card school-success">
+        <div className="brand-mark"><Check size={22} /></div>
+        <p className="eyebrow">DASHBOARD SEKOLAH</p>
+        <h1>Selamat datang, {account.name}</h1>
+        <p className="muted">Ringkasan akun administrator untuk {account.school.name}.</p>
+        <div className="school-account-details">
+          <span>Kode sekolah</span><b>{account.school.code}</b>
+          <span>Email</span><b>{account.email}</b>
+        </div>
+        <p className="school-dashboard-note">Akun sekolah Anda aktif. Modul katalog, sirkulasi, dan laporan akan tersedia di dashboard sekolah.</p>
+        <button className="auth-text-button" onClick={onLogout}>Keluar</button>
+      </section>
     </main>
   );
 }
@@ -168,6 +356,8 @@ function EmptyState({ text }) {
 
 export default function App() {
   const [admin, setAdmin] = useState(null);
+  const [schoolAccount, setSchoolAccount] = useState(null);
+  const [page, setPage] = useState(currentPage);
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [collapsed, setCollapsed] = useState(false);
@@ -176,10 +366,32 @@ export default function App() {
   const [billing, setBilling] = useState(null);
   const [toastText, setToastText] = useState('');
 
+  useEffect(() => {
+    const handlePopState = () => setPage(currentPage());
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  function navigate(path) {
+    window.history.pushState({}, '', path);
+    setPage(path);
+  }
+
   function toast(message) {
     setToastText(message);
     window.setTimeout(() => setToastText(''), 2800);
   }
+
+  useEffect(() => {
+    if (!page.startsWith('/school/')) return;
+    const token = localStorage.getItem('school-token');
+    if (!token) return;
+    request('/api/auth/school/me', {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then(({ account }) => setSchoolAccount(account))
+      .catch(() => localStorage.removeItem('school-token'));
+  }, [page]);
 
   useEffect(() => {
     if (!localStorage.getItem('super-admin-token')) return;
@@ -209,6 +421,17 @@ export default function App() {
     localStorage.removeItem('super-admin-token');
     setAdmin(null);
     setData(null);
+  }
+
+  function schoolLogout() {
+    localStorage.removeItem('school-token');
+    setSchoolAccount(null);
+    navigate('/school/login');
+  }
+
+  if (page.startsWith('/school/')) {
+    if (schoolAccount) return <SchoolWelcome account={schoolAccount} onLogout={schoolLogout} />;
+    return <SchoolAuth mode={page === '/school/register' ? 'register' : 'login'} onNavigate={navigate} onLogin={setSchoolAccount} />;
   }
 
   if (!admin) return <Login onLogin={setAdmin} />;

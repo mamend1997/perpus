@@ -26,7 +26,7 @@ npm run seed:admin
 npm run dev
 ```
 
-Buka `http://localhost:5173` dan masuk menggunakan kredensial Super Admin dari `.env`. API berjalan di `http://localhost:4000`; pemeriksaan koneksi tersedia di `/api/health`.
+Buka `http://localhost:5173` untuk portal sekolah. Login Super Admin terpisah di `/super-admin/login`; pendaftaran dan login administrator sekolah tersedia di `/school/register` dan `/school/login`. Pendaftaran meminta nomor WhatsApp Indonesia dan kata sandi minimal 8 karakter yang berisi huruf besar, angka, serta simbol. Setelah pendaftaran, aplikasi menampilkan ringkasan sekolah, kode 4 karakter yang bisa disalin, dan tombol untuk masuk ke dashboard. API berjalan di `http://localhost:4000`; pemeriksaan koneksi tersedia di `/api/health`.
 
 ## Deploy ke Railway
 
@@ -37,7 +37,7 @@ Buka `http://localhost:5173` dan masuk menggunakan kredensial Super Admin dari `
    - `JWT_SECRET`: string acak kuat minimal 32 karakter.
    - `SUPER_ADMIN_NAME`, `SUPER_ADMIN_EMAIL`, `SUPER_ADMIN_PASSWORD`: kredensial bootstrap admin; password minimal 12 karakter.
    - `CLIENT_ORIGIN`: URL publik layanan aplikasi, misalnya `https://nama-layanan.up.railway.app`.
-4. Deploy. Jalankan `npm run db:setup` lalu `npm run seed:admin` sekali dari Railway service shell untuk menyiapkan tabel dan akun admin.
+4. Deploy. Jalankan `npm run db:setup` lalu `npm run seed:admin` sekali dari Railway service shell untuk menyiapkan tabel/migrasi dan akun admin.
 5. Generate domain publik Railway, lalu buka domain tersebut. `/api/health` adalah health check deployment.
 
 Build command root `npm run build` memasang dependency server/client dengan devDependencies sebelum membangun Vite, sehingga berhasil walaupun Railway memakai mode production untuk instalasi awal.
@@ -62,7 +62,8 @@ server/
 
 ## Catatan keamanan dan batas starter
 
-- API Super Admin menggunakan JWT berumur 8 jam; endpoint dashboard dan pemeriksaan billing memerlukan autentikasi.
+- API Super Admin dan akun sekolah menggunakan JWT berumur 8 jam; pendaftaran sekolah membuat tenant trial aktif dan administrator pertamanya dalam satu transaksi.
+- Kode sekolah berisi 4 huruf/angka uppercase, dibuat secara acak oleh server, dan dijaga indeks unik di MySQL. Admin sekolah memerlukan kode sekolah, email, serta kata sandi untuk login.
 - Endpoint pemeriksaan billing bersifat **read-only**. Ia merangkum tagihan yang terbuka/terlambat; pembuatan invoice, suspend tenant, scheduler, dan pengiriman notifikasi belum dijalankan sampai aturan bisnis dan kebijakan penagihan dikonfirmasi.
 - Data dashboard akan menampilkan status kosong sampai sekolah, invoice, tiket, atau audit log diisikan.
 - Menu lain ditampilkan sebagai navigasi awal/placeholder UI. Login, ringkasan dashboard, dan pemeriksaan billing terhubung ke API.
