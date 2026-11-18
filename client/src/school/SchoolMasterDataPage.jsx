@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  AlertCircle, CheckCircle2, CircleX, Download, FileSpreadsheet, List, MoreHorizontal, Pencil, Plus,
+  AlertCircle, CheckCircle2, CircleX, Download, FileSpreadsheet, List, Pencil, Plus,
   Search, Trash2, Upload, X
 } from 'lucide-react';
 import {
@@ -18,8 +18,9 @@ function displayStatus(status) {
 function MasterCategoryModal({ type, category, onClose, onSave }) {
   const isAuthor = type === 'pengarang';
   const isAgent = type === 'agen';
+  const isCodeLess = type === 'jenis' || type === 'koleksi' || type === 'topik';
   const [form, setForm] = useState({
-    code: category?.code || '',
+    code: isCodeLess ? '' : category?.code || '',
     name: category?.name || '',
     description: category?.description || '',
     email: category?.email || '',
@@ -67,7 +68,7 @@ function MasterCategoryModal({ type, category, onClose, onSave }) {
         </header>
         <form onSubmit={submit}>
           <div className="master-form-grid">
-            {!isAuthor && !isAgent && (
+            {!isAuthor && !isAgent && !isCodeLess && (
               <label>
                 Kode
                 <input name="code" value={form.code} onChange={updateField} maxLength={50} placeholder="Contoh: REF-01" />
@@ -123,6 +124,7 @@ function MasterCategoryModal({ type, category, onClose, onSave }) {
 export default function SchoolMasterDataPage({ active, type, rights }) {
   const isAuthor = type === 'pengarang';
   const isAgent = type === 'agen';
+  const isCodeLess = type === 'jenis' || type === 'koleksi' || type === 'topik';
   const canEdit = Boolean(rights?.edit);
   const canDelete = Boolean(rights?.delete);
   const [categories, setCategories] = useState([]);
@@ -132,7 +134,6 @@ export default function SchoolMasterDataPage({ active, type, rights }) {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [selectedIds, setSelectedIds] = useState(() => new Set());
-  const [menuId, setMenuId] = useState(null);
   const [editingCategory, setEditingCategory] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -342,6 +343,11 @@ export default function SchoolMasterDataPage({ active, type, rights }) {
                 <tr><th>No</th><th>Nama Agen</th><th>Email</th><th>No. Telp</th><th>Alamat</th><th>Status</th><th>Aksi</th></tr>
               ) : isAuthor ? (
                 <tr><th>No</th><th>Nama</th><th>Biodata</th><th>Status</th><th>Aksi</th></tr>
+              ) : isCodeLess ? (
+                <tr>
+                  <th className="master-check-cell"><input type="checkbox" checked={allVisibleSelected} onChange={(event) => toggleAllVisible(event.target.checked)} aria-label="Pilih semua data yang tampil" /></th>
+                  <th>No</th><th>Nama / Keterangan</th><th>Status</th><th>Aksi</th>
+                </tr>
               ) : (
                 <tr>
                   <th className="master-check-cell"><input type="checkbox" checked={allVisibleSelected} onChange={(event) => toggleAllVisible(event.target.checked)} aria-label="Pilih semua data yang tampil" /></th>
@@ -351,11 +357,11 @@ export default function SchoolMasterDataPage({ active, type, rights }) {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td className="master-empty-cell" colSpan={isAgent ? 7 : isAuthor ? 5 : 6}>Memuat data...</td></tr>
+                <tr><td className="master-empty-cell" colSpan={isAgent ? 7 : isAuthor || isCodeLess ? 5 : 6}>Memuat data...</td></tr>
               ) : error && categories.length === 0 ? (
-                <tr><td className="master-empty-cell" colSpan={isAgent ? 7 : isAuthor ? 5 : 6}>Data belum dapat dimuat.</td></tr>
+                <tr><td className="master-empty-cell" colSpan={isAgent ? 7 : isAuthor || isCodeLess ? 5 : 6}>Data belum dapat dimuat.</td></tr>
               ) : filteredCategories.length === 0 ? (
-                <tr><td className="master-empty-cell" colSpan={isAgent ? 7 : isAuthor ? 5 : 6}>{search || statusFilter !== 'all' ? 'Data tidak ditemukan.' : 'Belum ada data. Tambahkan data pertama Anda.'}</td></tr>
+                <tr><td className="master-empty-cell" colSpan={isAgent ? 7 : isAuthor || isCodeLess ? 5 : 6}>{search || statusFilter !== 'all' ? 'Data tidak ditemukan.' : 'Belum ada data. Tambahkan data pertama Anda.'}</td></tr>
               ) : filteredCategories.map((category, index) => (
                 <tr key={category.id}>
                   {isAgent ? (
@@ -368,8 +374,8 @@ export default function SchoolMasterDataPage({ active, type, rights }) {
                       <td><span className={`master-status ${category.status === 'active' ? 'is-active' : 'is-inactive'}`}>{displayStatus(category.status)}</span></td>
                       <td>
                         <div className="master-agent-actions">
-                          {canEdit && <button type="button" className="master-row-edit" onClick={() => { setEditingCategory(category); setModalOpen(true); }}><Pencil size={14} />Edit</button>}
-                          {canDelete && <button type="button" className="master-row-delete" disabled={busyAction === 'delete'} onClick={() => removeCategories([category.id])}><Trash2 size={14} />Hapus</button>}
+                          {canEdit && <button type="button" className="master-row-icon is-edit" title="Edit" aria-label={`Edit ${category.name}`} onClick={() => { setEditingCategory(category); setModalOpen(true); }}><Pencil size={14} /></button>}
+                          {canDelete && <button type="button" className="master-row-icon is-delete" title="Hapus" aria-label={`Hapus ${category.name}`} disabled={busyAction === 'delete'} onClick={() => removeCategories([category.id])}><Trash2 size={14} /></button>}
                           {!canEdit && !canDelete && '—'}
                         </div>
                       </td>
@@ -380,9 +386,13 @@ export default function SchoolMasterDataPage({ active, type, rights }) {
                       <td><b className="master-primary-text">{category.name}</b></td>
                       <td className="master-description-cell">{category.description || '—'}</td>
                       <td><span className={`master-status ${category.status === 'active' ? 'is-active' : 'is-inactive'}`}>{displayStatus(category.status)}</span></td>
-                      <td>{canEdit
-                        ? <button type="button" className="master-row-edit" onClick={() => { setEditingCategory(category); setModalOpen(true); }}><Pencil size={14} />Edit</button>
-                        : '—'}</td>
+                      <td>
+                        <div className="master-agent-actions">
+                          {canEdit && <button type="button" className="master-row-icon is-edit" title="Edit" aria-label={`Edit ${category.name}`} onClick={() => { setEditingCategory(category); setModalOpen(true); }}><Pencil size={14} /></button>}
+                          {canDelete && <button type="button" className="master-row-icon is-delete" title="Hapus" aria-label={`Hapus ${category.name}`} disabled={busyAction === 'delete'} onClick={() => removeCategories([category.id])}><Trash2 size={14} /></button>}
+                          {!canEdit && !canDelete && '—'}
+                        </div>
+                      </td>
                     </>
                   ) : (
                     <>
@@ -395,15 +405,15 @@ export default function SchoolMasterDataPage({ active, type, rights }) {
                         });
                       }} aria-label={`Pilih ${category.name}`} /></td>
                       <td>{index + 1}</td>
-                      <td>{category.code || '—'}</td>
+                      {!isCodeLess && <td>{category.code || '—'}</td>}
                       <td><b className="master-primary-text">{category.name}</b>{category.description && <small className="master-secondary-text">{category.description}</small>}</td>
                       <td><span className={`master-status ${category.status === 'active' ? 'is-active' : 'is-inactive'}`}>{displayStatus(category.status)}</span></td>
-                      <td className="master-menu-cell">
-                        {(canEdit || canDelete) && <button type="button" className="master-icon-button" aria-label={`Aksi ${category.name}`} aria-expanded={menuId === category.id} onClick={() => setMenuId((current) => current === category.id ? null : category.id)}><MoreHorizontal size={18} /></button>}
-                        {menuId === category.id && <div className="master-row-menu">
-                          {canEdit && <button type="button" onClick={() => { setEditingCategory(category); setModalOpen(true); setMenuId(null); }}><Pencil size={14} />Edit</button>}
-                          {canDelete && <button type="button" className="is-danger" onClick={() => removeCategories([category.id])}><Trash2 size={14} />Hapus</button>}
-                        </div>}
+                      <td>
+                        <div className="master-agent-actions">
+                          {canEdit && <button type="button" className="master-row-icon is-edit" title="Edit" aria-label={`Edit ${category.name}`} onClick={() => { setEditingCategory(category); setModalOpen(true); }}><Pencil size={14} /></button>}
+                          {canDelete && <button type="button" className="master-row-icon is-delete" title="Hapus" aria-label={`Hapus ${category.name}`} disabled={busyAction === 'delete'} onClick={() => removeCategories([category.id])}><Trash2 size={14} /></button>}
+                          {!canEdit && !canDelete && '—'}
+                        </div>
                       </td>
                     </>
                   )}

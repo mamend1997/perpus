@@ -1,9 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { BookOpen, ChevronDown, ChevronRight, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Pencil } from 'lucide-react';
 import SchoolDashboard from './SchoolDashboard.jsx';
 import SchoolModulePage from './SchoolModulePage.jsx';
 import SchoolMasterDataPage from './SchoolMasterDataPage.jsx';
 import SchoolBookCatalogPage from './SchoolBookCatalogPage.jsx';
+import SchoolBookStockPage from './SchoolBookStockPage.jsx';
+import SchoolBookItemsPage from './SchoolBookItemsPage.jsx';
+import SchoolProcurementsPage from './SchoolProcurementsPage.jsx';
 import SchoolProfileEditor from './SchoolProfileEditor.jsx';
 import SchoolSettingsPage from './SchoolSettingsPage.jsx';
 import { fetchSchoolProfile } from './schoolAccountApi.js';
@@ -11,6 +14,8 @@ import { fetchMySchoolPermissions } from './schoolSettingsApi.js';
 import { masterCategoryTypes, schoolNavigation } from './schoolNavigation.js';
 import { defaultSchoolPermissions, schoolPermissionByLabel } from './schoolPermissions.js';
 import './school.css';
+
+const SchoolCirculationAnalyticsPage = lazy(() => import('./SchoolCirculationAnalyticsPage.jsx'));
 
 export default function SchoolPortal({ account, onLogout, onAccountUpdated }) {
   const [active, setActive] = useState('Dashboard');
@@ -222,6 +227,16 @@ export default function SchoolPortal({ account, onLogout, onAccountUpdated }) {
               <SchoolDashboard account={profile} />
             ) : active === 'Daftar Pustaka' ? (
               <SchoolBookCatalogPage rights={activeRights} />
+            ) : active === 'Tambah Stok Buku' ? (
+              <SchoolBookStockPage rights={activeRights} />
+            ) : active === 'Eksemplar' ? (
+              <SchoolBookItemsPage rights={activeRights} schoolName={schoolName} />
+            ) : active === 'Pengadaan Buku' ? (
+              <SchoolProcurementsPage rights={activeRights} role={role} />
+            ) : active === 'Analitik Sirkulasi' ? (
+              <Suspense fallback={<div className="library-empty-state">Memuat analitik sirkulasi...</div>}>
+                <SchoolCirculationAnalyticsPage rights={activeRights} schoolName={schoolName} />
+              </Suspense>
             ) : activeMasterType ? (
               <SchoolMasterDataPage active={active} type={activeMasterType} rights={activeRights} />
             ) : (

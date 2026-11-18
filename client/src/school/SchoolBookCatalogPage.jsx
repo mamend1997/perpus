@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import JsBarcode from 'jsbarcode';
 import {
   Check, ChevronLeft, ChevronRight, Download, Eye, FileSpreadsheet, FilterX,
-  MoreHorizontal, Pencil, Plus, Printer, Search,
+  Pencil, Plus, Printer, Search,
   Trash2, Upload, X
 } from 'lucide-react';
 import {
@@ -12,10 +12,10 @@ import {
 import { downloadBookTemplate, parseBookImport } from './bookCatalogExcel.js';
 
 const formFields = [
-  'no_terima', 'received_date', 'nomor_induk', 'kode_buku', 'title',
+  'nomor_induk', 'title',
   'physical_description', 'author_id', 'publisher_id', 'agent_id', 'topic_id',
   'collection_id', 'type_id', 'language_id', 'rack_id', 'gmd', 'isbn',
-  'year', 'pages', 'qty', 'price', 'source', 'city', 'description', 'synopsis'
+  'year', 'pages', 'price', 'city', 'description', 'synopsis'
 ];
 
 const formCategories = [
@@ -56,17 +56,16 @@ function barcodeValue(book) {
 function initialForm(book) {
   return Object.fromEntries(formFields.map((field) => {
     let value = book?.[field] ?? '';
-    if (field === 'received_date' && value) value = String(value).slice(0, 10);
     if (formCategories.some(([key]) => key === field) && value) value = String(value);
     return [field, value];
   }));
 }
 
-function MasterSelect({ name, label, options, value, onChange, includeAll = false }) {
+function MasterSelect({ name, label, options, value, onChange, includeAll = false, required = false }) {
   return (
     <label>
-      {label}
-      <select name={name} value={value} onChange={onChange}>
+      {label}{required ? ' *' : ''}
+      <select name={name} value={value} onChange={onChange} required={required}>
         <option value="">{includeAll ? `Semua ${label}` : `Pilih ${label}`}</option>
         {options.map((option) => (
           <option value={option.id} key={option.id}>
@@ -159,20 +158,11 @@ function BookFormModal({ book, categories, onClose, onSave }) {
         </header>
         <form onSubmit={submit}>
           <div className="catalog-book-form-grid">
-            <label className="catalog-form-wide">Judul Buku
+            <label className="catalog-form-wide">Judul Buku *
               <input name="title" value={form.title} onChange={update} maxLength={255} required autoFocus />
             </label>
-            <label>Tanggal Terima
-              <input name="received_date" type="date" value={form.received_date} onChange={update} />
-            </label>
-            <label>Nomor Terima
-              <input name="no_terima" value={form.no_terima} onChange={update} maxLength={60} />
-            </label>
-            <label>Nomor Induk
-              <input name="nomor_induk" value={form.nomor_induk} onChange={update} maxLength={60} />
-            </label>
-            <label>Kode/Nomor Panggil
-              <input name="kode_buku" value={form.kode_buku} onChange={update} maxLength={80} />
+            <label>Nomor Induk *
+              <input name="nomor_induk" value={form.nomor_induk} onChange={update} maxLength={60} required />
             </label>
             <label className="catalog-form-wide">Deskripsi Fisik
               <input name="physical_description" value={form.physical_description} onChange={update} maxLength={16000} placeholder="Contoh: xii, 240 halaman : ilustrasi ; 21 cm" />
@@ -185,6 +175,7 @@ function BookFormModal({ book, categories, onClose, onSave }) {
                 value={form[name]}
                 options={categories[type] || []}
                 onChange={update}
+                required
               />
             ))}
             <label>GMD
@@ -193,23 +184,17 @@ function BookFormModal({ book, categories, onClose, onSave }) {
             <label>ISBN
               <input name="isbn" value={form.isbn} onChange={update} maxLength={20} />
             </label>
-            <label>Tahun Terbit
-              <input name="year" type="number" min="1000" max="9999" value={form.year} onChange={update} />
+            <label>Tahun Terbit *
+              <input name="year" type="number" min="1000" max="9999" value={form.year} onChange={update} required />
             </label>
-            <label>Jumlah Halaman
-              <input name="pages" type="number" min="1" max="65535" value={form.pages} onChange={update} />
-            </label>
-            <label>Jumlah Eksemplar
-              <input name="qty" type="number" min="0" max="10000" value={form.qty} onChange={update} required />
+            <label>Jumlah Halaman *
+              <input name="pages" type="number" min="1" max="65535" value={form.pages} onChange={update} required />
             </label>
             <label>Harga
               <input name="price" type="number" min="0" step="0.01" value={form.price} onChange={update} />
             </label>
             <label>Kota Terbit
               <input name="city" value={form.city} onChange={update} maxLength={120} />
-            </label>
-            <label>Asal Barang
-              <input name="source" value={form.source} onChange={update} maxLength={120} placeholder="Pembelian, hibah, dan lainnya" />
             </label>
             <label className="catalog-form-wide">Foto Sampul
               <input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => chooseFile(event, 'cover')} />
@@ -433,7 +418,7 @@ function BookBarcodePrint({ books, schoolName, onClose }) {
   useEffect(() => {
     books.forEach((book) => {
       const svg = svgRefs.current[String(book.id)];
-      if (svg) JsBarcode(svg, barcodeValue(book), { format: 'CODE128', displayValue: false, height: 42, width: 1.5, margin: 0 });
+      if (svg) JsBarcode(svg, barcodeValue(book), { format: 'CODE128', displayValue: false, height: 42, width: 2, margin: 0 });
     });
     const printTimer = window.setTimeout(() => window.print(), 250);
     const afterPrint = () => onClose();
@@ -477,7 +462,6 @@ export default function SchoolBookCatalogPage({ rights }) {
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState({ collectionId: '', typeId: '', languageId: '', rackId: '' });
   const [selectedBooks, setSelectedBooks] = useState({});
-  const [menuId, setMenuId] = useState(null);
   const [editingBook, setEditingBook] = useState(null);
   const [detailBookId, setDetailBookId] = useState(null);
   const [formOpen, setFormOpen] = useState(false);
@@ -485,7 +469,6 @@ export default function SchoolBookCatalogPage({ rights }) {
   const [printBooks, setPrintBooks] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [busyAction, setBusyAction] = useState('');
-  const menuRef = useRef(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -526,15 +509,6 @@ export default function SchoolBookCatalogPage({ rights }) {
       });
     return () => controller.abort();
   }, [filters, pagination.page, pagination.limit, refreshKey, search]);
-
-  useEffect(() => {
-    if (menuId == null) return undefined;
-    function closeMenu(event) {
-      if (!menuRef.current?.contains(event.target)) setMenuId(null);
-    }
-    document.addEventListener('pointerdown', closeMenu);
-    return () => document.removeEventListener('pointerdown', closeMenu);
-  }, [menuId]);
 
   const selectedIds = Object.keys(selectedBooks);
   const allVisibleSelected = books.length > 0 && books.every((book) => Boolean(selectedBooks[String(book.id)]));
@@ -700,12 +674,11 @@ export default function SchoolBookCatalogPage({ rights }) {
                   <td>{book.type_name || '—'}</td>
                   <td>{book.language_name || '—'}</td>
                   <td className="catalog-action-cell">
-                    <button type="button" className="master-icon-button" aria-label={`Aksi ${book.title}`} aria-expanded={menuId === book.id} onClick={() => setMenuId((current) => current === book.id ? null : book.id)}><MoreHorizontal size={18} /></button>
-                    {menuId === book.id && <div className="catalog-row-menu" ref={menuRef}>
-                      <button type="button" onClick={() => { setDetailBookId(book.id); setMenuId(null); }}><Eye size={14} />Detail</button>
-                      {canEdit && <button type="button" onClick={() => { setEditingBook(book); setFormOpen(true); setMenuId(null); }}><Pencil size={14} />Edit</button>}
-                      {canDelete && <button type="button" className="is-danger" onClick={() => handleDelete([String(book.id)])}><Trash2 size={14} />Hapus</button>}
-                    </div>}
+                    <div className="catalog-row-actions">
+                      <button type="button" className="master-row-icon" aria-label={`Detail ${book.title}`} title="Detail" onClick={() => setDetailBookId(book.id)}><Eye size={15} /></button>
+                      {canEdit && <button type="button" className="master-row-icon is-edit" aria-label={`Edit ${book.title}`} title="Edit" onClick={() => { setEditingBook(book); setFormOpen(true); }}><Pencil size={14} /></button>}
+                      {canDelete && <button type="button" className="master-row-icon is-delete" aria-label={`Hapus ${book.title}`} title="Hapus" onClick={() => handleDelete([String(book.id)])}><Trash2 size={14} /></button>}
+                    </div>
                   </td>
                 </tr>
               ))}

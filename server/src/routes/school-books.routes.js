@@ -8,6 +8,7 @@ import { pool } from '../config/database.js';
 import { requireSchoolPermission } from '../middleware/require-school-permission.js';
 
 const router = Router();
+const MAX_BOOK_QUANTITY = 10000;
 const bookStorageRoot = fileURLToPath(new URL('../../storage/books/', import.meta.url));
 const categoryFields = {
   author_id: 'pengarang',
@@ -139,17 +140,20 @@ function textValue(body, key, label, maxLength, { required = false } = {}) {
   return { value: value || null };
 }
 
-function idValue(body, key, label) {
+function idValue(body, key, label, { required = false } = {}) {
   const raw = body[key];
-  if (raw == null || raw === '') return { value: null };
+  if (raw == null || raw === '') {
+    return required ? { error: `${label} wajib diisi.` } : { value: null };
+  }
   const value = String(raw).trim();
   if (!/^[1-9]\d*$/.test(value)) return { error: `${label} tidak valid.` };
   return { value };
 }
 
-function numberValue(body, key, label, { minimum = 0, maximum, integer = false, optional = false } = {}) {
+function numberValue(body, key, label, { minimum = 0, maximum, integer = false, optional = false, required = false } = {}) {
   const raw = body[key];
   if ((raw == null || raw === '') && optional) return { value: null };
+  if ((raw == null || raw === '') && required) return { error: `${label} wajib diisi.` };
   if (raw == null || raw === '') return { value: minimum };
   const value = Number(raw);
   if (!Number.isFinite(value) || value < minimum || (maximum != null && value > maximum) || (integer && !Number.isInteger(value))) {
@@ -178,7 +182,7 @@ function normalizeBook(body) {
 
   const fields = [
     ['no_terima', 'Nomor terima', 60],
-    ['nomor_induk', 'Nomor induk', 60],
+    ['nomor_induk', 'Nomor induk', 60, true],
     ['kode_buku', 'Kode/nomor panggil', 80],
     ['title', 'Judul buku', 255, true],
     ['physical_description', 'Deskripsi fisik', 16000],
@@ -201,14 +205,14 @@ function normalizeBook(body) {
   value.received_date = receivedDate.value;
 
   for (const [key, label] of Object.entries(categoryFields)) {
-    const result = idValue(body, key, label);
+    const result = idValue(body, key, label, { required: true });
     if (result.error) return result;
     value[key] = result.value;
   }
 
-  const year = numberValue(body, 'year', 'Tahun terbit', { minimum: 1000, maximum: 9999, integer: true, optional: true });
-  const pages = numberValue(body, 'pages', 'Jumlah halaman', { minimum: 1, maximum: 65535, integer: true, optional: true });
-  const qty = numberValue(body, 'qty', 'Jumlah buku', { minimum: 0, maximum: 10000, integer: true });
+  const year = numberValue(body, 'year', 'Tahun terbit', { minimum: 1000, maximum: 9999, integer: true, required: true });
+  const pages = numberValue(body, 'pages', 'Jumlah halaman', { minimum: 1, maximum: 65535, integer: true, required: true });
+  const qty = numberValue(body, 'qty', 'Jumlah buku', { minimum: 0, maximum: MAX_BOOK_QUANTITY, integer: true });
   const price = numberValue(body, 'price', 'Harga', { minimum: 0, maximum: 9999999999.99 });
   for (const result of [year, pages, qty, price]) {
     if (result.error) return result;
@@ -363,14 +367,14 @@ async function synchronizeBookItems(connection, schoolId, bookId, desiredQuantit
   if (!difference) return;
 
   let nextSequence = items.reduce((maximum, item) => {
-    const sequence = Number(String(item.serial_number).split('-').pop());
-    return Number.isInteger(sequence) ? Math.max(maximum, sequence) : maximum;
-  }, 0);
+    const match = String(item.serial_number).match(/^S(\d+)$/i);
+    return match ? Math.max(maximum, Number(match[1])) : maximum;
+  }, -1);
   const existingSerials = new Set(items.map((item) => item.serial_number));
   const rows = [];
   while (rows.length < difference) {
     nextSequence += 1;
-    const serialNumber = `B${bookId}-${String(nextSequence).padStart(6, '0')}`;
+    const serialNumber = `S${String(nextSequence).padStart(2, '0')}`;
     if (existingSerials.has(serialNumber)) continue;
     existingSerials.add(serialNumber);
     rows.push([schoolId, bookId, serialNumber, 'Tersedia']);
@@ -465,6 +469,373 @@ router.get('/', requireSchoolPermission('books.catalog', 'view'), async (req, re
     });
   } catch (error) {
     return next(error);
+  }
+});
+
+router.get('/items', requireSchoolPermission('books.items', 'view'), async (req, res, next) => {
+  const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+  const page = parsePageValue(req.query.page, 1, 1000000);
+  const limit = parsePageValue(req.query.limit, 25, 100);
+  const sort = req.query.sort == null ? 'serial' : req.query.sort;
+  const direction = req.query.direction == null ? 'asc' : req.query.direction;
+  const status = req.query.status == null ? '' : req.query.status;
+  if (search.length > 100) return res.status(400).json({ message: 'Kata pencarian maksimal 100 karakter.' });
+  if (!page || !limit) return res.status(400).json({ message: 'Halaman atau jumlah data tidak valid.' });
+  if (!['serial', 'title'].includes(sort) || !['asc', 'desc'].includes(direction)) {
+    return res.status(400).json({ message: 'Pengurutan eksemplar tidak valid.' });
+  }
+  if (status && !['Tersedia', 'Dipinjam', 'Rusak'].includes(status)) {
+    return res.status(400).json({ message: 'Filter status eksemplar tidak valid.' });
+  }
+
+  const conditions = ['bi.school_id = ?'];
+  const values = [req.school.id];
+  if (status) {
+    conditions.push('bi.status = ?');
+    values.push(status);
+  }
+  if (search) {
+    conditions.push('(bi.serial_number LIKE ? OR b.title LIKE ? OR b.nomor_induk LIKE ? OR b.kode_buku LIKE ?)');
+    values.push(...Array(4).fill(`%${search}%`));
+  }
+
+  try {
+    const where = conditions.join(' AND ');
+    const from = `FROM book_items bi
+      JOIN books b ON b.school_id = bi.school_id AND b.id = bi.book_id`;
+    const [[count]] = await pool.execute(
+      `SELECT COUNT(*) AS total ${from} WHERE ${where}`,
+      values
+    );
+    const orderColumn = sort === 'title' ? 'b.title' : 'bi.serial_number';
+    const orderDirection = direction.toUpperCase();
+    const offset = (page - 1) * limit;
+    const [items] = await pool.execute(
+      `SELECT bi.id, bi.book_id, bi.serial_number, bi.status, b.title AS book_title,
+              b.nomor_induk, b.kode_buku
+       ${from}
+       WHERE ${where}
+       ORDER BY ${orderColumn} ${orderDirection}, bi.serial_number ASC, bi.id ASC
+       LIMIT ? OFFSET ?`,
+      [...values, limit, offset]
+    );
+    return res.json({
+      items,
+      pagination: {
+        page,
+        limit,
+        total: Number(count.total),
+        totalPages: Math.ceil(Number(count.total) / limit)
+      }
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.patch('/items/:id', requireSchoolPermission('books.items', 'edit'), async (req, res, next) => {
+  const id = String(req.params.id);
+  if (!/^[1-9]\d*$/.test(id)) return res.status(400).json({ message: 'ID eksemplar tidak valid.' });
+  if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+    return res.status(400).json({ message: 'Data eksemplar tidak valid.' });
+  }
+
+  const serialNumber = typeof req.body.serial_number === 'string' ? req.body.serial_number.trim().toUpperCase() : '';
+  const status = req.body.status;
+  if (!/^[A-Z0-9][A-Z0-9._-]{0,49}$/.test(serialNumber)) {
+    return res.status(400).json({ message: 'Serial number hanya boleh berisi huruf, angka, titik, garis bawah, atau tanda hubung (maksimal 50 karakter).' });
+  }
+  if (!['Tersedia', 'Rusak'].includes(status)) {
+    return res.status(400).json({ message: 'Status hanya dapat diubah menjadi Tersedia atau Rusak. Status Dipinjam mengikuti transaksi peminjaman.' });
+  }
+
+  let connection;
+  let transactionStarted = false;
+  try {
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    transactionStarted = true;
+    const [references] = await connection.execute(
+      `SELECT bi.book_id, b.title AS book_title
+       FROM book_items bi
+       JOIN books b ON b.school_id = bi.school_id AND b.id = bi.book_id
+       WHERE bi.id = ? AND bi.school_id = ? LIMIT 1`,
+      [id, req.school.id]
+    );
+    if (!references[0]) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(404).json({ message: 'Eksemplar tidak ditemukan.' });
+    }
+
+    const [books] = await connection.execute(
+      'SELECT id FROM books WHERE id = ? AND school_id = ? FOR UPDATE',
+      [references[0].book_id, req.school.id]
+    );
+    if (!books[0]) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(404).json({ message: 'Buku induk tidak ditemukan.' });
+    }
+    const [items] = await connection.execute(
+      `SELECT id, book_id, serial_number, status FROM book_items
+       WHERE id = ? AND school_id = ? FOR UPDATE`,
+      [id, req.school.id]
+    );
+    const item = items[0];
+    if (!item) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(404).json({ message: 'Eksemplar tidak ditemukan.' });
+    }
+
+    const [activeLoans] = await connection.execute(
+      `SELECT id FROM loans
+       WHERE school_id = ? AND book_item_id = ? AND status IN ('Pending', 'Borrowed')
+       LIMIT 1`,
+      [req.school.id, id]
+    );
+    if (activeLoans.length) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(409).json({ message: 'Eksemplar sedang terkait peminjaman aktif dan tidak dapat diubah.' });
+    }
+    if (serialNumber !== item.serial_number) {
+      const [loanHistory] = await connection.execute(
+        'SELECT id FROM loans WHERE school_id = ? AND book_item_id = ? LIMIT 1',
+        [req.school.id, id]
+      );
+      if (loanHistory.length) {
+        await connection.rollback();
+        transactionStarted = false;
+        return res.status(409).json({ message: 'Serial number tidak dapat diubah karena eksemplar memiliki riwayat peminjaman.' });
+      }
+    }
+
+    await connection.execute(
+      `UPDATE book_items SET serial_number = ?, status = ?
+       WHERE id = ? AND school_id = ?`,
+      [serialNumber, status, id, req.school.id]
+    );
+    await connection.commit();
+    transactionStarted = false;
+    return res.json({
+      item: {
+        id,
+        book_id: String(item.book_id),
+        serial_number: serialNumber,
+        status,
+        book_title: references[0].book_title
+      }
+    });
+  } catch (error) {
+    if (transactionStarted && connection) {
+      try {
+        await connection.rollback();
+      } catch (rollbackError) {
+        error.rollbackError = rollbackError;
+        return next(error);
+      }
+    }
+    if (error.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ message: 'Serial number tersebut sudah digunakan untuk buku yang sama.' });
+    }
+    return next(error);
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+router.delete('/items/:id', requireSchoolPermission('books.items', 'delete'), async (req, res, next) => {
+  const id = String(req.params.id);
+  if (!/^[1-9]\d*$/.test(id)) return res.status(400).json({ message: 'ID eksemplar tidak valid.' });
+
+  let connection;
+  let transactionStarted = false;
+  try {
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    transactionStarted = true;
+    const [references] = await connection.execute(
+      'SELECT book_id FROM book_items WHERE id = ? AND school_id = ? LIMIT 1',
+      [id, req.school.id]
+    );
+    if (!references[0]) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(404).json({ message: 'Eksemplar tidak ditemukan.' });
+    }
+
+    const [books] = await connection.execute(
+      'SELECT id, qty FROM books WHERE id = ? AND school_id = ? FOR UPDATE',
+      [references[0].book_id, req.school.id]
+    );
+    if (!books[0]) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(404).json({ message: 'Buku induk tidak ditemukan.' });
+    }
+    const [items] = await connection.execute(
+      `SELECT id, status FROM book_items
+       WHERE id = ? AND school_id = ? FOR UPDATE`,
+      [id, req.school.id]
+    );
+    const item = items[0];
+    if (!item) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(404).json({ message: 'Eksemplar tidak ditemukan.' });
+    }
+    if (item.status === 'Dipinjam') {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(409).json({ message: 'Eksemplar yang sedang dipinjam tidak dapat dihapus.' });
+    }
+    const [loanHistory] = await connection.execute(
+      'SELECT id FROM loans WHERE school_id = ? AND book_item_id = ? LIMIT 1',
+      [req.school.id, id]
+    );
+    if (loanHistory.length) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(409).json({ message: 'Eksemplar memiliki riwayat peminjaman sehingga tidak dapat dihapus.' });
+    }
+
+    await connection.execute(
+      'DELETE FROM book_items WHERE id = ? AND school_id = ?',
+      [id, req.school.id]
+    );
+    const resultingQty = Math.max(Number(books[0].qty) - 1, 0);
+    await connection.execute(
+      'UPDATE books SET qty = ? WHERE id = ? AND school_id = ?',
+      [resultingQty, books[0].id, req.school.id]
+    );
+    await connection.commit();
+    transactionStarted = false;
+    return res.json({ deleted: 1, book: { id: String(books[0].id), qty: resultingQty } });
+  } catch (error) {
+    if (transactionStarted && connection) {
+      try {
+        await connection.rollback();
+      } catch (rollbackError) {
+        error.rollbackError = rollbackError;
+        return next(error);
+      }
+    }
+    if (error.code === 'ER_ROW_IS_REFERENCED_2') {
+      return res.status(409).json({ message: 'Eksemplar memiliki riwayat peminjaman sehingga tidak dapat dihapus.' });
+    }
+    return next(error);
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+router.get('/stock/books', requireSchoolPermission('books.stock', 'view'), async (req, res, next) => {
+  const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+  if (search.length > 100) return res.status(400).json({ message: 'Kata pencarian maksimal 100 karakter.' });
+  if (search.length < 2) return res.json({ books: [] });
+
+  const pattern = `%${search}%`;
+  try {
+    const [books] = await pool.execute(
+      `SELECT b.id, b.title, b.nomor_induk, b.kode_buku, b.qty
+       FROM books b
+       WHERE b.school_id = ? AND (
+         b.title LIKE ? OR b.nomor_induk LIKE ? OR b.kode_buku LIKE ?
+       )
+       ORDER BY b.title
+       LIMIT 10`,
+      [req.school.id, pattern, pattern, pattern]
+    );
+    return res.json({ books });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post('/stock', requireSchoolPermission('books.stock', 'edit'), async (req, res, next) => {
+  if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+    return res.status(400).json({ message: 'Data penambahan stok tidak valid.' });
+  }
+  const { bookId, quantity, note } = req.body;
+  const id = typeof bookId === 'string' || typeof bookId === 'number' ? String(bookId) : '';
+  if (!/^[1-9]\d*$/.test(id)) return res.status(400).json({ message: 'Buku yang dipilih tidak valid.' });
+  if (typeof quantity !== 'number' || !Number.isSafeInteger(quantity) || quantity < 1 || quantity > MAX_BOOK_QUANTITY) {
+    return res.status(400).json({ message: `Jumlah tambahan harus berupa bilangan bulat antara 1 dan ${MAX_BOOK_QUANTITY}.` });
+  }
+  if (note != null && typeof note !== 'string') {
+    return res.status(400).json({ message: 'Keterangan harus berupa teks.' });
+  }
+  const normalizedNote = typeof note === 'string' ? note.trim() : '';
+  if (normalizedNote.length > 1000) {
+    return res.status(400).json({ message: 'Keterangan maksimal 1000 karakter.' });
+  }
+
+  let connection;
+  let transactionStarted = false;
+  try {
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    transactionStarted = true;
+    const [rows] = await connection.execute(
+      `SELECT id, title, qty FROM books
+       WHERE id = ? AND school_id = ? FOR UPDATE`,
+      [id, req.school.id]
+    );
+    const book = rows[0];
+    if (!book) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(404).json({ message: 'Buku tidak ditemukan pada katalog sekolah ini.' });
+    }
+
+    const previousQty = Number(book.qty);
+    const resultingQty = previousQty + quantity;
+    if (resultingQty > MAX_BOOK_QUANTITY) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(409).json({
+        message: `Jumlah stok buku maksimal ${MAX_BOOK_QUANTITY}. Stok saat ini ${previousQty}.`
+      });
+    }
+
+    await connection.execute(
+      'UPDATE books SET qty = ? WHERE id = ? AND school_id = ?',
+      [resultingQty, id, req.school.id]
+    );
+    await synchronizeBookItems(connection, req.school.id, id, resultingQty);
+    const [movement] = await connection.execute(
+      `INSERT INTO book_stock_movements
+       (school_id, book_id, actor_id, quantity_added, previous_qty, resulting_qty, note)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [req.school.id, id, req.school.userId, quantity, previousQty, resultingQty, normalizedNote || null]
+    );
+    await connection.commit();
+    transactionStarted = false;
+    return res.status(201).json({
+      book: { id, title: book.title, qty: resultingQty },
+      movement: {
+        id: String(movement.insertId),
+        quantity_added: quantity,
+        previous_qty: previousQty,
+        resulting_qty: resultingQty,
+        note: normalizedNote || null
+      }
+    });
+  } catch (error) {
+    if (transactionStarted && connection) {
+      try {
+        await connection.rollback();
+      } catch (rollbackError) {
+        error.rollbackError = rollbackError;
+        return next(error);
+      }
+    }
+    if (error.status) return res.status(error.status).json({ message: error.message });
+    return next(error);
+  } finally {
+    if (connection) connection.release();
   }
 });
 
@@ -606,7 +977,7 @@ router.patch('/:id', requireSchoolPermission('books.catalog', 'edit'), uploadBoo
     await connection.beginTransaction();
     transactionStarted = true;
     const [existingRows] = await connection.execute(
-      `SELECT cover_image, file_digital FROM books
+      `SELECT no_terima, received_date, kode_buku, source, qty, cover_image, file_digital FROM books
        WHERE id = ? AND school_id = ? FOR UPDATE`,
       [id, req.school.id]
     );
@@ -617,6 +988,14 @@ router.patch('/:id', requireSchoolPermission('books.catalog', 'edit'), uploadBoo
       await removeUploadedFiles(req);
       return res.status(404).json({ message: 'Buku tidak ditemukan.' });
     }
+    const book = {
+      ...normalized.value,
+      no_terima: existing.no_terima,
+      received_date: existing.received_date,
+      kode_buku: existing.kode_buku,
+      source: existing.source,
+      qty: Number(existing.qty)
+    };
     const cover = uploadedFile(req, 'cover');
     const digitalAttachment = uploadedFile(req, 'digitalAttachment');
     const removeCover = req.body.remove_cover === 'true';
@@ -638,11 +1017,11 @@ router.patch('/:id', requireSchoolPermission('books.catalog', 'edit'), uploadBoo
       `UPDATE books SET ${columns.map((column) => `${column} = ?`).join(', ')},
        cover_image = ?, file_digital = ? WHERE id = ? AND school_id = ?`,
       [
-        ...columns.map((column) => normalized.value[column]),
+        ...columns.map((column) => book[column]),
         nextCover, nextDigital, id, req.school.id
       ]
     );
-    await synchronizeBookItems(connection, req.school.id, id, normalized.value.qty);
+    await synchronizeBookItems(connection, req.school.id, id, book.qty);
     await connection.commit();
     transactionStarted = false;
     filesSaved = true;
@@ -655,7 +1034,7 @@ router.patch('/:id', requireSchoolPermission('books.catalog', 'edit'), uploadBoo
       }
     }
     return res.json({
-      book: { id, ...normalized.value, has_cover: Boolean(nextCover), has_digital_attachment: Boolean(nextDigital) },
+      book: { id, ...book, has_cover: Boolean(nextCover), has_digital_attachment: Boolean(nextDigital) },
       warning: fileCleanupWarning
     });
   } catch (error) {

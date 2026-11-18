@@ -168,6 +168,26 @@ CREATE TABLE IF NOT EXISTS book_items (
     ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS book_stock_movements (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  school_id BIGINT UNSIGNED NOT NULL,
+  book_id BIGINT UNSIGNED NOT NULL,
+  actor_id BIGINT UNSIGNED NULL,
+  quantity_added INT UNSIGNED NOT NULL,
+  previous_qty INT UNSIGNED NOT NULL,
+  resulting_qty INT UNSIGNED NOT NULL,
+  note VARCHAR(1000) NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_book_stock_movements_school_book (school_id, book_id, created_at),
+  CONSTRAINT fk_book_stock_movements_school FOREIGN KEY (school_id) REFERENCES tenants_schools (id)
+    ON DELETE CASCADE,
+  CONSTRAINT fk_book_stock_movements_book FOREIGN KEY (school_id, book_id) REFERENCES books (school_id, id)
+    ON DELETE CASCADE,
+  CONSTRAINT fk_book_stock_movements_actor FOREIGN KEY (actor_id) REFERENCES users (id)
+    ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS loans (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   school_id BIGINT UNSIGNED NOT NULL,
@@ -182,6 +202,8 @@ CREATE TABLE IF NOT EXISTS loans (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   KEY idx_loans_school_status_due (school_id, status, due_date),
+  KEY idx_loans_school_borrow_date (school_id, borrow_date),
+  KEY idx_loans_school_return_date (school_id, return_date),
   KEY idx_loans_user_date (user_id, borrow_date),
   KEY idx_loans_item_status (book_item_id, status),
   CONSTRAINT fk_loans_school FOREIGN KEY (school_id) REFERENCES tenants_schools (id)

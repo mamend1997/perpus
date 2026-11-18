@@ -4,6 +4,8 @@ import { pool } from '../config/database.js';
 import { requireSchool } from '../middleware/require-school.js';
 import { requireSchoolPermission } from '../middleware/require-school-permission.js';
 import schoolBookRoutes from './school-books.routes.js';
+import schoolProcurementRoutes from './school-procurements.routes.js';
+import schoolCirculationAnalyticsRoutes from './school-circulation-analytics.routes.js';
 import {
   defaultSchoolPermissions, schoolPermissionFeatureKeys, schoolPermissionFeatures,
   schoolPermissionRoles
@@ -17,6 +19,8 @@ const masterCategoryTypes = new Set([
 
 router.use(requireSchool);
 router.use('/books', schoolBookRoutes);
+router.use('/procurements', schoolProcurementRoutes);
+router.use('/circulation/analytics', schoolCirculationAnalyticsRoutes);
 
 function requireSchoolAdmin(req, res, next) {
   if (req.school.role !== 'admin') {
@@ -63,7 +67,7 @@ function normalizeMasterCategory(body, type) {
   if (textFields.some((field) => body[field] != null && typeof body[field] !== 'string')) {
     return { error: 'Semua nilai Master Data harus berupa teks.' };
   }
-  const code = typeof body?.code === 'string' ? body.code.trim() : '';
+  const code = type === 'jenis' || type === 'koleksi' || type === 'topik' ? '' : typeof body?.code === 'string' ? body.code.trim() : '';
   const name = typeof body?.name === 'string' ? body.name.trim() : '';
   const description = typeof body?.description === 'string' ? body.description.trim() : '';
   const email = typeof body?.email === 'string' ? body.email.trim() : '';

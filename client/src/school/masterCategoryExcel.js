@@ -36,6 +36,7 @@ async function downloadWorkbook(workbook, filename) {
 export async function downloadMasterTemplate(type) {
   const isAuthor = type === 'pengarang';
   const isAgent = type === 'agen';
+  const isCodeLess = type === 'jenis' || type === 'koleksi' || type === 'topik';
   const columns = isAgent
     ? [
       { header: 'Nama Agen', key: 'name', width: 32 },
@@ -50,6 +51,12 @@ export async function downloadMasterTemplate(type) {
         { header: 'Biodata', key: 'description', width: 48 },
         { header: 'Status', key: 'status', width: 18 }
       ]
+      : isCodeLess
+        ? [
+          { header: 'Nama', key: 'name', width: 32 },
+          { header: 'Keterangan', key: 'description', width: 48 },
+          { header: 'Status', key: 'status', width: 18 }
+        ]
       : [
         { header: 'Kode', key: 'code', width: 20, style: { numFmt: '@' } },
         { header: 'Nama', key: 'name', width: 32 },
@@ -64,6 +71,7 @@ export async function downloadMasterTemplate(type) {
 export async function downloadMasterExport(type, rows) {
   const isAuthor = type === 'pengarang';
   const isAgent = type === 'agen';
+  const isCodeLess = type === 'jenis' || type === 'koleksi' || type === 'topik';
   const columns = isAgent
     ? [
       { header: 'No', key: 'number', width: 9 },
@@ -80,6 +88,13 @@ export async function downloadMasterExport(type, rows) {
       { header: 'Biodata', key: 'description', width: 48 },
       { header: 'Status', key: 'status', width: 18 }
       ]
+    : isCodeLess
+      ? [
+        { header: 'No', key: 'number', width: 9 },
+        { header: 'Nama', key: 'name', width: 32 },
+        { header: 'Keterangan', key: 'description', width: 48 },
+        { header: 'Status', key: 'status', width: 18 }
+      ]
       : [
       { header: 'No', key: 'number', width: 9 },
       { header: 'Kode', key: 'code', width: 20, style: { numFmt: '@' } },
@@ -90,16 +105,17 @@ export async function downloadMasterExport(type, rows) {
   const ExcelJS = await loadExcelJS();
   const { workbook, sheet } = createWorkbookSheet(ExcelJS, 'Master Data', columns);
   rows.forEach((row, index) => {
-    sheet.addRow({
+    const exportRow = {
       number: index + 1,
-      code: row.code || '',
       name: row.name,
       description: row.description || '',
       email: row.email || '',
       phone: row.phone || '',
       address: row.address || '',
       status: row.status === 'active' ? 'Aktif' : 'Nonaktif'
-    });
+    };
+    if (!isAuthor && !isAgent && !isCodeLess) exportRow.code = row.code || '';
+    sheet.addRow(exportRow);
   });
   await downloadWorkbook(workbook, `master-${type}.xlsx`);
 }
@@ -157,7 +173,7 @@ export async function parseMasterImport(file, type) {
     const row = sheet.getRow(rowNumber);
     const imported = {
       name: cellText(row.getCell(columns.name)),
-      code: type === 'agen' || type === 'pengarang' ? '' : columns.code ? cellText(row.getCell(columns.code)) : '',
+      code: type === 'agen' || type === 'pengarang' || type === 'jenis' || type === 'koleksi' || type === 'topik' ? '' : columns.code ? cellText(row.getCell(columns.code)) : '',
       description: type === 'agen' ? '' : columns.description ? cellText(row.getCell(columns.description)) : '',
       email: type === 'agen' && columns.email ? cellText(row.getCell(columns.email)) : '',
       phone: type === 'agen' && columns.phone ? cellText(row.getCell(columns.phone)) : '',

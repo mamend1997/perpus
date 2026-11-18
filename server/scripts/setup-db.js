@@ -152,6 +152,19 @@ try {
        ENUM('unpaid', 'paid', 'waived') NOT NULL DEFAULT 'unpaid' AFTER fine_amount`
     );
   }
+  for (const [indexName, columnName] of [
+    ['idx_loans_school_borrow_date', 'borrow_date'],
+    ['idx_loans_school_return_date', 'return_date']
+  ]) {
+    const [indexes] = await connection.execute(
+      `SELECT INDEX_NAME FROM information_schema.STATISTICS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'loans' AND INDEX_NAME = ?`,
+      [indexName]
+    );
+    if (indexes.length === 0) {
+      await connection.query(`ALTER TABLE loans ADD KEY ${indexName} (school_id, ${columnName})`);
+    }
+  }
 
   const [settingsValueColumns] = await connection.execute(
     `SELECT DATA_TYPE FROM information_schema.COLUMNS

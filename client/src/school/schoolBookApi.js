@@ -32,6 +32,41 @@ export async function fetchBookCatalogMeta(signal) {
   return requestBookApi('/meta', { signal });
 }
 
+export async function searchStockBooks(search, signal) {
+  const query = new URLSearchParams({ search });
+  return requestBookApi(`/stock/books?${query}`, { signal });
+}
+
+export function addBookStock(bookId, quantity, note) {
+  return requestBookApi('/stock', {
+    method: 'POST',
+    body: { bookId, quantity, note }
+  });
+}
+
+export function fetchBookItems({ page = 1, limit = 25, search = '', sort = 'serial', direction = 'asc', status = '', signal } = {}) {
+  const query = new URLSearchParams({
+    page: String(page),
+    limit: String(limit),
+    sort,
+    direction
+  });
+  if (search) query.set('search', search);
+  if (status) query.set('status', status);
+  return requestBookApi(`/items?${query}`, { signal });
+}
+
+export function updateBookItem(id, item) {
+  return requestBookApi(`/items/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: item
+  });
+}
+
+export function deleteBookItem(id) {
+  return requestBookApi(`/items/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
 export async function fetchBook(id, signal) {
   return requestBookApi(`/${encodeURIComponent(id)}`, { signal });
 }
