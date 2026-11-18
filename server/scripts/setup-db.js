@@ -29,11 +29,11 @@ try {
   const schema = await readFile(fileURLToPath(schemaUrl), 'utf8');
   await connection.query(schema);
 
-  const [masterCategoryColumns] = await connection.execute(
+  const [rackMasterCategoryColumns] = await connection.execute(
     `SELECT COLUMN_NAME FROM information_schema.COLUMNS
      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'master_categories'`
   );
-  if (!masterCategoryColumns.some((column) => column.COLUMN_NAME === 'capacity')) {
+  if (!rackMasterCategoryColumns.some((column) => column.COLUMN_NAME === 'capacity')) {
     await connection.query('ALTER TABLE master_categories ADD COLUMN capacity INT UNSIGNED NULL AFTER address');
   }
   const [bookItemColumns] = await connection.execute(
