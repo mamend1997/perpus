@@ -32,7 +32,7 @@ const SchoolReportsPage = lazy(() => import('./SchoolReportsPage.jsx'));
 const SchoolStudentsPage = lazy(() => import('./SchoolStudentsPage.jsx'));
 const SchoolMembersPage = lazy(() => import('./SchoolMembersPage.jsx'));
 
-class StudentPageErrorBoundary extends Component {
+class SchoolPageErrorBoundary extends Component {
   state = { error: null, retryKey: 0 };
 
   static getDerivedStateFromError(error) {
@@ -43,7 +43,7 @@ class StudentPageErrorBoundary extends Component {
     if (this.state.error) {
       return (
         <div className="library-error" role="alert">
-          <span>Halaman Data Siswa gagal ditampilkan: {this.state.error.message || 'terjadi kesalahan saat memuat data.'}</span>
+          <span>{this.props.pageLabel} gagal ditampilkan: {this.state.error.message || 'terjadi kesalahan saat memuat data.'}</span>
           <button type="button" onClick={() => this.setState((state) => ({ error: null, retryKey: state.retryKey + 1 }))}>Coba lagi</button>
         </div>
       );
@@ -366,15 +366,17 @@ export default function SchoolPortal({ account, onLogout, onAccountUpdated }) {
             ) : active === 'Tahun Pelajaran' ? (
               <SchoolAcademicYearsPage rights={activeRights} />
             ) : active === 'Data Siswa & Rombel' ? (
-              <StudentPageErrorBoundary>
+              <SchoolPageErrorBoundary pageLabel="Halaman Data Siswa">
                 <Suspense fallback={<div className="library-empty-state">Memuat data siswa...</div>}>
                   <SchoolStudentsPage rights={activeRights} schoolIdentity={printIdentity} />
                 </Suspense>
-              </StudentPageErrorBoundary>
+              </SchoolPageErrorBoundary>
             ) : active === 'Member' ? (
-              <Suspense fallback={<div className="library-empty-state">Memuat data member...</div>}>
-                <SchoolMembersPage rights={activeRights} />
-              </Suspense>
+              <SchoolPageErrorBoundary pageLabel="Halaman Member">
+                <Suspense fallback={<div className="library-empty-state">Memuat data member...</div>}>
+                  <SchoolMembersPage rights={activeRights} />
+                </Suspense>
+              </SchoolPageErrorBoundary>
             ) : active === 'Analitik Sirkulasi' ? (
               <Suspense fallback={<div className="library-empty-state">Memuat analitik sirkulasi...</div>}>
                 <SchoolCirculationAnalyticsPage rights={activeRights} schoolName={schoolName} schoolIdentity={printIdentity} />

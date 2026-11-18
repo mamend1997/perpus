@@ -38,6 +38,7 @@ export const schoolPermissionByLabel = Object.fromEntries(
 schoolPermissionByLabel['Pindah Rak'] = 'books.stock';
 schoolPermissionByLabel['Kop Sekolah'] = 'master.identity';
 schoolPermissionByLabel['Portal Publik'] = 'master.identity';
+schoolPermissionByLabel.Member = 'master.students';
 
 export function defaultSchoolPermissions() {
   const memberEditable = new Set(['visitors', 'reservations', 'reviews']);
