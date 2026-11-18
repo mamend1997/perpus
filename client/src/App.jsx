@@ -31,6 +31,18 @@ const groups = [
   { title: 'SISTEM', items: [{ label: 'Backup & Restore', icon: Database }] }
 ];
 
+const schoolMenuItems = [
+  { label: 'Dashboard', icon: LayoutDashboard },
+  { label: 'Input Kejadian', icon: ClipboardList },
+  { label: 'Kalender Disiplin', icon: Activity },
+  { label: 'Deteksi Dini', icon: ShieldCheck },
+  { label: 'Buku Penghubung', icon: BookOpen },
+  { label: 'Tindak Lanjut', icon: FileText },
+  { label: 'Data Siswa', icon: Users },
+  { label: 'Data Kelas', icon: Building2 },
+  { label: 'Kategori Poin', icon: Settings2 }
+];
+
 const number = (value) => new Intl.NumberFormat('id-ID').format(value || 0);
 const rupiah = (value) => new Intl.NumberFormat('id-ID', {
   style: 'currency', currency: 'IDR', maximumFractionDigits: 0
@@ -260,21 +272,76 @@ function SchoolAuth({ mode, onNavigate, onLogin }) {
 }
 
 function SchoolWelcome({ account, onLogout }) {
+  const [active, setActive] = useState('Dashboard');
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const ActiveIcon = schoolMenuItems.find((item) => item.label === active)?.icon || LayoutDashboard;
+
   return (
-    <main className="login-shell">
-      <section className="login-card school-success">
-        <div className="brand-mark"><Check size={22} /></div>
-        <p className="eyebrow">DASHBOARD SEKOLAH</p>
-        <h1>Selamat datang, {account.name}</h1>
-        <p className="muted">Ringkasan akun administrator untuk {account.school.name}.</p>
-        <div className="school-account-details">
-          <span>Kode sekolah</span><b>{account.school.code}</b>
-          <span>Email</span><b>{account.email}</b>
+    <div className="school-app-shell">
+      {mobileOpen && <button className="school-sidebar-scrim" onClick={() => setMobileOpen(false)} aria-label="Tutup menu sekolah" />}
+      <aside className={`school-sidebar ${mobileOpen ? 'mobile-open' : ''}`}>
+        <div className="school-sidebar-brand">
+          <div className="brand-mark"><BookOpen size={21} /></div>
+          <div><b>perpuskita<span>.</span></b><small>PORTAL SEKOLAH</small></div>
         </div>
-        <p className="school-dashboard-note">Akun sekolah Anda aktif. Modul katalog, sirkulasi, dan laporan akan tersedia di dashboard sekolah.</p>
-        <button className="auth-text-button" onClick={onLogout}>Keluar</button>
-      </section>
-    </main>
+        <div className="school-sidebar-tenant">
+          <div className="workspace-logo">{account.school.name.slice(0, 1).toUpperCase()}</div>
+          <div><b>{account.school.name}</b><span>Kode {account.school.code}</span></div>
+        </div>
+        <nav className="school-side-nav" aria-label="Menu sekolah">
+          <p>MENU SEKOLAH</p>
+          {schoolMenuItems.map(({ label, icon: Icon }) => (
+            <button type="button" key={label} onClick={() => { setActive(label); setMobileOpen(false); }} className={`school-nav-item ${active === label ? 'selected' : ''}`}>
+              <Icon size={17} /><span>{label}</span>
+            </button>
+          ))}
+        </nav>
+        <div className="school-sidebar-bottom">
+          <div className="school-admin-profile">
+            <span className="profile-avatar">{account.name.slice(0, 1).toUpperCase()}</span>
+            <div><b>{account.name}</b><small>Administrator</small></div>
+          </div>
+          <button type="button" className="school-logout-button" onClick={onLogout}><LogOut size={16} />Keluar</button>
+        </div>
+      </aside>
+      <main className="school-main-area">
+        <header className="school-topbar">
+          <div className="school-topbar-left">
+            <button type="button" className="school-mobile-menu" onClick={() => setMobileOpen(true)} aria-label="Buka menu sekolah"><Menu size={20} /></button>
+            <div><span>{account.school.name}</span><b>{active}</b></div>
+          </div>
+          <div className="school-topbar-account">{account.email}</div>
+        </header>
+        <div className="school-page-content">
+          {active === 'Dashboard' ? (
+            <>
+              <section className="school-welcome-banner">
+                <div className="welcome-kicker"><span className="live-dot" /> DASHBOARD SEKOLAH</div>
+                <h1>Selamat datang, {account.name}</h1>
+                <p>Kelola aktivitas perpustakaan dan layanan sekolah Anda dari satu tempat.</p>
+              </section>
+              <section className="school-overview-grid">
+                <article><span>Nama sekolah</span><b>{account.school.name}</b></article>
+                <article><span>Kode sekolah</span><b>{account.school.code}</b></article>
+                <article><span>Email administrator</span><b>{account.email}</b></article>
+                <article><span>Status akun</span><b className="school-active-status">Aktif</b></article>
+              </section>
+              <section className="panel school-dashboard-note">
+                <h2>Mulai gunakan menu sekolah</h2>
+                <p>Pilih menu di sisi kiri untuk membuka modul yang Anda perlukan. Data operasional akan muncul di sini setelah modul terkait tersedia.</p>
+              </section>
+            </>
+          ) : (
+            <section className="panel school-module-placeholder">
+              <span><ActiveIcon size={23} /></span>
+              <h1>{active}</h1>
+              <p>Menu {active} sudah tersedia. Fitur dan data untuk modul ini belum diaktifkan.</p>
+            </section>
+          )}
+          <footer className="page-footer"><span>© {new Date().getFullYear()} PerpusKita</span><span>{account.school.name}</span></footer>
+        </div>
+      </main>
+    </div>
   );
 }
 
