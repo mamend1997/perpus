@@ -155,6 +155,7 @@ try {
   );
   const schoolColumnNames = new Set(schoolColumns.map((column) => column.COLUMN_NAME));
   const identityColumns = [
+    ['education_level', 'VARCHAR(16) NULL AFTER npsn'],
     ['phone', 'VARCHAR(30) NULL AFTER npsn'],
     ['email', 'VARCHAR(190) NULL AFTER phone'],
     ['website', 'VARCHAR(255) NULL AFTER email'],
@@ -370,6 +371,16 @@ try {
     );
   }
   await connection.query('ALTER TABLE super_admins MODIFY username VARCHAR(32) NOT NULL');
+
+  const [schoolYearColumns] = await connection.execute(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'school_years'`
+  );
+  if (!schoolYearColumns.some((column) => column.COLUMN_NAME === 'students_archived_at')) {
+    await connection.query(
+      'ALTER TABLE school_years ADD COLUMN students_archived_at DATETIME NULL AFTER is_active'
+    );
+  }
 
   const [columns] = await connection.execute(
     `SELECT COLUMN_NAME FROM information_schema.COLUMNS

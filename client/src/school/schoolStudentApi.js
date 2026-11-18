@@ -27,6 +27,16 @@ export function fetchStudentClasses(signal) {
   return request('/classes', { signal });
 }
 
+export function fetchStudentAcademicYears(signal) {
+  return request('/academic-years', { signal });
+}
+
+export function fetchStudentArchives({ schoolYearId, page = 1, limit = 25, search = '', signal } = {}) {
+  const query = new URLSearchParams({ schoolYearId, page: String(page), limit: String(limit) });
+  if (search) query.set('search', search);
+  return request(`/archives?${query}`, { signal });
+}
+
 export function createStudent(student) {
   return request('', { method: 'POST', body: student });
 }

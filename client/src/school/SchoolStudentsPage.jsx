@@ -5,8 +5,8 @@ import {
 } from 'lucide-react';
 import SchoolConfirmDialog from './SchoolConfirmDialog.jsx';
 import {
-  createStudent, deleteStudent, deleteStudents, fetchStudentClasses, fetchStudents,
-  importStudents, updateStudent
+  createStudent, deleteStudent, deleteStudents, fetchStudentAcademicYears, fetchStudentArchives,
+  fetchStudentClasses, fetchStudents, importStudents, updateStudent
 } from './schoolStudentApi.js';
 
 const pageSize = 25;
@@ -191,6 +191,14 @@ export default function SchoolStudentsPage({ rights }) {
   const [tab, setTab] = useState('students');
   const [students, setStudents] = useState([]);
   const [classes, setClasses] = useState([]);
+  const [academicYears, setAcademicYears] = useState([]);
+  const [archiveYearId, setArchiveYearId] = useState('');
+  const [archives, setArchives] = useState([]);
+  const [archivePagination, setArchivePagination] = useState({ page: 1, total: 0, totalPages: 0 });
+  const [archivePage, setArchivePage] = useState(1);
+  const [archiveQueryInput, setArchiveQueryInput] = useState('');
+  const [archiveSearch, setArchiveSearch] = useState('');
+  const [archiveLoading, setArchiveLoading] = useState(false);
   const [pagination, setPagination] = useState({ page: 1, total: 0, totalPages: 0 });
   const [page, setPage] = useState(1);
   const [queryInput, setQueryInput] = useState('');
@@ -227,8 +235,51 @@ export default function SchoolStudentsPage({ rights }) {
     fetchStudentClasses(controller.signal)
       .then(({ classes: result }) => { if (!controller.signal.aborted) setClasses(result || []); })
       .catch((loadError) => { if (!controller.signal.aborted) setError(loadError.message); });
+    fetchStudentAcademicYears(controller.signal)
+      .then(({ years: result }) => {
+        if (controller.signal.aborted) return;
+        const nextYears = result || [];
+        setAcademicYears(nextYears);
+        setArchiveYearId((current) => current && nextYears.some((year) => year.id === current && year.hasArchive)
+          ? current
+          : nextYears.find((year) => year.hasArchive)?.id || '');
+      })
+      .catch((loadError) => { if (!controller.signal.aborted) setError(loadError.message); });
     return () => controller.abort();
   }, [refreshKey]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setArchiveSearch(archiveQueryInput.trim());
+      setArchivePage(1);
+    }, 250);
+    return () => window.clearTimeout(timeout);
+  }, [archiveQueryInput]);
+
+  useEffect(() => {
+    if (tab !== 'archives' || !archiveYearId) {
+      setArchives([]);
+      setArchivePagination({ page: 1, total: 0, totalPages: 0 });
+      return undefined;
+    }
+    const controller = new AbortController();
+    setArchiveLoading(true);
+    fetchStudentArchives({
+      schoolYearId: archiveYearId,
+      page: archivePage,
+      limit: pageSize,
+      search: archiveSearch,
+      signal: controller.signal
+    })
+      .then((result) => {
+        if (controller.signal.aborted) return;
+        setArchives(result.students || []);
+        setArchivePagination(result.pagination || { page: 1, total: 0, totalPages: 0 });
+      })
+      .catch((loadError) => { if (!controller.signal.aborted) setError(loadError.message); })
+      .finally(() => { if (!controller.signal.aborted) setArchiveLoading(false); });
+    return () => controller.abort();
+  }, [tab, archiveYearId, archivePage, archiveSearch, refreshKey]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -371,6 +422,7 @@ export default function SchoolStudentsPage({ rights }) {
       <div className="school-student-tabs" role="tablist" aria-label="Data siswa dan rombel">
         <button type="button" role="tab" aria-selected={tab === 'students'} className={tab === 'students' ? 'selected' : ''} onClick={() => setTab('students')}><Users size={16} />Data Siswa <span>{pagination.total}</span></button>
         <button type="button" role="tab" aria-selected={tab === 'classes'} className={tab === 'classes' ? 'selected' : ''} onClick={() => setTab('classes')}>Data Rombel / Kelas <span>{classes.length}</span></button>
+        <button type="button" role="tab" aria-selected={tab === 'archives'} className={tab === 'archives' ? 'selected' : ''} onClick={() => setTab('archives')}>Arsip Tahun Pelajaran <span>{academicYears.filter((year) => year.hasArchive).length}</span></button>
       </div>
 
       {tab === 'students' ? (
@@ -424,7 +476,7 @@ export default function SchoolStudentsPage({ rights }) {
             </div></footer>
           </section>
         </>
-      ) : (
+      ) : tab === 'classes' ? (
         <section className="master-data-panel student-classes-panel">
           <div className="school-settings-panel-heading"><div><h2>Data Rombel / Kelas</h2><p>Jumlah siswa dikelompokkan berdasarkan nama kelas.</p></div></div>
           <div className="master-table-scroll"><table className="master-table"><thead><tr><th>No</th><th>Nama Rombel</th><th>Jumlah Siswa</th><th>Akun Aktif</th><th>Aksi</th></tr></thead>
@@ -432,6 +484,44 @@ export default function SchoolStudentsPage({ rights }) {
               : <tr><td className="master-empty-cell" colSpan={5}>Belum ada data rombel.</td></tr>}</tbody>
           </table></div>
         </section>
+      ) : (
+        <>
+          <section className="catalog-toolbar-panel student-toolbar student-archive-toolbar">
+            <label>Tahun Pelajaran
+              <select value={archiveYearId} disabled={!academicYears.some((year) => year.hasArchive)} onChange={(event) => { setArchiveYearId(event.target.value); setArchivePage(1); }}>
+                {!academicYears.some((year) => year.hasArchive) && <option value="">Belum ada arsip</option>}
+                {academicYears.filter((year) => year.hasArchive).map((year) => <option key={year.id} value={year.id}>{year.label}</option>)}
+              </select>
+            </label>
+            <label className="master-search student-search"><Search size={16} /><input value={archiveQueryInput} onChange={(event) => setArchiveQueryInput(event.target.value)} placeholder="Cari nama, NIS/NISN, atau rombel arsip..." maxLength={100} /></label>
+          </section>
+          <section className="master-data-panel student-table-panel">
+            <div className="school-settings-panel-heading"><div><h2>Arsip Siswa Tahun Sebelumnya</h2><p>{archivePagination.total.toLocaleString('id-ID')} siswa tersimpan sebagai snapshot, tidak mengubah data aktif.</p></div></div>
+            {!academicYears.some((year) => year.hasArchive) ? (
+              <div className="master-empty-cell">Belum ada arsip. Arsip dibuat saat tahun pelajaran baru disimpan dengan opsi salin dan kenaikan kelas.</div>
+            ) : (
+              <>
+                <div className="master-table-scroll">
+                  <table className="master-table student-table">
+                    <thead><tr><th>No</th><th>NIS / NISN</th><th>Nama Lengkap</th><th>Rombel Saat Itu</th><th>Status Arsip</th><th>Hasil Kenaikan</th></tr></thead>
+                    <tbody>{archiveLoading ? <tr><td className="master-empty-cell" colSpan={6}>Memuat arsip siswa...</td></tr>
+                      : archives.length === 0 ? <tr><td className="master-empty-cell" colSpan={6}>Tidak ada data arsip yang cocok.</td></tr>
+                        : archives.map((student, index) => <tr key={student.id}>
+                          <td>{(archivePage - 1) * pageSize + index + 1}</td><td>{student.nis_nisn || '—'}</td><td><b>{student.name}</b></td><td>{student.rombel || 'Belum diatur'}</td>
+                          <td><span className="master-status is-active">{studentStatusLabel(student.status)} saat arsip</span></td>
+                          <td>{student.promotion_status === 'graduated' ? 'Lulus · akun nonaktif' : `Naik ke ${student.next_rombel}`}</td>
+                        </tr>)}
+                    </tbody>
+                  </table>
+                </div>
+                <footer className="catalog-pagination"><span>Halaman {archivePagination.totalPages ? archivePage : 0} dari {Math.max(1, archivePagination.totalPages)}</span><div>
+                  <button type="button" className="master-icon-button" disabled={archiveLoading || archivePage <= 1} onClick={() => setArchivePage((value) => Math.max(1, value - 1))} aria-label="Arsip halaman sebelumnya">‹</button>
+                  <button type="button" className="master-icon-button" disabled={archiveLoading || archivePage >= archivePagination.totalPages} onClick={() => setArchivePage((value) => value + 1)} aria-label="Arsip halaman berikutnya">›</button>
+                </div></footer>
+              </>
+            )}
+          </section>
+        </>
       )}
 
       <section className="school-student-print-heading"><h1>Data Siswa {selectedClass ? `· ${selectedClass.className}` : ''}</h1><p>PerpusKita · Rekapitulasi anggota perpustakaan</p></section>

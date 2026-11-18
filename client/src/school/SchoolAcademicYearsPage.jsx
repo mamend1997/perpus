@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { CalendarDays, Check, LoaderCircle, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { CalendarDays, Check, GraduationCap, LoaderCircle, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import SchoolConfirmDialog from './SchoolConfirmDialog.jsx';
 import {
-  activateAcademicYear, createAcademicYear, deleteAcademicYear, fetchAcademicYears
+  activateAcademicYear, createAcademicYear, deleteAcademicYear, fetchAcademicYears,
+  previewAcademicYearPromotion
 } from './schoolAcademicYearApi.js';
 
 function formatDate(value) {
@@ -13,13 +14,19 @@ function formatDate(value) {
 
 export default function SchoolAcademicYearsPage({ rights }) {
   const [years, setYears] = useState([]);
-  const [form, setForm] = useState({ label: '', startDate: '', endDate: '', isActive: false });
+  const [form, setForm] = useState({
+    label: '', startDate: '', endDate: '', isActive: false, copyPreviousYearData: false
+  });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [actionId, setActionId] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [promotionPreview, setPromotionPreview] = useState(null);
+  const [promotionPreviewOpen, setPromotionPreviewOpen] = useState(false);
+  const [promotionPreviewLoading, setPromotionPreviewLoading] = useState(false);
+  const [promotionError, setPromotionError] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
   const canEdit = Boolean(rights?.edit);
   const canDelete = Boolean(rights?.delete);
@@ -43,18 +50,69 @@ export default function SchoolAcademicYearsPage({ rights }) {
 
   async function submit(event) {
     event.preventDefault();
+    if (form.copyPreviousYearData) {
+      setPromotionPreviewLoading(true);
+      setError('');
+      setPromotionError('');
+      try {
+        const result = await previewAcademicYearPromotion();
+        setPromotionPreview(result);
+        setPromotionPreviewOpen(true);
+      } catch (previewError) {
+        setError(previewError.message);
+      } finally {
+        setPromotionPreviewLoading(false);
+      }
+      return;
+    }
+
     setSaving(true);
     setError('');
     setNotice('');
     try {
       const result = await createAcademicYear(form);
       setNotice(result.message);
-      setForm({ label: '', startDate: '', endDate: '', isActive: false });
+      setForm({ label: '', startDate: '', endDate: '', isActive: false, copyPreviousYearData: false });
       setRefreshKey((value) => value + 1);
     } catch (saveError) {
       setError(saveError.message);
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function confirmPromotion() {
+    if (!promotionPreview || promotionPreview.counts.unmapped > 0) return;
+    setSaving(true);
+    setPromotionError('');
+    try {
+      const result = await createAcademicYear({
+        ...form,
+        isActive: true,
+        previewToken: promotionPreview.previewToken
+      });
+      setNotice(result.message);
+      setForm({ label: '', startDate: '', endDate: '', isActive: false, copyPreviousYearData: false });
+      setPromotionPreviewOpen(false);
+      setPromotionPreview(null);
+      setRefreshKey((value) => value + 1);
+    } catch (saveError) {
+      setPromotionError(saveError.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function refreshPromotionPreview() {
+    setPromotionPreviewLoading(true);
+    setPromotionError('');
+    try {
+      const result = await previewAcademicYearPromotion();
+      setPromotionPreview(result);
+    } catch (previewError) {
+      setPromotionError(previewError.message);
+    } finally {
+      setPromotionPreviewLoading(false);
     }
   }
 
@@ -113,11 +171,21 @@ export default function SchoolAcademicYearsPage({ rights }) {
               <input type="date" value={form.endDate} onChange={(event) => setForm((value) => ({ ...value, endDate: event.target.value }))} required />
             </label>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <input type="checkbox" checked={form.isActive} onChange={(event) => setForm((value) => ({ ...value, isActive: event.target.checked }))} />
-              Jadikan periode aktif
+              <input type="checkbox" checked={form.isActive || form.copyPreviousYearData} disabled={form.copyPreviousYearData} onChange={(event) => setForm((value) => ({ ...value, isActive: event.target.checked }))} />
+              {form.copyPreviousYearData ? 'Periode baru otomatis menjadi aktif' : 'Jadikan periode aktif'}
+            </label>
+            <label className="academic-year-copy-option">
+              <span><input type="checkbox" checked={form.copyPreviousYearData} onChange={(event) => {
+                setForm((value) => ({ ...value, copyPreviousYearData: event.target.checked }));
+                setPromotionPreview(null);
+                setPromotionError('');
+              }} />
+                <span><b>Salin data siswa dan naikkan kelas</b><small>Arsipkan daftar siswa pada tahun aktif saat ini. Siswa tingkat akhir menjadi nonaktif tanpa menghapus arsip.</small></span>
+              </span>
             </label>
             <button type="submit" className="master-button master-button-primary" disabled={saving}>
-              {saving ? <LoaderCircle size={15} className="book-stock-spinner" /> : <Plus size={15} />}{saving ? 'Menyimpan...' : 'Tambah Periode'}
+              {saving || promotionPreviewLoading ? <LoaderCircle size={15} className="book-stock-spinner" /> : form.copyPreviousYearData ? <GraduationCap size={15} /> : <Plus size={15} />}
+              {saving ? 'Menyimpan...' : promotionPreviewLoading ? 'Menyiapkan pratinjau...' : form.copyPreviousYearData ? 'Pratinjau Kenaikan Kelas' : 'Tambah Periode'}
             </button>
           </form>
         </section>
@@ -136,11 +204,11 @@ export default function SchoolAcademicYearsPage({ rights }) {
                       <td><b className="master-primary-text">{year.label}</b></td>
                       <td>{formatDate(year.startDate)}</td>
                       <td>{formatDate(year.endDate)}</td>
-                      <td><span className={`master-status ${year.isActive ? 'is-active' : 'is-inactive'}`}>{year.isActive ? 'Aktif' : 'Nonaktif'}</span></td>
+                      <td><span className={`master-status ${year.isActive ? 'is-active' : 'is-inactive'}`}>{year.isActive ? 'Aktif' : year.hasArchive ? 'Arsip' : 'Nonaktif'}</span></td>
                       {(canEdit || canDelete) && <td>
                         <div style={{ display: 'flex', gap: 6 }}>
-                          {canEdit && !year.isActive && <button type="button" className="master-button master-button-light" disabled={Boolean(actionId)} onClick={() => activate(year)}>Jadikan Aktif</button>}
-                          {canDelete && !year.isActive && <button type="button" className="master-button master-button-muted" disabled={Boolean(actionId)} onClick={() => setDeleteTarget(year)}><Trash2 size={14} />Hapus</button>}
+                          {canEdit && !year.isActive && !year.hasArchive && <button type="button" className="master-button master-button-light" disabled={Boolean(actionId)} onClick={() => activate(year)}>Jadikan Aktif</button>}
+                          {canDelete && !year.isActive && !year.hasArchive && <button type="button" className="master-button master-button-muted" disabled={Boolean(actionId)} onClick={() => setDeleteTarget(year)}><Trash2 size={14} />Hapus</button>}
                         </div>
                       </td>}
                     </tr>
@@ -149,6 +217,52 @@ export default function SchoolAcademicYearsPage({ rights }) {
           </table>
         </div>
       </section>
+
+      {promotionPreviewOpen && promotionPreview && <div className="master-modal-backdrop" onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !saving) setPromotionPreviewOpen(false);
+      }}>
+        <section className="master-modal academic-year-promotion-modal" role="dialog" aria-modal="true" aria-labelledby="academic-year-promotion-title">
+          <header className="master-modal-heading">
+            <div><span className="library-eyebrow">ARSIP &amp; KENAIKAN KELAS</span><h2 id="academic-year-promotion-title">Pratinjau {form.label || 'Tahun Pelajaran Baru'}</h2></div>
+            <button type="button" className="master-icon-button" onClick={() => setPromotionPreviewOpen(false)} disabled={saving} aria-label="Tutup pratinjau">×</button>
+          </header>
+          <p className="academic-year-promotion-intro">
+            Data <b>{promotionPreview.sourceYear.label}</b> akan disimpan sebagai arsip. Daftar siswa yang lolos akan dinaikkan ke kelas berikutnya; siswa tingkat akhir menjadi nonaktif.
+          </p>
+          <div className="academic-year-promotion-summary">
+            <div><b>{promotionPreview.counts.total}</b><span>Siswa aktif</span></div>
+            <div><b>{promotionPreview.counts.promoted}</b><span>Naik kelas</span></div>
+            <div><b>{promotionPreview.counts.graduated}</b><span>Lulus / nonaktif</span></div>
+            <div className={promotionPreview.counts.unmapped ? 'has-issue' : ''}><b>{promotionPreview.counts.unmapped}</b><span>Rombel perlu diperbaiki</span></div>
+          </div>
+          {promotionError && <div className="library-error" role="alert">{promotionError}</div>}
+          {promotionPreview.counts.unmapped > 0 && <div className="academic-year-promotion-warning" role="alert">
+            Perbaiki rombel yang tidak dikenali pada menu Data Siswa. Kenaikan kelas tidak dapat diproses selama masih ada rombel yang belum sesuai dengan jenjang {promotionPreview.educationLevel}.
+          </div>}
+          {promotionPreview.students.length > 0 ? <div className="academic-year-promotion-roster">
+            <div className="master-table-scroll"><table className="master-table">
+              <thead><tr><th>NIS / NISN</th><th>Nama Siswa</th><th>Rombel Sekarang</th><th>Hasil</th></tr></thead>
+              <tbody>{promotionPreview.students.map((student) => <tr key={student.id}>
+                <td>{student.nis_nisn || '—'}</td><td>{student.name}</td><td>{student.rombel || 'Belum diatur'}</td>
+                <td>{student.promotionStatus === 'graduated' ? 'Lulus · akun nonaktif'
+                  : student.promotionStatus === 'unmapped' ? 'Perlu diperbaiki'
+                    : `Naik ke ${student.nextRombel}`}</td>
+              </tr>)}</tbody>
+            </table></div>
+            {promotionPreview.truncated && <small>Pratinjau menampilkan 250 siswa pertama. Kenaikan akan diterapkan pada seluruh {promotionPreview.counts.total} siswa.</small>}
+          </div> : <div className="master-empty-cell">Belum ada siswa aktif untuk diarsipkan pada tahun ini.</div>}
+          <footer className="master-modal-actions">
+            <button type="button" className="master-button master-button-muted" onClick={() => setPromotionPreviewOpen(false)} disabled={saving}>Batal</button>
+            {promotionError.includes('berubah setelah pratinjau') && <button type="button" className="master-button master-button-light" onClick={refreshPromotionPreview} disabled={promotionPreviewLoading || saving}>
+              <RefreshCw size={15} />{promotionPreviewLoading ? 'Memperbarui...' : 'Perbarui Pratinjau'}
+            </button>}
+            <button type="button" className="master-button master-button-primary" onClick={confirmPromotion} disabled={saving || promotionPreviewLoading || promotionPreview.counts.unmapped > 0}>
+              {saving ? <LoaderCircle size={15} className="book-stock-spinner" /> : <GraduationCap size={15} />}
+              {saving ? 'Menyimpan dan mengarsipkan...' : 'Konfirmasi & Buat Tahun'}
+            </button>
+          </footer>
+        </section>
+      </div>}
 
       {deleteTarget && <SchoolConfirmDialog
         title="Hapus tahun pelajaran?"

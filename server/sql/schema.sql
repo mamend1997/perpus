@@ -3,6 +3,7 @@ CREATE TABLE IF NOT EXISTS tenants_schools (
   name VARCHAR(180) NOT NULL,
   school_code CHAR(4) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
   npsn CHAR(8) NULL,
+  education_level VARCHAR(16) NULL,
   phone VARCHAR(30) NULL,
   email VARCHAR(190) NULL,
   website VARCHAR(255) NULL,
@@ -382,6 +383,7 @@ CREATE TABLE IF NOT EXISTS school_years (
   start_date DATE NOT NULL,
   end_date DATE NOT NULL,
   is_active TINYINT(1) NOT NULL DEFAULT 0,
+  students_archived_at DATETIME NULL,
   created_by BIGINT UNSIGNED NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
@@ -391,6 +393,30 @@ CREATE TABLE IF NOT EXISTS school_years (
     ON DELETE CASCADE,
   CONSTRAINT fk_school_years_creator FOREIGN KEY (created_by) REFERENCES users (id)
     ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS school_year_student_archives (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  school_id BIGINT UNSIGNED NOT NULL,
+  school_year_id BIGINT UNSIGNED NOT NULL,
+  student_id BIGINT UNSIGNED NOT NULL,
+  nis_nisn VARCHAR(40) NULL,
+  name VARCHAR(180) NOT NULL,
+  email VARCHAR(190) NULL,
+  rombel VARCHAR(80) NULL,
+  phone VARCHAR(30) NULL,
+  gender ENUM('male', 'female', 'other') NULL,
+  status ENUM('active', 'inactive', 'blocked') NOT NULL,
+  promotion_status ENUM('promoted', 'graduated') NOT NULL,
+  next_rombel VARCHAR(80) NULL,
+  archived_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_school_year_student_archive (school_id, school_year_id, student_id),
+  KEY idx_school_year_archive_roster (school_id, school_year_id, rombel, name),
+  CONSTRAINT fk_school_year_student_archive_school
+    FOREIGN KEY (school_id) REFERENCES tenants_schools (id) ON DELETE CASCADE,
+  CONSTRAINT fk_school_year_student_archive_year
+    FOREIGN KEY (school_year_id) REFERENCES school_years (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS tenant_invoices (

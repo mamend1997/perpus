@@ -8,6 +8,7 @@ import { fetchSchoolIdentity, updateSchoolIdentity } from './schoolAccountApi.js
 const emptyIdentity = {
   name: '',
   npsn: '',
+  education_level: '',
   phone: '',
   email: '',
   website: '',
@@ -169,6 +170,15 @@ export default function SchoolIdentityPage({ rights, onSaved }) {
           </label>
           <label>NPSN
             <input name="npsn" value={identity.npsn} onChange={updateField} maxLength={8} inputMode="numeric" placeholder="8 digit" disabled={!canEdit || saving || loading || !loaded} />
+          </label>
+          <label>Jenjang Pendidikan
+            <select name="education_level" value={identity.education_level} onChange={updateField} disabled={!canEdit || saving || loading || !loaded}>
+              <option value="">Pilih jenjang pendidikan</option>
+              <option value="SD">SD</option><option value="MI">MI</option>
+              <option value="SMP">SMP</option><option value="MTs">MTs</option>
+              <option value="SMA">SMA</option><option value="MA">MA</option><option value="SMK">SMK</option>
+            </select>
+            <small>Jenjang ini menentukan urutan kelas dan tingkat akhir saat kenaikan kelas.</small>
           </label>
           <label><span><Phone size={13} />No. Telepon Sekolah</span>
             <input type="tel" name="phone" value={identity.phone} onChange={updateField} maxLength={30} disabled={!canEdit || saving || loading || !loaded} />

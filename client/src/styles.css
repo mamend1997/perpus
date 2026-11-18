@@ -108,3 +108,28 @@ button{cursor:pointer}
 @media(max-width:620px){.school-profile-trigger-copy{display:none}.school-profile-trigger{padding:3px}.school-profile-dropdown{width:min(240px,calc(100vw - 28px))}.top-admin-dropdown{width:min(220px,calc(100vw - 28px))}}
 .scheduled-pill.schedule-pending{background:#fff7ed;color:#b45309}.scheduled-pill.schedule-pending span{background:#f59e0b}
 @media(max-width:620px){.billing-button{max-width:calc(100% - 41px);height:auto;min-height:34px;padding:7px 10px;white-space:normal}}
+
+:root{
+  --font-body:14px;
+  --font-control:13px;
+  --font-caption:12px;
+  --font-h1:24px;
+  --font-h2:20px;
+  --font-h3:18px;
+  --font-h4:16px;
+  --font-h5:15px;
+  --font-h6:14px;
+}
+body{font-size:var(--font-body)}
+body :is(h1,h2,h3,h4,h5,h6){line-height:1.35}
+body h1{font-size:var(--font-h1)!important}
+body h2{font-size:var(--font-h2)!important}
+body h3{font-size:var(--font-h3)!important}
+body h4{font-size:var(--font-h4)!important}
+body h5{font-size:var(--font-h5)!important}
+body h6{font-size:var(--font-h6)!important}
+body :is(h1,h2,h3,h4,h5,h6) span{font-size:inherit!important}
+body :is(p,li){font-size:var(--font-body)!important}
+body :is(label,button,input,select,textarea,a,span,td,th){font-size:var(--font-control)!important}
+body small{font-size:var(--font-caption)!important}
+body :is(.muted,.eyebrow,.welcome-kicker,.welcome-meta,.stat-label,.stat-note,.nav-group-title,.billing-stats,.activity-header,.page-footer,.library-eyebrow,.master-secondary-text){font-size:var(--font-caption)!important}

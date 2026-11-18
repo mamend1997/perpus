@@ -298,7 +298,7 @@ router.post('/users', requireSchoolAdmin, async (req, res, next) => {
 router.get('/identity', requireSchoolPermission('master.identity', 'view'), async (req, res, next) => {
   try {
     const [rows] = await pool.execute(
-      `SELECT name, npsn, phone, email, website, address,
+      `SELECT name, npsn, education_level, phone, email, website, address,
               principal_name, principal_nip, librarian_name, librarian_nip, logo
        FROM tenants_schools WHERE id = ? LIMIT 1`,
       [req.school.id]
@@ -312,7 +312,7 @@ router.get('/identity', requireSchoolPermission('master.identity', 'view'), asyn
 
 router.patch('/identity', requireSchoolPermission('master.identity', 'edit'), async (req, res, next) => {
   const fields = [
-    'name', 'npsn', 'phone', 'email', 'website', 'address',
+    'name', 'npsn', 'education_level', 'phone', 'email', 'website', 'address',
     'principal_name', 'principal_nip', 'librarian_name', 'librarian_nip'
   ];
   if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)
@@ -322,6 +322,8 @@ router.patch('/identity', requireSchoolPermission('master.identity', 'edit'), as
 
   const identity = Object.fromEntries(fields.map((field) => [field, req.body[field].trim()]));
   identity.npsn = identity.npsn || null;
+  const validEducationLevels = new Set(['SD', 'MI', 'SMP', 'MTs', 'SMA', 'MA', 'SMK']);
+  identity.education_level = identity.education_level || null;
   identity.phone = identity.phone || null;
   identity.email = identity.email.toLowerCase() || null;
   identity.website = identity.website || null;
@@ -347,6 +349,7 @@ router.patch('/identity', requireSchoolPermission('master.identity', 'edit'), as
       || /^https?:\/\/\S+$/i.test(logo)));
   if (identity.name.length < 2 || identity.name.length > 180
       || (identity.npsn && !/^\d{8}$/.test(identity.npsn))
+      || (identity.education_level && !validEducationLevels.has(identity.education_level))
       || (identity.phone && identity.phone.length > 30)
       || (identity.email && (identity.email.length > 190 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identity.email)))
       || (identity.website && (identity.website.length > 255 || !validWebsite))
@@ -362,11 +365,11 @@ router.patch('/identity', requireSchoolPermission('master.identity', 'edit'), as
   try {
     await pool.execute(
       `UPDATE tenants_schools
-       SET name = ?, npsn = ?, phone = ?, email = ?, website = ?, address = ?,
+       SET name = ?, npsn = ?, education_level = ?, phone = ?, email = ?, website = ?, address = ?,
            principal_name = ?, principal_nip = ?, librarian_name = ?, librarian_nip = ?, logo = ?
        WHERE id = ?`,
       [
-        identity.name, identity.npsn, identity.phone, identity.email, identity.website,
+        identity.name, identity.npsn, identity.education_level, identity.phone, identity.email, identity.website,
         identity.address, identity.principal_name, identity.principal_nip,
         identity.librarian_name, identity.librarian_nip, logo, req.school.id
       ]

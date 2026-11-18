@@ -1355,13 +1355,18 @@
 .school-identity-grid label { min-width: 0; display: grid; align-content: start; gap: 6px; color: #59657b; font-size: 10px; font-weight: 700; }
 .school-identity-grid label > span { display: inline-flex; align-items: center; gap: 5px; }
 .school-identity-grid label > span svg { color: #f97316; }
+.school-identity-grid label > small { color: #8994a6; font-size: 9px; font-weight: 450; line-height: 1.4; }
 .school-identity-grid input,
+.school-identity-grid select,
 .school-identity-grid textarea { width: 100%; box-sizing: border-box; padding: 9px 10px; border: 1px solid #e0e5ed; border-radius: 8px; outline: 0; background: #fff; color: #35415a; font: inherit; font-size: 11px; font-weight: 450; }
 .school-identity-grid input { height: 37px; }
+.school-identity-grid select { height: 37px; }
 .school-identity-grid textarea { min-height: 78px; resize: vertical; }
 .school-identity-grid input:focus,
+.school-identity-grid select:focus,
 .school-identity-grid textarea:focus { border-color: #f97316; box-shadow: 0 0 0 3px #f973161c; }
 .school-identity-grid input:disabled,
+.school-identity-grid select:disabled,
 .school-identity-grid textarea:disabled { background: #f8f9fc; color: #8994a6; }
 .school-identity-wide { grid-column: 1 / -1; }
 .school-identity-logo-section { margin-top: 19px; padding-top: 17px; border-top: 1px solid #edf0f5; }
@@ -2221,9 +2226,6 @@
   .loan-date-preview { gap: 8px; }
 }
 
-.school-main-area :is(p, span, small, label, td, th, button, input, select, textarea) {
-  font-size: max(13px, 0.9em);
-}
 .library-welcome { justify-content: flex-start; }
 .dashboard-announcements { margin: 0 0 16px; padding: 16px; }
 .dashboard-announcements .library-panel-heading h2 { display: flex; align-items: center; gap: 7px; }
@@ -2443,6 +2445,27 @@
 .student-import-preview > small { color: #8994a6; }
 .school-student-print-heading { display: none; }
 .school-student-print-sheet { display: none; }
+.academic-year-copy-option { grid-column: 1 / -1; }
+.academic-year-copy-option > span { display: flex; align-items: flex-start; gap: 9px; }
+.academic-year-copy-option input { width: 17px; height: 17px; margin: 2px 0 0; accent-color: #f97316; }
+.academic-year-copy-option > span > span { display: grid; gap: 5px; }
+.academic-year-copy-option b { color: #35415a; }
+.academic-year-copy-option small { color: #758197; font-weight: 450; line-height: 1.5; }
+.academic-year-promotion-modal { width: min(900px, 100%); }
+.academic-year-promotion-intro { margin: 0 0 14px; color: #59657b; line-height: 1.6; }
+.academic-year-promotion-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 9px; margin-bottom: 14px; }
+.academic-year-promotion-summary > div { display: grid; gap: 4px; padding: 12px; border: 1px solid #e8edf4; border-radius: 10px; background: #fafbfd; }
+.academic-year-promotion-summary b { color: #35415a; font-size: 19px; }
+.academic-year-promotion-summary span { color: #758197; font-size: 12px; }
+.academic-year-promotion-summary .has-issue { border-color: #f2c5bd; background: #fff7f5; }
+.academic-year-promotion-summary .has-issue b { color: #b42332; }
+.academic-year-promotion-warning { margin-bottom: 12px; padding: 10px 12px; border: 1px solid #f4c7bd; border-radius: 8px; background: #fff7f5; color: #a63b2b; line-height: 1.5; }
+.academic-year-promotion-roster { display: grid; gap: 7px; }
+.academic-year-promotion-roster .master-table { min-width: 640px; }
+.academic-year-promotion-roster > small { color: #758197; }
+.student-archive-toolbar { align-items: end; }
+.student-archive-toolbar > label:first-child { display: grid; min-width: 190px; gap: 5px; color: #59657b; font-size: 13px; font-weight: 650; }
+.student-archive-toolbar select { height: 39px; padding: 0 10px; border: 1px solid #e0e5ed; border-radius: 8px; background: #fff; color: #35415a; font: inherit; }
 
 @media (max-width: 760px) {
   .student-toolbar { align-items: stretch; }
@@ -2458,6 +2481,7 @@
   .student-form-grid { grid-template-columns: 1fr; }
   .student-form-wide { grid-column: auto; }
   .student-toolbar-actions .master-button { flex-basis: calc(50% - 7px); }
+  .academic-year-promotion-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media print {

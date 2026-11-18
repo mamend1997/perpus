@@ -56,6 +56,83 @@ function staffOnly(req, res, next) {
   return next();
 }
 
+router.get('/academic-years', staffOnly, requireSchoolPermission('master.students', 'view'), async (req, res, next) => {
+  try {
+    const [years] = await pool.execute(
+      `SELECT y.id, y.label, y.is_active,
+              (y.students_archived_at IS NOT NULL OR EXISTS (
+                SELECT 1 FROM school_year_student_archives a
+                WHERE a.school_id = y.school_id AND a.school_year_id = y.id
+              )) AS has_archive
+       FROM school_years y
+       WHERE y.school_id = ?
+       ORDER BY y.start_date DESC, y.id DESC`,
+      [req.school.id]
+    );
+    return res.json({
+      years: years.map((year) => ({
+        id: String(year.id),
+        label: year.label,
+        isActive: Boolean(year.is_active),
+        hasArchive: Boolean(year.has_archive)
+      }))
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/archives', staffOnly, requireSchoolPermission('master.students', 'view'), async (req, res, next) => {
+  const schoolYearId = typeof req.query.schoolYearId === 'string' ? req.query.schoolYearId : '';
+  const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+  const page = parsePage(req.query.page, 1, 1000000);
+  const limit = parsePage(req.query.limit, 25, 100);
+  if (!validId(schoolYearId)) return res.status(400).json({ message: 'Pilih tahun pelajaran arsip yang valid.' });
+  if (search.length > 100) return res.status(400).json({ message: 'Pencarian arsip maksimal 100 karakter.' });
+  if (!page || !limit) return res.status(400).json({ message: 'Nomor halaman atau jumlah data tidak valid.' });
+
+  try {
+    const [years] = await pool.execute(
+      `SELECT id, label, is_active FROM school_years
+       WHERE id = ? AND school_id = ? LIMIT 1`,
+      [schoolYearId, req.school.id]
+    );
+    if (!years[0]) return res.status(404).json({ message: 'Tahun pelajaran arsip tidak ditemukan.' });
+
+    const conditions = ['school_id = ?', 'school_year_id = ?'];
+    const values = [req.school.id, schoolYearId];
+    if (search) {
+      conditions.push('(name LIKE ? OR nis_nisn LIKE ? OR COALESCE(rombel, \'\') LIKE ?)');
+      values.push(...Array(3).fill(`%${search}%`));
+    }
+    const where = conditions.join(' AND ');
+    const [[count], [students]] = await Promise.all([
+      pool.execute(`SELECT COUNT(*) AS total FROM school_year_student_archives WHERE ${where}`, values),
+      pool.execute(
+        `SELECT id, student_id, nis_nisn, name, email, rombel, phone, gender, status,
+                promotion_status, next_rombel, archived_at
+         FROM school_year_student_archives
+         WHERE ${where}
+         ORDER BY rombel ASC, name ASC, id ASC
+         LIMIT ? OFFSET ?`,
+        [...values, limit, (page - 1) * limit]
+      )
+    ]);
+    const total = Number(count.total);
+    return res.json({
+      schoolYear: { id: String(years[0].id), label: years[0].label, isActive: Boolean(years[0].is_active) },
+      students: students.map((student) => ({
+        ...student,
+        id: String(student.id),
+        student_id: String(student.student_id)
+      })),
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 router.get('/classes', staffOnly, requireSchoolPermission('master.students', 'view'), async (req, res, next) => {
   try {
     const [classes] = await pool.execute(
