@@ -1568,6 +1568,7 @@
 }
 
 .catalog-search-row {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1575,7 +1576,27 @@
 }
 
 .catalog-search { width: min(440px, 100%); height: 40px; }
-.catalog-filters { display: grid; grid-template-columns: repeat(4, minmax(135px, 1fr)) auto; align-items: end; gap: 9px; }
+.catalog-search-actions { display: flex; align-items: center; gap: 8px; }
+.catalog-filter-menu { position: relative; }
+.catalog-filter-toggle { position: relative; }
+.catalog-filter-toggle.is-open { border-color: #fed7aa; background: #fff7ed; color: #c2410c; }
+.catalog-filter-toggle > span { min-width: 18px; height: 18px; display: inline-grid; place-items: center; padding: 0 4px; border-radius: 999px; background: #fff2e7; color: #c2410c; font-size: 10px; font-weight: 750; }
+.catalog-filters {
+  position: absolute;
+  top: calc(100% + 9px);
+  right: 0;
+  z-index: 45;
+  width: min(820px, calc(100vw - 48px));
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: end;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid #e6ebf2;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 14px 35px #17233b24;
+}
 .catalog-filters > label { display: grid; gap: 5px; color: #66738a; font-size: 9px; font-weight: 700; }
 .catalog-filters select {
   min-width: 0;
@@ -1624,6 +1645,40 @@
 .catalog-book-modal { width: min(920px, 100%); }
 .catalog-book-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .catalog-book-form-grid > label { min-width: 0; display: grid; align-content: start; gap: 6px; color: #59657b; font-size: 10px; font-weight: 700; }
+.catalog-book-form-grid > .catalog-combobox-field { position: relative; }
+.catalog-book-form-grid > .catalog-combobox-field:focus-within { z-index: 20; }
+.catalog-combobox { position: relative; min-width: 0; }
+.catalog-combobox-options {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  left: 0;
+  z-index: 30;
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 5px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 14px 30px #17233b24;
+}
+.catalog-combobox-options button {
+  display: block;
+  width: 100%;
+  min-height: 34px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #35415a;
+  font: inherit;
+  font-weight: 500;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.catalog-combobox-options button:hover,
+.catalog-combobox-options button[aria-selected="true"] { background: #fff4e9; color: #bd5a1b; }
 .catalog-book-form-grid > .catalog-form-wide { grid-column: 1 / -1; }
 .catalog-book-form-grid input:not([type="checkbox"]),
 .catalog-book-form-grid textarea,
@@ -1674,7 +1729,10 @@
   .school-app-shell.library-app-frame .school-page-content { padding: 17px 13px 0; }
   .catalog-search-row { align-items: stretch; flex-direction: column; }
   .catalog-search { width: auto; }
-  .catalog-search-row > .master-button { width: 100%; }
+  .catalog-search-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .catalog-filter-menu { min-width: 0; }
+  .catalog-filter-toggle { width: 100%; }
+  .catalog-filters { right: 0; width: calc(100vw - 48px); padding: 11px; }
   .catalog-toolbar-panel { padding: 11px; }
   .catalog-filters { grid-template-columns: 1fr 1fr; gap: 8px; }
   .catalog-toolbar-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -2451,6 +2509,11 @@
 .academic-year-copy-option > span > span { display: grid; gap: 5px; }
 .academic-year-copy-option b { color: #35415a; }
 .academic-year-copy-option small { color: #758197; font-weight: 450; line-height: 1.5; }
+.academic-year-form-modal { width: min(560px, 100%); }
+.academic-year-form-modal .master-form-grid { margin-bottom: 14px; }
+.academic-year-form-modal .master-form-grid label { color: #475569; font-size: 13px; font-weight: 600; }
+.academic-year-form-modal .master-form-grid input { min-height: 40px; font-size: 14px; }
+.academic-year-form-modal .academic-year-copy-option { margin-top: 12px; }
 .academic-year-promotion-modal { width: min(900px, 100%); }
 .academic-year-promotion-intro { margin: 0 0 14px; color: #59657b; line-height: 1.6; }
 .academic-year-promotion-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 9px; margin-bottom: 14px; }

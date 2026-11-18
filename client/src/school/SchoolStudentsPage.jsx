@@ -192,6 +192,8 @@ export default function SchoolStudentsPage({ rights }) {
   const [students, setStudents] = useState([]);
   const [classes, setClasses] = useState([]);
   const [academicYears, setAcademicYears] = useState([]);
+  const [academicYearsLoading, setAcademicYearsLoading] = useState(false);
+  const [academicYearsError, setAcademicYearsError] = useState('');
   const [archiveYearId, setArchiveYearId] = useState('');
   const [archives, setArchives] = useState([]);
   const [archivePagination, setArchivePagination] = useState({ page: 1, total: 0, totalPages: 0 });
@@ -235,6 +237,14 @@ export default function SchoolStudentsPage({ rights }) {
     fetchStudentClasses(controller.signal)
       .then(({ classes: result }) => { if (!controller.signal.aborted) setClasses(result || []); })
       .catch((loadError) => { if (!controller.signal.aborted) setError(loadError.message); });
+    return () => controller.abort();
+  }, [refreshKey]);
+
+  useEffect(() => {
+    if (tab !== 'archives') return undefined;
+    const controller = new AbortController();
+    setAcademicYearsLoading(true);
+    setAcademicYearsError('');
     fetchStudentAcademicYears(controller.signal)
       .then(({ years: result }) => {
         if (controller.signal.aborted) return;
@@ -244,9 +254,10 @@ export default function SchoolStudentsPage({ rights }) {
           ? current
           : nextYears.find((year) => year.hasArchive)?.id || '');
       })
-      .catch((loadError) => { if (!controller.signal.aborted) setError(loadError.message); });
+      .catch((loadError) => { if (!controller.signal.aborted) setAcademicYearsError(loadError.message); })
+      .finally(() => { if (!controller.signal.aborted) setAcademicYearsLoading(false); });
     return () => controller.abort();
-  }, [refreshKey]);
+  }, [tab, refreshKey]);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -486,10 +497,12 @@ export default function SchoolStudentsPage({ rights }) {
         </section>
       ) : (
         <>
+          {academicYearsError && <div className="library-error" role="alert"><span>{academicYearsError}</span><button type="button" onClick={() => setRefreshKey((value) => value + 1)}>Coba lagi</button></div>}
           <section className="catalog-toolbar-panel student-toolbar student-archive-toolbar">
             <label>Tahun Pelajaran
-              <select value={archiveYearId} disabled={!academicYears.some((year) => year.hasArchive)} onChange={(event) => { setArchiveYearId(event.target.value); setArchivePage(1); }}>
-                {!academicYears.some((year) => year.hasArchive) && <option value="">Belum ada arsip</option>}
+              <select value={archiveYearId} disabled={academicYearsLoading || !academicYears.some((year) => year.hasArchive)} onChange={(event) => { setArchiveYearId(event.target.value); setArchivePage(1); }}>
+                {academicYearsLoading && <option value="">Memuat tahun pelajaran...</option>}
+                {!academicYearsLoading && !academicYears.some((year) => year.hasArchive) && <option value="">Belum ada arsip</option>}
                 {academicYears.filter((year) => year.hasArchive).map((year) => <option key={year.id} value={year.id}>{year.label}</option>)}
               </select>
             </label>
@@ -497,7 +510,11 @@ export default function SchoolStudentsPage({ rights }) {
           </section>
           <section className="master-data-panel student-table-panel">
             <div className="school-settings-panel-heading"><div><h2>Arsip Siswa Tahun Sebelumnya</h2><p>{archivePagination.total.toLocaleString('id-ID')} siswa tersimpan sebagai snapshot, tidak mengubah data aktif.</p></div></div>
-            {!academicYears.some((year) => year.hasArchive) ? (
+            {academicYearsLoading ? (
+              <div className="master-empty-cell">Memuat daftar tahun pelajaran...</div>
+            ) : academicYearsError ? (
+              <div className="master-empty-cell">Arsip siswa belum dapat dimuat. Coba muat ulang daftar tahun pelajaran.</div>
+            ) : !academicYears.some((year) => year.hasArchive) ? (
               <div className="master-empty-cell">Belum ada arsip. Arsip dibuat saat tahun pelajaran baru disimpan dengan opsi salin dan kenaikan kelas.</div>
             ) : (
               <>

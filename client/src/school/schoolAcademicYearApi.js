@@ -23,6 +23,10 @@ export function createAcademicYear(data) {
   return request('', { method: 'POST', body: data });
 }
 
+export function updateAcademicYear(id, data) {
+  return request(`/${encodeURIComponent(id)}`, { method: 'PATCH', body: data });
+}
+
 export function previewAcademicYearPromotion(signal) {
   return request('/promotion-preview', { signal });
 }

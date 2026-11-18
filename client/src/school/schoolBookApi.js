@@ -18,9 +18,17 @@ async function requestBookApi(path, options = {}) {
   return result;
 }
 
-export async function fetchBookCatalog({ page = 1, limit = 25, search = '', collectionId = '', typeId = '', languageId = '', rackId = '', signal } = {}) {
+export async function fetchBookCatalog({
+  page = 1, limit = 25, search = '',
+  authorId = '', publisherId = '', agentId = '', topicId = '',
+  collectionId = '', typeId = '', languageId = '', rackId = '', signal
+} = {}) {
   const query = new URLSearchParams({ page: String(page), limit: String(limit) });
   if (search) query.set('search', search);
+  if (authorId) query.set('authorId', authorId);
+  if (publisherId) query.set('publisherId', publisherId);
+  if (agentId) query.set('agentId', agentId);
+  if (topicId) query.set('topicId', topicId);
   if (collectionId) query.set('collectionId', collectionId);
   if (typeId) query.set('typeId', typeId);
   if (languageId) query.set('languageId', languageId);

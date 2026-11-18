@@ -19,6 +19,11 @@ function formatCurrency(value) {
   return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 2 }).format(Number(value) || 0);
 }
 
+function formatGroupedNumber(value) {
+  const digits = String(value ?? '').replace(/\D/g, '');
+  return digits ? new Intl.NumberFormat('id-ID').format(Number(digits)) : '';
+}
+
 function todayDate() {
   const date = new Date();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -34,6 +39,7 @@ function RequestFormModal({ requester, onClose, onSave }) {
     year: '',
     quantityNeeded: '1',
     estimatedPrice: '',
+    requesterName: requester || '',
     requestDate: todayDate(),
     notes: ''
   }));
@@ -50,6 +56,16 @@ function RequestFormModal({ requester, onClose, onSave }) {
 
   function update(event) {
     setForm((current) => ({ ...current, [event.target.name]: event.target.value }));
+  }
+
+  function updateYear(event) {
+    const digits = event.target.value.replace(/\D/g, '').slice(0, 4);
+    setForm((current) => ({ ...current, year: digits }));
+  }
+
+  function updateEstimatedPrice(event) {
+    const digits = event.target.value.replace(/\D/g, '').slice(0, 10);
+    setForm((current) => ({ ...current, estimatedPrice: digits }));
   }
 
   async function submit(event) {
@@ -86,19 +102,19 @@ function RequestFormModal({ requester, onClose, onSave }) {
             <input name="publisher" value={form.publisher} onChange={update} maxLength={180} placeholder="Nama penerbit (opsional)" />
           </label>
           <label>Tahun Terbit
-            <input name="year" type="number" min="1000" max="9999" step="1" value={form.year} onChange={update} placeholder="Contoh: 2026" />
+            <input name="year" type="text" inputMode="numeric" pattern="[0-9]{4}" maxLength={4} value={form.year} onChange={updateYear} placeholder="Contoh: 2026" />
           </label>
           <label>Jumlah Kebutuhan (Eksemplar)
             <input name="quantityNeeded" type="number" min="1" max="10000" step="1" value={form.quantityNeeded} onChange={update} required />
           </label>
           <label>Estimasi Harga (Rp)
-            <input name="estimatedPrice" type="number" min="0" max="9999999999.99" step="0.01" value={form.estimatedPrice} onChange={update} placeholder="Opsional" />
+            <input name="estimatedPrice" type="text" inputMode="numeric" pattern="[0-9.]*" maxLength={13} value={formatGroupedNumber(form.estimatedPrice)} onChange={updateEstimatedPrice} placeholder="0" required />
           </label>
           <label>Tanggal Pengajuan
             <input name="requestDate" type="date" value={form.requestDate} onChange={update} required />
           </label>
-          <label>Pemohon
-            <input value={requester || 'Akun aktif'} readOnly />
+          <label>Nama Pemohon
+            <input name="requesterName" value={form.requesterName} onChange={update} maxLength={180} required />
           </label>
           <label>Alasan Pengajuan / Catatan Pengajuan
             <textarea name="notes" value={form.notes} onChange={update} maxLength={5000} rows={4} placeholder="Jelaskan kebutuhan atau alasan pengajuan (opsional)" />

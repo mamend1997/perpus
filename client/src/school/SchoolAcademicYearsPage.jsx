@@ -1,10 +1,14 @@
 import { useEffect, useState } from 'react';
-import { CalendarDays, Check, GraduationCap, LoaderCircle, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { CalendarDays, Check, GraduationCap, LoaderCircle, Pencil, Plus, RefreshCw, Trash2, X } from 'lucide-react';
 import SchoolConfirmDialog from './SchoolConfirmDialog.jsx';
 import {
   activateAcademicYear, createAcademicYear, deleteAcademicYear, fetchAcademicYears,
-  previewAcademicYearPromotion
+  previewAcademicYearPromotion, updateAcademicYear
 } from './schoolAcademicYearApi.js';
+
+const emptyForm = {
+  label: '', startDate: '', endDate: '', isActive: false, copyPreviousYearData: false
+};
 
 function formatDate(value) {
   if (!value) return '—';
@@ -14,9 +18,9 @@ function formatDate(value) {
 
 export default function SchoolAcademicYearsPage({ rights }) {
   const [years, setYears] = useState([]);
-  const [form, setForm] = useState({
-    label: '', startDate: '', endDate: '', isActive: false, copyPreviousYearData: false
-  });
+  const [form, setForm] = useState(emptyForm);
+  const [formOpen, setFormOpen] = useState(false);
+  const [editingYear, setEditingYear] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [actionId, setActionId] = useState('');
@@ -48,11 +52,62 @@ export default function SchoolAcademicYearsPage({ rights }) {
     return () => controller.abort();
   }, [refreshKey]);
 
+  function openCreateForm() {
+    setEditingYear(null);
+    setForm(emptyForm);
+    setError('');
+    setPromotionError('');
+    setPromotionPreview(null);
+    setFormOpen(true);
+  }
+
+  function openEditForm(year) {
+    setEditingYear(year);
+    setForm({
+      label: year.label,
+      startDate: String(year.startDate).slice(0, 10),
+      endDate: String(year.endDate).slice(0, 10),
+      isActive: year.isActive,
+      copyPreviousYearData: false
+    });
+    setError('');
+    setFormOpen(true);
+  }
+
+  function closeForm() {
+    if (saving || promotionPreviewLoading) return;
+    setFormOpen(false);
+    setEditingYear(null);
+    setForm(emptyForm);
+    setPromotionPreview(null);
+    setPromotionPreviewOpen(false);
+    setPromotionError('');
+  }
+
   async function submit(event) {
     event.preventDefault();
+    setSaving(true);
+    setError('');
+    setNotice('');
+    if (editingYear) {
+      try {
+        const result = await updateAcademicYear(editingYear.id, form);
+        setNotice(result.message);
+        setFormOpen(false);
+        setEditingYear(null);
+        setForm(emptyForm);
+        setRefreshKey((value) => value + 1);
+      } catch (saveError) {
+        setError(saveError.message);
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+
     if (form.copyPreviousYearData) {
+      setSaving(false);
       setPromotionPreviewLoading(true);
-      setError('');
       setPromotionError('');
       try {
         const result = await previewAcademicYearPromotion();
@@ -66,13 +121,11 @@ export default function SchoolAcademicYearsPage({ rights }) {
       return;
     }
 
-    setSaving(true);
-    setError('');
-    setNotice('');
     try {
       const result = await createAcademicYear(form);
       setNotice(result.message);
-      setForm({ label: '', startDate: '', endDate: '', isActive: false, copyPreviousYearData: false });
+      setFormOpen(false);
+      setForm(emptyForm);
       setRefreshKey((value) => value + 1);
     } catch (saveError) {
       setError(saveError.message);
@@ -95,6 +148,8 @@ export default function SchoolAcademicYearsPage({ rights }) {
       setForm({ label: '', startDate: '', endDate: '', isActive: false, copyPreviousYearData: false });
       setPromotionPreviewOpen(false);
       setPromotionPreview(null);
+      setFormOpen(false);
+      setForm(emptyForm);
       setRefreshKey((value) => value + 1);
     } catch (saveError) {
       setPromotionError(saveError.message);
@@ -157,42 +212,11 @@ export default function SchoolAcademicYearsPage({ rights }) {
       {notice && <div className="master-message master-message-success" role="status"><Check size={15} />{notice}</div>}
       {error && <div className="library-error" role="alert"><span>{error}</span><button type="button" onClick={() => setRefreshKey((value) => value + 1)}><RefreshCw size={14} />Coba lagi</button></div>}
 
-      {canEdit && (
-        <section className="library-panel" style={{ padding: 18, marginBottom: 18 }}>
-          <div className="catalog-table-heading"><div><h2>Tambah Tahun Pelajaran</h2><p>Masukkan label dan tanggal mulai hingga akhir periode.</p></div><CalendarDays size={20} /></div>
-          <form onSubmit={submit} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, alignItems: 'end' }}>
-            <label>Nama Tahun Pelajaran
-              <input value={form.label} onChange={(event) => setForm((value) => ({ ...value, label: event.target.value }))} maxLength={40} placeholder="Contoh: 2026/2027" required />
-            </label>
-            <label>Tanggal Mulai
-              <input type="date" value={form.startDate} onChange={(event) => setForm((value) => ({ ...value, startDate: event.target.value }))} required />
-            </label>
-            <label>Tanggal Akhir
-              <input type="date" value={form.endDate} onChange={(event) => setForm((value) => ({ ...value, endDate: event.target.value }))} required />
-            </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <input type="checkbox" checked={form.isActive || form.copyPreviousYearData} disabled={form.copyPreviousYearData} onChange={(event) => setForm((value) => ({ ...value, isActive: event.target.checked }))} />
-              {form.copyPreviousYearData ? 'Periode baru otomatis menjadi aktif' : 'Jadikan periode aktif'}
-            </label>
-            <label className="academic-year-copy-option">
-              <span><input type="checkbox" checked={form.copyPreviousYearData} onChange={(event) => {
-                setForm((value) => ({ ...value, copyPreviousYearData: event.target.checked }));
-                setPromotionPreview(null);
-                setPromotionError('');
-              }} />
-                <span><b>Salin data siswa dan naikkan kelas</b><small>Arsipkan daftar siswa pada tahun aktif saat ini. Siswa tingkat akhir menjadi nonaktif tanpa menghapus arsip.</small></span>
-              </span>
-            </label>
-            <button type="submit" className="master-button master-button-primary" disabled={saving}>
-              {saving || promotionPreviewLoading ? <LoaderCircle size={15} className="book-stock-spinner" /> : form.copyPreviousYearData ? <GraduationCap size={15} /> : <Plus size={15} />}
-              {saving ? 'Menyimpan...' : promotionPreviewLoading ? 'Menyiapkan pratinjau...' : form.copyPreviousYearData ? 'Pratinjau Kenaikan Kelas' : 'Tambah Periode'}
-            </button>
-          </form>
-        </section>
-      )}
-
       <section className="master-data-panel">
-        <div className="school-settings-panel-heading"><div><h2>Daftar Tahun Pelajaran</h2><p>{years.length} periode tercatat</p></div></div>
+        <div className="school-settings-panel-heading">
+          <div><h2>Daftar Tahun Pelajaran</h2><p>{years.length} periode tercatat</p></div>
+          {canEdit && <button type="button" className="master-button master-button-primary" onClick={openCreateForm}><Plus size={15} />Tambah Tahun</button>}
+        </div>
         <div className="master-table-scroll">
           <table className="master-table">
             <thead><tr><th>Nama Periode</th><th>Tanggal Mulai</th><th>Tanggal Akhir</th><th>Status</th>{(canEdit || canDelete) && <th>Aksi</th>}</tr></thead>
@@ -207,8 +231,9 @@ export default function SchoolAcademicYearsPage({ rights }) {
                       <td><span className={`master-status ${year.isActive ? 'is-active' : 'is-inactive'}`}>{year.isActive ? 'Aktif' : year.hasArchive ? 'Arsip' : 'Nonaktif'}</span></td>
                       {(canEdit || canDelete) && <td>
                         <div style={{ display: 'flex', gap: 6 }}>
+                          {canEdit && <button type="button" className="master-button master-button-light" disabled={Boolean(actionId)} onClick={() => openEditForm(year)}><Pencil size={14} />Edit</button>}
                           {canEdit && !year.isActive && !year.hasArchive && <button type="button" className="master-button master-button-light" disabled={Boolean(actionId)} onClick={() => activate(year)}>Jadikan Aktif</button>}
-                          {canDelete && !year.isActive && !year.hasArchive && <button type="button" className="master-button master-button-muted" disabled={Boolean(actionId)} onClick={() => setDeleteTarget(year)}><Trash2 size={14} />Hapus</button>}
+                          {canDelete && <button type="button" className="master-button master-button-muted" disabled={Boolean(actionId) || year.isActive || year.hasArchive} title={year.isActive ? 'Tahun aktif tidak dapat dihapus' : year.hasArchive ? 'Tahun yang memiliki arsip tidak dapat dihapus' : 'Hapus tahun pelajaran'} onClick={() => setDeleteTarget(year)}><Trash2 size={14} />Hapus</button>}
                         </div>
                       </td>}
                     </tr>
@@ -217,6 +242,59 @@ export default function SchoolAcademicYearsPage({ rights }) {
           </table>
         </div>
       </section>
+
+      {formOpen && <div className="master-modal-backdrop" onMouseDown={(event) => {
+        if (event.target === event.currentTarget) closeForm();
+      }}>
+        <section className="master-modal academic-year-form-modal" role="dialog" aria-modal="true" aria-labelledby="academic-year-form-title">
+          <header className="master-modal-heading">
+            <div><span className="library-eyebrow">MASTER DATA</span><h2 id="academic-year-form-title">{editingYear ? 'Edit Tahun Pelajaran' : 'Tambah Tahun Pelajaran'}</h2></div>
+            <button type="button" className="master-icon-button" onClick={closeForm} disabled={saving || promotionPreviewLoading} aria-label="Tutup form"><X size={17} /></button>
+          </header>
+          <form onSubmit={submit}>
+            <div className="master-form-grid">
+              <label className="master-form-wide">Nama Tahun Pelajaran
+                <input value={form.label} onChange={(event) => setForm((value) => ({ ...value, label: event.target.value }))} maxLength={40} placeholder="Contoh: 2026/2027" required />
+              </label>
+              <label>Tanggal Mulai
+                <input type="date" value={form.startDate} onChange={(event) => setForm((value) => ({ ...value, startDate: event.target.value }))} required />
+              </label>
+              <label>Tanggal Akhir
+                <input type="date" value={form.endDate} onChange={(event) => setForm((value) => ({ ...value, endDate: event.target.value }))} min={form.startDate || undefined} required />
+              </label>
+            </div>
+            {!editingYear && <>
+              <label className="academic-year-copy-option">
+                <span><input type="checkbox" checked={form.isActive || form.copyPreviousYearData} disabled={form.copyPreviousYearData} onChange={(event) => setForm((value) => ({ ...value, isActive: event.target.checked }))} />
+                  <span><b>{form.copyPreviousYearData ? 'Periode baru otomatis menjadi aktif' : 'Jadikan periode aktif'}</b></span>
+                </span>
+              </label>
+              <label className="academic-year-copy-option">
+                <span><input type="checkbox" checked={form.copyPreviousYearData} onChange={(event) => {
+                  setForm((value) => ({ ...value, copyPreviousYearData: event.target.checked }));
+                  setPromotionPreview(null);
+                  setPromotionError('');
+                }} />
+                  <span><b>Salin data siswa dan naikkan kelas</b><small>Arsipkan daftar siswa pada tahun aktif saat ini. Siswa tingkat akhir menjadi nonaktif tanpa menghapus arsip.</small></span>
+                </span>
+              </label>
+              <label className="academic-year-copy-option">
+                <span><input type="checkbox" checked disabled />
+                  <span><b>Gunakan data master dan stok buku</b><small>Katalog dan stok dipakai bersama lintas tahun; persediaan yang tersisa otomatis tetap tersedia tanpa menggandakan buku.</small></span>
+                </span>
+              </label>
+            </>}
+            {error && <div className="master-form-error" role="alert">{error}</div>}
+            <footer className="master-modal-actions">
+              <button type="button" className="master-button master-button-muted" onClick={closeForm} disabled={saving || promotionPreviewLoading}>Batal</button>
+              <button type="submit" className="master-button master-button-primary" disabled={saving || promotionPreviewLoading}>
+                {saving || promotionPreviewLoading ? <LoaderCircle size={15} className="book-stock-spinner" /> : editingYear ? <Check size={15} /> : form.copyPreviousYearData ? <GraduationCap size={15} /> : <Plus size={15} />}
+                {saving ? 'Menyimpan...' : promotionPreviewLoading ? 'Menyiapkan pratinjau...' : editingYear ? 'Simpan Perubahan' : form.copyPreviousYearData ? 'Pratinjau Kenaikan Kelas' : 'Tambah Periode'}
+              </button>
+            </footer>
+          </form>
+        </section>
+      </div>}
 
       {promotionPreviewOpen && promotionPreview && <div className="master-modal-backdrop" onMouseDown={(event) => {
         if (event.target === event.currentTarget && !saving) setPromotionPreviewOpen(false);

@@ -30,6 +30,17 @@ export async function createSchoolUser(user) {
   });
 }
 
+export async function updateSchoolUser(id, user) {
+  return schoolRequest(`/users/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(user)
+  });
+}
+
+export async function deleteSchoolUser(id) {
+  return schoolRequest(`/users/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
 export async function fetchRolePermissions(role) {
   return schoolRequest(`/permissions/${encodeURIComponent(role)}`);
 }

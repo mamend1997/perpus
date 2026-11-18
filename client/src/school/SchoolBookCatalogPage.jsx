@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import JsBarcode from 'jsbarcode';
 import {
-  Check, ChevronLeft, ChevronRight, Download, Eye, FileSpreadsheet, FilterX,
+  Check, ChevronLeft, ChevronRight, Download, Eye, FileSpreadsheet, Filter, FilterX,
   Pencil, Plus, Printer, Search, Star,
   Trash2, Upload, X
 } from 'lucide-react';
@@ -32,6 +32,10 @@ const formCategories = [
 ];
 
 const filterCategories = [
+  ['authorId', 'Pengarang', 'pengarang'],
+  ['publisherId', 'Penerbit', 'penerbit'],
+  ['agentId', 'Agen', 'agen'],
+  ['topicId', 'Topik', 'topik'],
   ['collectionId', 'Koleksi', 'koleksi'],
   ['typeId', 'Jenis', 'jenis'],
   ['languageId', 'Bahasa', 'bahasa'],
@@ -636,7 +640,11 @@ export default function SchoolBookCatalogPage({ rights, role }) {
   const [notice, setNotice] = useState('');
   const [queryInput, setQueryInput] = useState('');
   const [search, setSearch] = useState('');
-  const [filters, setFilters] = useState({ collectionId: '', typeId: '', languageId: '', rackId: '' });
+  const [filters, setFilters] = useState({
+    authorId: '', publisherId: '', agentId: '', topicId: '',
+    collectionId: '', typeId: '', languageId: '', rackId: ''
+  });
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [selectedBooks, setSelectedBooks] = useState({});
   const [editingBook, setEditingBook] = useState(null);
   const [deleteRequest, setDeleteRequest] = useState(null);
@@ -782,7 +790,10 @@ export default function SchoolBookCatalogPage({ rights, role }) {
   function resetFilters() {
     setQueryInput('');
     setSearch('');
-    setFilters({ collectionId: '', typeId: '', languageId: '', rackId: '' });
+    setFilters({
+      authorId: '', publisherId: '', agentId: '', topicId: '',
+      collectionId: '', typeId: '', languageId: '', rackId: ''
+    });
     setPagination((current) => ({ ...current, page: 1 }));
   }
 
@@ -804,13 +815,34 @@ export default function SchoolBookCatalogPage({ rights, role }) {
             <Search size={16} />
             <input value={queryInput} onChange={(event) => setQueryInput(event.target.value)} placeholder="Cari judul, pengarang, nomor induk..." aria-label="Cari katalog buku" />
           </label>
-          {canEdit && <button type="button" className="master-button master-button-primary" onClick={() => { setEditingBook(null); setFormOpen(true); }}><Plus size={16} />Tambah Buku</button>}
-        </div>
-        <div className="catalog-filters">
-          {filterCategories.map(([name, label, type]) => (
-            <MasterSelect key={name} name={name} label={label} options={meta.categories[type] || []} value={filters[name]} onChange={updateFilter} includeAll />
-          ))}
-          <button type="button" className="catalog-reset-filters" onClick={resetFilters}><FilterX size={14} />Reset Filter</button>
+          <div className="catalog-search-actions">
+            <div className="catalog-filter-menu">
+              <button
+                type="button"
+                className={`master-button master-button-light catalog-filter-toggle ${filtersOpen ? 'is-open' : ''}`}
+                aria-expanded={filtersOpen}
+                aria-controls="catalog-filter-panel"
+                onClick={() => setFiltersOpen((open) => !open)}
+              >
+                <Filter size={15} />Filter
+                {Object.values(filters).filter(Boolean).length > 0 && <span>{Object.values(filters).filter(Boolean).length}</span>}
+              </button>
+              {filtersOpen && <div className="catalog-filters" id="catalog-filter-panel">
+                {filterCategories.map(([name, label, type]) => (
+                  <label key={name}>{label}
+                    <select name={name} value={filters[name]} onChange={updateFilter}>
+                      <option value="">Semua {label}</option>
+                      {(meta.categories[type] || []).map((option) => (
+                        <option key={option.id} value={option.id}>{option.name}{option.status === 'inactive' ? ' (Nonaktif)' : ''}</option>
+                      ))}
+                    </select>
+                  </label>
+                ))}
+                <button type="button" className="catalog-reset-filters" onClick={resetFilters}><FilterX size={14} />Reset Filter</button>
+              </div>}
+            </div>
+            {canEdit && <button type="button" className="master-button master-button-primary" onClick={() => { setEditingBook(null); setFormOpen(true); }}><Plus size={16} />Tambah Buku</button>}
+          </div>
         </div>
         <div className="catalog-toolbar-actions">
           {canEdit && <button type="button" className="master-button master-button-teal" disabled={Boolean(busyAction)} onClick={() => setImportOpen(true)}><Upload size={15} />Impor Excel</button>}

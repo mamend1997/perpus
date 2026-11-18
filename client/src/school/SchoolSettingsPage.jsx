@@ -1,29 +1,32 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  AlertCircle, Bell, BookOpen, Check, Clock3, Plus, Save, ShieldCheck,
-  UserPlus, Users, Wallet, X
+  AlertCircle, Bell, BookOpen, Check, Clock3, Pencil, Plus, Save, ShieldCheck,
+  Trash2, UserPlus, Users, Wallet, X
 } from 'lucide-react';
 import {
-  createSchoolUser, fetchLibrarySettings, fetchRolePermissions, fetchSchoolUsers,
-  saveLibrarySettings, saveRolePermissions
+  createSchoolUser, deleteSchoolUser, fetchLibrarySettings, fetchRolePermissions,
+  fetchSchoolUsers, saveLibrarySettings, saveRolePermissions, updateSchoolUser
 } from './schoolSettingsApi.js';
 import {
   defaultSchoolPermissions, schoolPermissionFeatures, schoolPermissionRoles
 } from './schoolPermissions.js';
+import SchoolConfirmDialog from './SchoolConfirmDialog.jsx';
 
 const roleLabels = Object.fromEntries(schoolPermissionRoles.map(({ key, label }) => [key, label]));
 
-function AccountModal({ onClose, onCreated }) {
-  const [form, setForm] = useState({
-    name: '',
-    email: '',
-    role: 'kepsek',
-    phone: '',
-    nis_nisn: '',
-    rombel: '',
+function AccountModal({ account, onClose, onSaved }) {
+  const [form, setForm] = useState(() => ({
+    name: account?.name || '',
+    email: account?.email || '',
+    role: account?.role || 'kepsek',
+    phone: account?.phone || '',
+    nis_nisn: account?.nis_nisn || '',
+    rombel: account?.rombel || '',
+    gender: account?.gender || '',
+    status: account?.status || 'active',
     password: ''
-  });
+  }));
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -36,10 +39,12 @@ function AccountModal({ onClose, onCreated }) {
     setSaving(true);
     setError('');
     try {
-      const { user } = await createSchoolUser(form);
-      onCreated(user);
-    } catch (createError) {
-      setError(createError.message);
+      const { user } = account
+        ? await updateSchoolUser(account.id, form)
+        : await createSchoolUser(form);
+      onSaved(user, account ? 'Akun berhasil diperbarui.' : 'Akun berhasil ditambahkan.');
+    } catch (saveError) {
+      setError(saveError.message);
     } finally {
       setSaving(false);
     }
@@ -51,7 +56,7 @@ function AccountModal({ onClose, onCreated }) {
     }}>
       <section className="master-modal school-account-modal" role="dialog" aria-modal="true" aria-labelledby="school-account-title">
         <header className="master-modal-heading">
-          <div><span className="library-eyebrow">AKUN SEKOLAH</span><h2 id="school-account-title">Tambah Akun</h2></div>
+          <div><span className="library-eyebrow">AKUN SEKOLAH</span><h2 id="school-account-title">{account ? 'Edit Akun' : 'Tambah Akun'}</h2></div>
           <button type="button" className="master-icon-button" onClick={onClose} disabled={saving} aria-label="Tutup form"><X size={18} /></button>
         </header>
         <form onSubmit={submit}>
@@ -60,7 +65,7 @@ function AccountModal({ onClose, onCreated }) {
               <input name="name" value={form.name} onChange={update} maxLength={180} required autoFocus />
             </label>
             <label className="master-form-wide">Email
-              <input name="email" type="email" value={form.email} onChange={update} maxLength={190} required />
+              <input name="email" type="email" value={form.email} onChange={update} maxLength={190} required={!account} />
             </label>
             <label>Role
               <select name="role" value={form.role} onChange={update}>
@@ -78,18 +83,24 @@ function AccountModal({ onClose, onCreated }) {
                 <label>Kelas / Rombel
                   <input name="rombel" value={form.rombel} onChange={update} maxLength={80} />
                 </label>
+                <label>Jenis Kelamin
+                  <select name="gender" value={form.gender} onChange={update}><option value="">Pilih</option><option value="male">Laki-laki</option><option value="female">Perempuan</option><option value="other">Lainnya</option></select>
+                </label>
               </>
             )}
-            <label className="master-form-wide">Kata sandi awal
-              <input name="password" type="password" autoComplete="new-password" value={form.password} onChange={update} minLength={8} required />
-              <small>Minimal 8 karakter, huruf besar, angka, dan simbol.</small>
+            {account && <label>Status Akun
+              <select name="status" value={form.status} onChange={update}><option value="active">Aktif</option><option value="inactive">Nonaktif</option><option value="blocked">Diblokir</option></select>
+            </label>}
+            <label className="master-form-wide">{account ? 'Kata sandi baru (opsional)' : 'Kata sandi awal'}
+              <input name="password" type="password" autoComplete="new-password" value={form.password} onChange={update} minLength={8} maxLength={128} required={!account} />
+              <small>{account ? 'Kosongkan jika tidak ingin mengganti kata sandi. Jika diisi, gunakan minimal 8 karakter, huruf besar, angka, dan simbol.' : 'Minimal 8 karakter, huruf besar, angka, dan simbol.'}</small>
             </label>
           </div>
           {error && <p className="master-form-error" role="alert"><AlertCircle size={15} />{error}</p>}
           <footer className="master-modal-actions">
             <button type="button" className="master-button master-button-muted" onClick={onClose} disabled={saving}>Batal</button>
             <button type="submit" className="master-button master-button-primary" disabled={saving}>
-              <UserPlus size={15} />{saving ? 'Membuat...' : 'Buat Akun'}
+              {account ? <Check size={15} /> : <UserPlus size={15} />}{saving ? 'Menyimpan...' : account ? 'Simpan Perubahan' : 'Buat Akun'}
             </button>
           </footer>
         </form>
@@ -267,6 +278,11 @@ export default function SchoolSettingsPage() {
   const [savingPermissions, setSavingPermissions] = useState(false);
   const [permissionNotice, setPermissionNotice] = useState('');
   const [accountModalOpen, setAccountModalOpen] = useState(false);
+  const [editingAccount, setEditingAccount] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [deleteAccountError, setDeleteAccountError] = useState('');
+  const [usersNotice, setUsersNotice] = useState('');
 
   useEffect(() => {
     let active = true;
@@ -324,10 +340,35 @@ export default function SchoolSettingsPage() {
     }
   }
 
-  function handleCreated(user) {
-    setUsers((current) => [...current, user].sort((a, b) => a.name.localeCompare(b.name, 'id')));
+  function handleAccountSaved(user, message) {
+    setUsers((current) => {
+      const exists = current.some((account) => String(account.id) === String(user.id));
+      const next = exists
+        ? current.map((account) => String(account.id) === String(user.id) ? user : account)
+        : [...current, user];
+      return next.sort((a, b) => a.name.localeCompare(b.name, 'id'));
+    });
     setAccountModalOpen(false);
+    setEditingAccount(null);
     setUsersError('');
+    setUsersNotice(message);
+  }
+
+  async function confirmDeleteAccount() {
+    if (!deleteTarget) return;
+    setDeletingAccount(true);
+    setDeleteAccountError('');
+    try {
+      const result = await deleteSchoolUser(deleteTarget.id);
+      setUsers((current) => current.filter((user) => String(user.id) !== String(deleteTarget.id)));
+      setDeleteTarget(null);
+      setUsersError('');
+      setUsersNotice(result.message || 'Akun berhasil dihapus.');
+    } catch (deleteError) {
+      setDeleteAccountError(deleteError.message);
+    } finally {
+      setDeletingAccount(false);
+    }
   }
 
   return (
@@ -357,21 +398,26 @@ export default function SchoolSettingsPage() {
             <button type="button" className="master-button master-button-primary" onClick={() => setAccountModalOpen(true)}><Plus size={16} />Tambah Akun</button>
           </div>
           {usersError && <div className="master-message master-message-error" role="alert"><AlertCircle size={16} />{usersError}</div>}
+          {usersNotice && <div className="master-message master-message-success" role="status"><Check size={16} />{usersNotice}</div>}
           <div className="master-table-scroll">
             <table className="master-table school-users-table">
-              <thead><tr><th>Nama</th><th>Email</th><th>Role</th><th>No. Telp</th><th>Status</th></tr></thead>
+              <thead><tr><th>Nama</th><th>Email</th><th>Role</th><th>No. Telp</th><th>Status</th><th>Aksi</th></tr></thead>
               <tbody>
                 {usersLoading ? (
-                  <tr><td className="master-empty-cell" colSpan={5}>Memuat akun...</td></tr>
+                  <tr><td className="master-empty-cell" colSpan={6}>Memuat akun...</td></tr>
                 ) : users.length === 0 ? (
-                  <tr><td className="master-empty-cell" colSpan={5}>Belum ada akun.</td></tr>
+                  <tr><td className="master-empty-cell" colSpan={6}>Belum ada akun.</td></tr>
                 ) : users.map((user) => (
                   <tr key={user.id}>
                     <td><b className="master-primary-text">{user.name}</b></td>
-                    <td>{user.email}</td>
+                    <td>{user.email || '—'}</td>
                     <td><span className="school-role-badge">{user.role === 'admin' ? 'Admin Sekolah' : roleLabels[user.role]}</span></td>
                     <td>{user.phone || '—'}</td>
-                    <td><span className={`master-status ${user.status === 'active' ? 'is-active' : 'is-inactive'}`}>{user.status === 'active' ? 'Aktif' : 'Nonaktif'}</span></td>
+                    <td><span className={`master-status ${user.status === 'active' ? 'is-active' : 'is-inactive'}`}>{user.status === 'active' ? 'Aktif' : user.status === 'blocked' ? 'Diblokir' : 'Nonaktif'}</span></td>
+                    <td><div className="student-row-actions">
+                      {user.role !== 'admin' && <button type="button" className="master-icon-button" title="Edit akun" aria-label={`Edit akun ${user.name}`} onClick={() => { setEditingAccount(user); setAccountModalOpen(true); }}><Pencil size={15} /></button>}
+                      {user.role !== 'admin' && <button type="button" className="master-icon-button" title="Hapus akun" aria-label={`Hapus akun ${user.name}`} onClick={() => { setDeleteAccountError(''); setDeleteTarget(user); }}><Trash2 size={15} /></button>}
+                    </div></td>
                   </tr>
                 ))}
               </tbody>
@@ -423,7 +469,16 @@ export default function SchoolSettingsPage() {
         </section>
       ) : <LibrarySettingsPanel />}
 
-      {accountModalOpen && <AccountModal onClose={() => setAccountModalOpen(false)} onCreated={handleCreated} />}
+      {accountModalOpen && <AccountModal key={editingAccount?.id || 'new-account'} account={editingAccount} onClose={() => { setAccountModalOpen(false); setEditingAccount(null); }} onSaved={handleAccountSaved} />}
+      {deleteTarget && <SchoolConfirmDialog
+        title="Hapus akun pengguna?"
+        message="Akun ini akan dihapus dari sekolah. Akun dengan riwayat transaksi tidak dapat dihapus."
+        itemName={deleteTarget.name}
+        loading={deletingAccount}
+        error={deleteAccountError}
+        onClose={() => { if (!deletingAccount) { setDeleteTarget(null); setDeleteAccountError(''); } }}
+        onConfirm={confirmDeleteAccount}
+      />}
     </div>
   );
 }

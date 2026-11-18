@@ -337,6 +337,62 @@ router.patch('/:id/activate', requireSchoolPermission('master.academic-years', '
   }
 });
 
+router.patch('/:id', requireSchoolPermission('master.academic-years', 'edit'), async (req, res, next) => {
+  const id = String(req.params.id);
+  if (!validId(id)) return res.status(400).json({ message: 'ID tahun pelajaran tidak valid.' });
+  const { value, error } = readInput(req.body);
+  if (error) return res.status(400).json({ message: error });
+
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    const [years] = await connection.execute(
+      'SELECT id FROM school_years WHERE id = ? AND school_id = ? FOR UPDATE',
+      [id, req.school.id]
+    );
+    if (!years[0]) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Tahun pelajaran tidak ditemukan.' });
+    }
+
+    const [overlaps] = await connection.execute(
+      `SELECT id FROM school_years
+       WHERE school_id = ? AND id <> ? AND start_date <= ? AND end_date >= ?
+       LIMIT 1 FOR UPDATE`,
+      [req.school.id, id, value.endDate, value.startDate]
+    );
+    if (overlaps.length) {
+      await connection.rollback();
+      return res.status(409).json({ message: 'Rentang tanggal bertabrakan dengan tahun pelajaran yang sudah ada.' });
+    }
+
+    await connection.execute(
+      `UPDATE school_years SET label = ?, start_date = ?, end_date = ?
+       WHERE id = ? AND school_id = ?`,
+      [value.label, value.startDate, value.endDate, id, req.school.id]
+    );
+    await connection.commit();
+    return res.json({
+      year: {
+        id,
+        label: value.label,
+        startDate: value.startDate,
+        endDate: value.endDate
+      },
+      message: 'Tahun pelajaran berhasil diperbarui.'
+    });
+  } catch (updateError) {
+    if (connection) await connection.rollback();
+    if (updateError.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ message: 'Nama tahun pelajaran sudah digunakan.' });
+    }
+    return next(updateError);
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
 router.delete('/:id', requireSchoolPermission('master.academic-years', 'delete'), async (req, res, next) => {
   const id = String(req.params.id);
   if (!validId(id)) return res.status(400).json({ message: 'ID tahun pelajaran tidak valid.' });

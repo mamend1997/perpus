@@ -8,7 +8,7 @@ const sortColumns = {
   title: 'p.title',
   date: 'p.request_date',
   status: 'CAST(p.status AS CHAR)',
-  requester: 'u.name'
+  requester: "COALESCE(NULLIF(p.requester_name, ''), u.name)"
 };
 
 function parsePageValue(raw, fallback, maximum) {
@@ -83,8 +83,8 @@ router.get('/', requireSchoolPermission('procurements', 'view'), async (req, res
     values.push(status);
   }
   if (search) {
-    conditions.push('(p.title LIKE ? OR p.author LIKE ? OR p.publisher LIKE ? OR p.notes LIKE ? OR p.review_notes LIKE ? OR u.name LIKE ?)');
-    values.push(...Array(6).fill(`%${search}%`));
+    conditions.push('(p.title LIKE ? OR p.author LIKE ? OR p.publisher LIKE ? OR p.notes LIKE ? OR p.review_notes LIKE ? OR p.requester_name LIKE ? OR u.name LIKE ?)');
+    values.push(...Array(7).fill(`%${search}%`));
   }
 
   try {
@@ -100,7 +100,8 @@ router.get('/', requireSchoolPermission('procurements', 'view'), async (req, res
     const [requests] = await pool.execute(
       `SELECT p.id, p.title, p.author, p.publisher, p.\`year\`, p.quantity_needed,
               p.estimated_price, p.request_date, p.status, p.notes, p.review_notes,
-              p.user_id, u.name AS requester, u.role AS requester_role
+              p.user_id, COALESCE(NULLIF(p.requester_name, ''), u.name) AS requester,
+              u.role AS requester_role
        ${from}
        WHERE ${where}
        ORDER BY ${sortColumns[sort]} ${orderDirection}, p.id DESC
@@ -151,7 +152,7 @@ router.post('/', requireSchoolPermission('procurements', 'edit'), async (req, re
     return res.status(400).json({ message: 'Data usulan pengadaan tidak valid.' });
   }
   const {
-    title, author, publisher, year, quantityNeeded, estimatedPrice, requestDate, notes
+    title, author, publisher, year, quantityNeeded, estimatedPrice, requesterName, requestDate, notes
   } = req.body;
   if (typeof title !== 'string' || !title.trim() || title.trim().length > 255) {
     return res.status(400).json({ message: 'Judul buku wajib diisi maksimal 255 karakter.' });
@@ -167,9 +168,12 @@ router.post('/', requireSchoolPermission('procurements', 'edit'), async (req, re
   if (year != null && year !== '' && !['string', 'number'].includes(typeof year)) {
     return res.status(400).json({ message: 'Tahun terbit harus berupa angka.' });
   }
+  if (typeof year === 'string' && !/^\d{4}$/.test(year)) {
+    return res.status(400).json({ message: 'Tahun terbit harus berupa 4 digit angka.' });
+  }
   const normalizedYear = year == null || year === '' ? null : Number(year);
   if (normalizedYear != null && (!Number.isInteger(normalizedYear) || normalizedYear < 1000 || normalizedYear > 9999)) {
-    return res.status(400).json({ message: 'Tahun terbit harus berupa tahun yang valid.' });
+    return res.status(400).json({ message: 'Tahun terbit harus berupa 4 digit angka yang valid.' });
   }
   if (quantityNeeded != null && quantityNeeded !== '' && !['string', 'number'].includes(typeof quantityNeeded)) {
     return res.status(400).json({ message: 'Jumlah kebutuhan harus berupa angka.' });
@@ -178,18 +182,24 @@ router.post('/', requireSchoolPermission('procurements', 'edit'), async (req, re
   if (!Number.isSafeInteger(normalizedQuantity) || normalizedQuantity < 1 || normalizedQuantity > 10000) {
     return res.status(400).json({ message: 'Jumlah kebutuhan harus antara 1 dan 10000 eksemplar.' });
   }
-  let normalizedEstimatedPrice = null;
-  if (estimatedPrice != null && estimatedPrice !== '') {
-    if (!['string', 'number'].includes(typeof estimatedPrice)) {
-      return res.status(400).json({ message: 'Estimasi harga harus berupa angka.' });
-    }
-    normalizedEstimatedPrice = Number(estimatedPrice);
-    if (!Number.isFinite(normalizedEstimatedPrice)
-        || normalizedEstimatedPrice < 0
-        || normalizedEstimatedPrice > 9999999999.99
-        || Math.abs(normalizedEstimatedPrice * 100 - Math.round(normalizedEstimatedPrice * 100)) > 0.00001) {
-      return res.status(400).json({ message: 'Estimasi harga tidak valid (maksimal dua angka desimal).' });
-    }
+  if (!['string', 'number'].includes(typeof estimatedPrice)
+      || (typeof estimatedPrice === 'string' && !/^\d+$/.test(estimatedPrice))) {
+    return res.status(400).json({ message: 'Estimasi harga wajib diisi dengan angka bulat.' });
+  }
+  const normalizedEstimatedPrice = Number(estimatedPrice);
+  if (!Number.isSafeInteger(normalizedEstimatedPrice)
+      || normalizedEstimatedPrice < 0
+      || normalizedEstimatedPrice > 9999999999) {
+    return res.status(400).json({ message: 'Estimasi harga wajib berupa angka antara 0 dan 9.999.999.999.' });
+  }
+  if (requesterName != null && typeof requesterName !== 'string') {
+    return res.status(400).json({ message: 'Nama pemohon harus berupa teks.' });
+  }
+  const normalizedRequesterName = typeof requesterName === 'string'
+    ? requesterName.trim()
+    : typeof req.school.userName === 'string' ? req.school.userName.trim() : '';
+  if (!normalizedRequesterName || normalizedRequesterName.length > 180) {
+    return res.status(400).json({ message: 'Nama pemohon wajib diisi maksimal 180 karakter.' });
   }
   if (notes != null && typeof notes !== 'string') {
     return res.status(400).json({ message: 'Alasan pengajuan harus berupa teks.' });
@@ -209,12 +219,13 @@ router.post('/', requireSchoolPermission('procurements', 'edit'), async (req, re
     transactionStarted = true;
     const [result] = await connection.execute(
       `INSERT INTO procurements
-       (school_id, user_id, title, author, publisher, \`year\`, quantity_needed,
+       (school_id, user_id, requester_name, title, author, publisher, \`year\`, quantity_needed,
         estimated_price, request_date, status, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_DATE()), 'Pending', ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_DATE()), 'Pending', ?)`,
       [
         req.school.id,
         req.school.userId,
+        normalizedRequesterName,
         title.trim(),
         normalizedAuthor || null,
         normalizedPublisher || null,
@@ -226,7 +237,7 @@ router.post('/', requireSchoolPermission('procurements', 'edit'), async (req, re
       ]
     );
     const [[request]] = await connection.execute(
-      `SELECT id, title, author, publisher, \`year\`, quantity_needed, estimated_price,
+      `SELECT id, requester_name, title, author, publisher, \`year\`, quantity_needed, estimated_price,
               request_date, status, notes, review_notes
        FROM procurements WHERE id = ? AND school_id = ?`,
       [result.insertId, req.school.id]
@@ -234,7 +245,7 @@ router.post('/', requireSchoolPermission('procurements', 'edit'), async (req, re
     await connection.commit();
     transactionStarted = false;
     return res.status(201).json({
-      request: { ...request, id: String(request.id), user_id: String(req.school.userId), requester: req.school.userName }
+      request: { ...request, id: String(request.id), user_id: String(req.school.userId), requester: request.requester_name }
     });
   } catch (error) {
     if (transactionStarted && connection) {

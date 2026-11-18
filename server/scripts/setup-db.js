@@ -124,6 +124,7 @@ try {
   const procurementColumnNames = new Set(procurementColumns.map((column) => column.COLUMN_NAME));
   const isMigratingReviewNotes = !procurementColumnNames.has('review_notes');
   const procurementFields = [
+    ['requester_name', 'requester_name VARCHAR(180) NULL AFTER user_id'],
     ['year', '`year` SMALLINT UNSIGNED NULL AFTER publisher'],
     ['quantity_needed', 'quantity_needed INT UNSIGNED NOT NULL DEFAULT 1 AFTER `year`'],
     ['estimated_price', 'estimated_price DECIMAL(12,2) NULL AFTER quantity_needed'],

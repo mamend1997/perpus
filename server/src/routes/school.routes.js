@@ -295,6 +295,109 @@ router.post('/users', requireSchoolAdmin, async (req, res, next) => {
   }
 });
 
+router.patch('/users/:id', requireSchoolAdmin, async (req, res, next) => {
+  const id = String(req.params.id);
+  if (!/^[1-9]\d*$/.test(id)) return res.status(400).json({ message: 'ID akun tidak valid.' });
+  const body = req.body;
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return res.status(400).json({ message: 'Data akun tidak valid.' });
+  }
+
+  const role = body.role;
+  const name = typeof body.name === 'string' ? body.name.trim() : '';
+  const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
+  const phone = typeof body.phone === 'string' ? body.phone.trim() : '';
+  const nisNisn = typeof body.nis_nisn === 'string' ? body.nis_nisn.trim() : '';
+  const rombel = typeof body.rombel === 'string' ? body.rombel.trim() : '';
+  const gender = body.gender == null || body.gender === '' ? null : body.gender;
+  const status = body.status;
+  const password = body.password == null ? '' : body.password;
+
+  if ((body.email != null && typeof body.email !== 'string')
+      || !validRole(role) || name.length < 2 || name.length > 180
+      || (email && (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 190))
+      || ['phone', 'nis_nisn', 'rombel'].some((field) => body[field] != null && typeof body[field] !== 'string')
+      || phone.length > 30 || nisNisn.length > 40 || rombel.length > 80
+      || (gender !== null && !['male', 'female', 'other'].includes(gender))
+      || !['active', 'inactive', 'blocked'].includes(status)
+      || typeof password !== 'string'
+      || (password && (password.length < 8 || password.length > 128 || !/[A-Z]/.test(password)
+        || !/\d/.test(password) || !/[^A-Za-z0-9\s]/.test(password)))) {
+    return res.status(400).json({ message: 'Periksa nama, email, role, status, dan format akun.' });
+  }
+
+  try {
+    const [targets] = await pool.execute(
+      'SELECT id, role FROM users WHERE id = ? AND school_id = ? LIMIT 1',
+      [id, req.school.id]
+    );
+    if (!targets[0]) return res.status(404).json({ message: 'Akun pengguna tidak ditemukan.' });
+    if (targets[0].role === 'admin' || String(req.school.userId) === id) {
+      return res.status(409).json({ message: 'Akun Admin sekolah tidak dapat diedit dari menu ini.' });
+    }
+
+    const passwordHash = password ? await bcrypt.hash(password, 12) : null;
+    await pool.execute(
+      `UPDATE users
+       SET role = ?, name = ?, email = ?, phone = ?, nis_nisn = ?, rombel = ?, gender = ?, status = ?,
+           password = COALESCE(?, password)
+       WHERE id = ? AND school_id = ? AND role <> 'admin'`,
+      [
+        role, name, email || null, phone || null,
+        role === 'member' ? nisNisn || null : null,
+        role === 'member' ? rombel || null : null,
+        role === 'member' ? gender : null,
+        status, passwordHash, id, req.school.id
+      ]
+    );
+    return res.json({
+      user: {
+        id,
+        role,
+        name,
+        email: email || null,
+        phone: phone || null,
+        nis_nisn: role === 'member' ? nisNisn || null : null,
+        rombel: role === 'member' ? rombel || null : null,
+        gender: role === 'member' ? gender : null,
+        status
+      },
+      message: 'Akun pengguna berhasil diperbarui.'
+    });
+  } catch (error) {
+    if (error.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ message: 'Email atau NIS/NISN tersebut sudah digunakan akun lain.' });
+    }
+    return next(error);
+  }
+});
+
+router.delete('/users/:id', requireSchoolAdmin, async (req, res, next) => {
+  const id = String(req.params.id);
+  if (!/^[1-9]\d*$/.test(id)) return res.status(400).json({ message: 'ID akun tidak valid.' });
+  try {
+    const [targets] = await pool.execute(
+      'SELECT id, role FROM users WHERE id = ? AND school_id = ? LIMIT 1',
+      [id, req.school.id]
+    );
+    if (!targets[0]) return res.status(404).json({ message: 'Akun pengguna tidak ditemukan.' });
+    if (targets[0].role === 'admin' || String(req.school.userId) === id) {
+      return res.status(409).json({ message: 'Akun Admin sekolah tidak dapat dihapus.' });
+    }
+    const [result] = await pool.execute(
+      'DELETE FROM users WHERE id = ? AND school_id = ? AND role <> \'admin\'',
+      [id, req.school.id]
+    );
+    if (!result.affectedRows) return res.status(404).json({ message: 'Akun pengguna tidak ditemukan.' });
+    return res.json({ message: 'Akun pengguna berhasil dihapus.' });
+  } catch (error) {
+    if (error.errno === 1451 || error.code === 'ER_ROW_IS_REFERENCED_2') {
+      return res.status(409).json({ message: 'Akun memiliki riwayat transaksi dan tidak dapat dihapus.' });
+    }
+    return next(error);
+  }
+});
+
 router.get('/identity', requireSchoolPermission('master.identity', 'view'), async (req, res, next) => {
   try {
     const [rows] = await pool.execute(
@@ -336,11 +439,21 @@ router.patch('/identity', requireSchoolPermission('master.identity', 'edit'), as
 
   let validWebsite = true;
   if (identity.website) {
-    try {
-      const websiteUrl = new URL(identity.website);
-      validWebsite = ['http:', 'https:'].includes(websiteUrl.protocol);
-    } catch {
+    const hasProtocol = /^[a-z][a-z\d+.-]*:/i.test(identity.website);
+    const hasHostPort = /^[^/:?#]+:\d+(?:[/?#]|$)/.test(identity.website);
+    if (hasProtocol && !/^https?:\/\//i.test(identity.website) && !hasHostPort) {
       validWebsite = false;
+    } else {
+      const websiteValue = /^https?:\/\//i.test(identity.website)
+        ? identity.website
+        : `https://${identity.website}`;
+      try {
+        const websiteUrl = new URL(websiteValue);
+        validWebsite = ['http:', 'https:'].includes(websiteUrl.protocol) && Boolean(websiteUrl.hostname);
+        if (validWebsite) identity.website = websiteUrl.toString();
+      } catch {
+        validWebsite = false;
+      }
     }
   }
   const validLogo = logo === null || (typeof logo === 'string'

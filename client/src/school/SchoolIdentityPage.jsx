@@ -187,7 +187,7 @@ export default function SchoolIdentityPage({ rights, onSaved }) {
             <input type="email" name="email" value={identity.email} onChange={updateField} maxLength={190} disabled={!canEdit || saving || loading || !loaded} />
           </label>
           <label><span><Globe2 size={13} />Website</span>
-            <input type="url" name="website" value={identity.website} onChange={updateField} maxLength={255} placeholder="https://sekolah.sch.id" disabled={!canEdit || saving || loading || !loaded} />
+            <input type="text" inputMode="url" name="website" value={identity.website} onChange={updateField} maxLength={255} placeholder="sekolah.sch.id" disabled={!canEdit || saving || loading || !loaded} />
           </label>
           <label className="school-identity-wide"><span><MapPin size={13} />Alamat</span>
             <textarea name="address" value={identity.address} onChange={updateField} maxLength={2000} rows={3} disabled={!canEdit || saving || loading || !loaded} />

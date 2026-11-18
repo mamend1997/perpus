@@ -440,6 +440,10 @@ router.get('/', requireSchoolPermission('books.catalog', 'view'), async (req, re
   if (!page || !limit) return res.status(400).json({ message: 'Halaman atau jumlah data tidak valid.' });
 
   const filters = [
+    ['authorId', 'author_id'],
+    ['publisherId', 'publisher_id'],
+    ['agentId', 'agent_id'],
+    ['topicId', 'topic_id'],
     ['collectionId', 'collection_id'],
     ['typeId', 'type_id'],
     ['languageId', 'language_id'],
