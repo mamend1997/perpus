@@ -29,6 +29,71 @@ try {
   const schema = await readFile(fileURLToPath(schemaUrl), 'utf8');
   await connection.query(schema);
 
+  const [settingsValueColumns] = await connection.execute(
+    `SELECT DATA_TYPE FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'platform_settings'
+       AND COLUMN_NAME = 'value'`
+  );
+  if (settingsValueColumns[0]?.DATA_TYPE === 'text') {
+    await connection.query('ALTER TABLE platform_settings MODIFY `value` MEDIUMTEXT NULL');
+  }
+
+  const [adminColumnRows] = await connection.execute(
+    `SELECT COLUMN_NAME, IS_NULLABLE FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'super_admins'`
+  );
+  const adminColumns = new Map(adminColumnRows.map((column) => [column.COLUMN_NAME, column.IS_NULLABLE]));
+  if (!adminColumns.has('username')) {
+    await connection.query('ALTER TABLE super_admins ADD COLUMN username VARCHAR(32) NULL AFTER name');
+  }
+  if (!adminColumns.has('phone')) {
+    await connection.query('ALTER TABLE super_admins ADD COLUMN phone VARCHAR(30) NULL AFTER email');
+  }
+  if (!adminColumns.has('last_login_at')) {
+    await connection.query('ALTER TABLE super_admins ADD COLUMN last_login_at DATETIME NULL AFTER password');
+  }
+  if (adminColumns.get('email') === 'NO') {
+    await connection.query('ALTER TABLE super_admins MODIFY email VARCHAR(190) NULL');
+  }
+
+  const [adminRows] = await connection.query(
+    'SELECT id, username, email FROM super_admins ORDER BY id'
+  );
+  const usedUsernames = new Set();
+  for (const admin of adminRows) {
+    const storedUsername = typeof admin.username === 'string' ? admin.username : '';
+    let username = storedUsername.toLowerCase();
+    if (!/^[a-z0-9._-]{3,32}$/.test(username) || usedUsernames.has(username) || storedUsername !== username) {
+      const emailName = typeof admin.email === 'string' ? admin.email.split('@')[0] : '';
+      const emailBase = emailName.toLowerCase().replace(/[^a-z0-9._-]/g, '').slice(0, 32);
+      const base = emailBase.length >= 3 ? emailBase : `admin${admin.id}`;
+      username = base;
+      let suffix = 1;
+      while (usedUsernames.has(username)) {
+        const suffixText = String(suffix);
+        username = `${base.slice(0, 32 - suffixText.length)}${suffixText}`;
+        suffix += 1;
+      }
+      await connection.execute(
+        'UPDATE super_admins SET username = ? WHERE id = ?',
+        [username, admin.id]
+      );
+    }
+    usedUsernames.add(username);
+  }
+
+  const [adminIndexes] = await connection.execute(
+    `SELECT INDEX_NAME FROM information_schema.STATISTICS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'super_admins'
+       AND INDEX_NAME = 'uq_super_admins_username'`
+  );
+  if (adminIndexes.length === 0) {
+    await connection.query(
+      'ALTER TABLE super_admins ADD UNIQUE KEY uq_super_admins_username (username)'
+    );
+  }
+  await connection.query('ALTER TABLE super_admins MODIFY username VARCHAR(32) NOT NULL');
+
   const [columns] = await connection.execute(
     `SELECT COLUMN_NAME FROM information_schema.COLUMNS
      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tenants_schools'

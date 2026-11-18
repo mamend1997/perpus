@@ -37,7 +37,7 @@ Buka `http://localhost:5173` untuk portal sekolah. Login Super Admin terpisah di
    - `JWT_SECRET`: string acak kuat minimal 32 karakter.
    - `SUPER_ADMIN_NAME`, `SUPER_ADMIN_EMAIL`, `SUPER_ADMIN_PASSWORD`: kredensial bootstrap admin; password minimal 12 karakter.
    - `CLIENT_ORIGIN`: URL publik layanan aplikasi, misalnya `https://nama-layanan.up.railway.app`.
-4. Deploy. Jalankan `npm run db:setup` lalu `npm run seed:admin` sekali dari Railway service shell untuk menyiapkan tabel/migrasi dan akun admin.
+4. Deploy. Skema dan migrasi database dijalankan otomatis sebelum API mulai. Jalankan `npm run seed:admin` sekali dari Railway service shell untuk membuat akun admin.
 5. Generate domain publik Railway, lalu buka domain tersebut. `/api/health` adalah health check deployment.
 
 Build command root `npm run build` memasang dependency server/client dengan devDependencies sebelum membangun Vite, sehingga berhasil walaupun Railway memakai mode production untuk instalasi awal.

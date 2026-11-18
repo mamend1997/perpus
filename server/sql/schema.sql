@@ -19,10 +19,14 @@ CREATE TABLE IF NOT EXISTS tenants_schools (
 CREATE TABLE IF NOT EXISTS super_admins (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   name VARCHAR(150) NOT NULL,
-  email VARCHAR(190) NOT NULL,
+  username VARCHAR(32) NOT NULL,
+  email VARCHAR(190) NULL,
+  phone VARCHAR(30) NULL,
   password VARCHAR(255) NOT NULL,
+  last_login_at DATETIME NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
+  UNIQUE KEY uq_super_admins_username (username),
   UNIQUE KEY uq_super_admins_email (email)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -202,7 +206,7 @@ CREATE TABLE IF NOT EXISTS audit_logs (
 CREATE TABLE IF NOT EXISTS platform_settings (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   key_name VARCHAR(120) NOT NULL,
-  `value` TEXT NULL,
+  `value` MEDIUMTEXT NULL,
   PRIMARY KEY (id),
   UNIQUE KEY uq_platform_settings_key (key_name)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

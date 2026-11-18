@@ -211,30 +211,47 @@ router.get('/school/me', async (req, res, next) => {
 });
 
 router.post('/login', async (req, res, next) => {
-  const { email, password } = req.body || {};
-  if (typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+  const { identifier, email, password } = req.body || {};
+  const loginName = typeof identifier === 'string' ? identifier.trim().toLowerCase()
+    : typeof email === 'string' ? email.trim().toLowerCase() : '';
+  if ((!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(loginName) && !/^[a-z0-9._-]{3,32}$/.test(loginName))
       || typeof password !== 'string' || password.length === 0) {
-    return res.status(400).json({ message: 'Email atau kata sandi tidak valid.' });
+    return res.status(400).json({ message: 'Username/email atau kata sandi tidak valid.' });
   }
 
   try {
     const [admins] = await pool.execute(
-      'SELECT id, name, email, password FROM super_admins WHERE email = ? LIMIT 1',
-      [email]
+      `SELECT id, name, username, email, phone, password
+       FROM super_admins
+       WHERE username = ? OR email = ?
+       LIMIT 1`,
+      [loginName, loginName]
     );
     const admin = admins[0];
     if (!admin || !(await bcrypt.compare(password, admin.password))) {
-      return res.status(401).json({ message: 'Email atau kata sandi salah.' });
+      return res.status(401).json({ message: 'Username/email atau kata sandi salah.' });
     }
+    await pool.execute('UPDATE super_admins SET last_login_at = CURRENT_TIMESTAMP WHERE id = ?', [admin.id]);
 
     const token = jwt.sign(
-      { scope: 'super_admin', name: admin.name, email: admin.email },
+      {
+        scope: 'super_admin',
+        name: admin.name,
+        username: admin.username,
+        email: admin.email
+      },
       process.env.JWT_SECRET,
       { subject: String(admin.id), expiresIn: '8h' }
     );
     return res.json({
       token,
-      admin: { id: admin.id, name: admin.name, email: admin.email }
+      admin: {
+        id: admin.id,
+        name: admin.name,
+        username: admin.username,
+        email: admin.email,
+        phone: admin.phone
+      }
     });
   } catch (error) {
     return next(error);

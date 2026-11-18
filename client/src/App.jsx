@@ -60,7 +60,7 @@ function currentPage() {
 }
 
 function Login({ onLogin }) {
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -71,7 +71,7 @@ function Login({ onLogin }) {
     setError('');
     try {
       const result = await request('/api/auth/login', {
-        method: 'POST', body: JSON.stringify({ email, password })
+        method: 'POST', body: JSON.stringify({ identifier, password })
       });
       localStorage.setItem('super-admin-token', result.token);
       onLogin(result.admin);
@@ -89,7 +89,7 @@ function Login({ onLogin }) {
         <p className="eyebrow">PERPUSKITA · PLATFORM OWNER</p>
         <h1>Selamat datang kembali</h1>
         <p className="muted">Masuk untuk mengelola platform dan sekolah.</p>
-        <label>Email administrator<input autoComplete="username" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="admin@platform.id" /></label>
+        <label>Username atau email<input autoComplete="username" required value={identifier} onChange={(e) => setIdentifier(e.target.value)} placeholder="username atau admin@platform.id" /></label>
         <label>Kata sandi<input autoComplete="current-password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Masukkan kata sandi" /></label>
         {error && <div className="error-box">{error}</div>}
         <button className="primary-button login-submit" disabled={busy}>{busy ? 'Memeriksa...' : 'Masuk ke Dashboard'}</button>
@@ -354,6 +354,220 @@ function EmptyState({ text }) {
   return <div className="empty-state"><span><Search size={19} /></span>{text}</div>;
 }
 
+function LegalDocumentsPage() {
+  const [documents, setDocuments] = useState({
+    terms: { title: 'Syarat & Ketentuan Layanan', content: '', updatedAt: null },
+    sla: { title: 'Service Level Agreement', content: '', updatedAt: null }
+  });
+  const [activeDocument, setActiveDocument] = useState('terms');
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+  const document = documents[activeDocument];
+
+  useEffect(() => {
+    let active = true;
+    request('/api/super-admin/legal-documents')
+      .then(({ documents: saved }) => {
+        if (active) setDocuments(saved);
+      })
+      .catch((err) => {
+        if (active) setError(err.message);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => { active = false; };
+  }, []);
+
+  async function saveDocument(event) {
+    event.preventDefault();
+    setBusy(true);
+    setError('');
+    setMessage('');
+    try {
+      const result = await request('/api/super-admin/legal-documents', {
+        method: 'PUT',
+        body: JSON.stringify({ type: activeDocument, ...document })
+      });
+      setDocuments(result.documents);
+      setMessage(result.message);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const updatedDate = document.updatedAt
+    ? new Intl.DateTimeFormat('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(document.updatedAt))
+    : 'Belum pernah disimpan';
+
+  return (
+    <section className="legal-page">
+      <header className="management-heading">
+        <div><h1>Syarat & Ketentuan / SLA</h1><p>Kelola dokumen kebijakan yang berlaku untuk sekolah.</p></div>
+      </header>
+      <div className="legal-tabs" role="tablist" aria-label="Dokumen legal">
+        <button type="button" role="tab" aria-selected={activeDocument === 'terms'} className={activeDocument === 'terms' ? 'selected' : ''} onClick={() => { setActiveDocument('terms'); setError(''); setMessage(''); }}>Syarat & Ketentuan</button>
+        <button type="button" role="tab" aria-selected={activeDocument === 'sla'} className={activeDocument === 'sla' ? 'selected' : ''} onClick={() => { setActiveDocument('sla'); setError(''); setMessage(''); }}>Service Level Agreement</button>
+      </div>
+      <form className="panel legal-document-panel" onSubmit={saveDocument}>
+        <div className="panel-heading profile-panel-heading"><div><h3>{activeDocument === 'terms' ? 'Syarat & Ketentuan (TOS)' : 'Service Level Agreement (SLA)'}</h3><p>Terakhir diperbarui {updatedDate}</p></div></div>
+        <div className="legal-document-fields">
+          <label>Judul Dokumen<input required minLength={2} maxLength={200} value={document.title} onChange={(event) => setDocuments({ ...documents, [activeDocument]: { ...document, title: event.target.value } })} /></label>
+          <label>Isi Dokumen<textarea rows={12} maxLength={30000} value={document.content} onChange={(event) => setDocuments({ ...documents, [activeDocument]: { ...document, content: event.target.value } })} /></label>
+          <small>Satu paragraf per baris. Pastikan isi dokumen sudah ditinjau sebelum diterapkan.</small>
+          {error && <div className="error-box">{error}</div>}
+          {message && <div className="success-box">{message}</div>}
+          <button className="primary-button legal-save-button" disabled={loading || busy}>{busy ? 'Menyimpan...' : 'Simpan Dokumen'}</button>
+        </div>
+      </form>
+    </section>
+  );
+}
+
+function ProfilePage({ admin, onUpdate }) {
+  const [profile, setProfile] = useState({
+    name: admin.name || '',
+    username: admin.username || '',
+    email: admin.email || '',
+    phone: admin.phone || ''
+  });
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [profileMessage, setProfileMessage] = useState('');
+  const [profileError, setProfileError] = useState('');
+  const [passwordMessage, setPasswordMessage] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [accountInfo, setAccountInfo] = useState(admin);
+  const [profileBusy, setProfileBusy] = useState(false);
+  const [passwordBusy, setPasswordBusy] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    request('/api/super-admin/me')
+      .then(({ admin: current }) => {
+        if (!active) return;
+        setProfile({
+          name: current.name || '',
+          username: current.username || '',
+          email: current.email || '',
+          phone: current.phone || ''
+        });
+        setAccountInfo(current);
+        onUpdate(current);
+      })
+      .catch((err) => {
+        if (active) setProfileError(err.message);
+      });
+    return () => { active = false; };
+  }, []);
+
+  async function saveProfile(event) {
+    event.preventDefault();
+    setProfileBusy(true);
+    setProfileError('');
+    setProfileMessage('');
+    try {
+      const result = await request('/api/super-admin/profile', {
+        method: 'PUT',
+        body: JSON.stringify(profile)
+      });
+      setProfile(result.admin);
+      setAccountInfo((current) => ({ ...current, ...result.admin }));
+      onUpdate(result.admin);
+      setProfileMessage(result.message);
+    } catch (err) {
+      setProfileError(err.message);
+    } finally {
+      setProfileBusy(false);
+    }
+  }
+
+  async function savePassword(event) {
+    event.preventDefault();
+    setPasswordError('');
+    setPasswordMessage('');
+    if (newPassword !== confirmPassword) {
+      setPasswordError('Ulangi kata sandi baru dengan benar.');
+      return;
+    }
+    if (newPassword.length < 8 || newPassword === currentPassword) {
+      setPasswordError('Kata sandi baru minimal 8 karakter dan harus berbeda dari kata sandi lama.');
+      return;
+    }
+
+    setPasswordBusy(true);
+    try {
+      const result = await request('/api/super-admin/profile/password', {
+        method: 'POST',
+        body: JSON.stringify({ currentPassword, newPassword })
+      });
+      setPasswordMessage(result.message);
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch (err) {
+      setPasswordError(err.message);
+    } finally {
+      setPasswordBusy(false);
+    }
+  }
+
+  const formatLoginDate = (value) => value
+    ? new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
+    : 'Belum tercatat';
+
+  return (
+    <section className="profile-page">
+      <header className="management-heading">
+        <div><h1>Pengaturan Profil Super Admin</h1><p>Ubah nama akun, username, email, nomor WhatsApp pemulihan, dan kata sandi.</p></div>
+      </header>
+      <div className="profile-settings-grid">
+        <form className="panel profile-form" onSubmit={saveProfile}>
+          <div className="panel-heading profile-panel-heading"><div><h3>Identitas Akun</h3><p>Nama tampilan dan username untuk masuk</p></div></div>
+          <div className="profile-form-fields">
+            <label>Nama Akun Super Admin<input required minLength={2} maxLength={150} value={profile.name} onChange={(event) => setProfile({ ...profile, name: event.target.value })} /></label>
+            <label>Username<input required minLength={3} maxLength={32} pattern="[a-zA-Z0-9._-]+" value={profile.username} onChange={(event) => setProfile({ ...profile, username: event.target.value.toLowerCase() })} /><small>3–32 karakter: huruf kecil, angka, titik, garis bawah, atau strip.</small></label>
+            <label>Email (opsional)<input type="email" maxLength={190} value={profile.email} onChange={(event) => setProfile({ ...profile, email: event.target.value })} /><small>Bisa dipakai sebagai alternatif username saat masuk.</small></label>
+            <label>Nomor WhatsApp Pemulihan<input type="tel" value={profile.phone} onChange={(event) => setProfile({ ...profile, phone: event.target.value })} placeholder="6281234567890" /><small>Nomor ini disimpan untuk kebutuhan pemulihan akun.</small></label>
+            {profileError && <div className="error-box">{profileError}</div>}
+            {profileMessage && <div className="success-box">{profileMessage}</div>}
+            <button className="primary-button profile-submit" disabled={profileBusy}>{profileBusy ? 'Menyimpan...' : 'Simpan Profil'}</button>
+          </div>
+        </form>
+
+        <form className="panel profile-form" onSubmit={savePassword}>
+          <div className="panel-heading profile-panel-heading"><div><h3>Perbarui Kata Sandi</h3><p>Wajib menyertakan kata sandi lama sebagai verifikasi</p></div></div>
+          <div className="profile-form-fields">
+            <label>Kata Sandi Lama<input type="password" autoComplete="current-password" required value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} /></label>
+            <label>Kata Sandi Baru<input type="password" autoComplete="new-password" minLength={8} required value={newPassword} onChange={(event) => setNewPassword(event.target.value)} /><small>Minimal 8 karakter, tidak boleh sama dengan sandi lama.</small></label>
+            <label>Ulangi Kata Sandi Baru<input type="password" autoComplete="new-password" minLength={8} required value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} /></label>
+            {passwordError && <div className="error-box">{passwordError}</div>}
+            {passwordMessage && <div className="success-box">{passwordMessage}</div>}
+            <button className="primary-button profile-submit" disabled={passwordBusy}>{passwordBusy ? 'Menyimpan...' : 'Simpan Kata Sandi'}</button>
+            <small className="profile-session-note">Sesi yang sedang aktif tetap berjalan sampai Anda keluar.</small>
+          </div>
+        </form>
+      </div>
+
+      <section className="panel profile-account-info">
+        <div className="panel-heading profile-panel-heading"><div><h3>Informasi Akun</h3></div></div>
+        <div className="account-info-grid">
+          <div><span>Username aktif</span><b>{accountInfo.username || '—'}</b></div>
+          <div><span>Terakhir masuk</span><b>{formatLoginDate(accountInfo.lastLoginAt)}</b></div>
+          <div><span>Email</span><b>{accountInfo.email || 'Belum diisi'}</b></div>
+          <div><span>WhatsApp pemulihan</span><b>{accountInfo.phone || 'Belum diisi'}</b></div>
+          <div><span>Jumlah akun Super Admin</span><b>{number(accountInfo.totalAdmins)}</b></div>
+        </div>
+      </section>
+    </section>
+  );
+}
+
 export default function App() {
   const [admin, setAdmin] = useState(null);
   const [schoolAccount, setSchoolAccount] = useState(null);
@@ -442,13 +656,17 @@ export default function App() {
       <aside className={`sidebar ${mobileOpen ? 'mobile-open' : ''}`}>
         <div className="sidebar-brand"><div className="brand-mark"><BookOpen size={21} /></div>{!collapsed && <div className="brand-text"><b>perpuskita<span>.</span></b><small>PLATFORM ADMIN</small></div>}<button className="collapse-button" onClick={() => setCollapsed(!collapsed)} aria-label="Ciutkan sidebar">{collapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}</button></div>
         <div className="workspace-switch"><div className="workspace-logo">P</div>{!collapsed && <><div><b>PerpusKita</b><span>Platform Owner</span></div><ChevronDown size={15} className="workspace-chevron" /></>}</div>
-        <nav className="side-nav">{groups.map((group) => <div className="nav-group" key={group.title}><div className="nav-group-title">{!collapsed ? group.title : <span className="nav-divider" />}</div>{group.items.map(({ label, icon: Icon, badge }) => <button key={label} title={collapsed ? label : undefined} onClick={() => { setActive(label); setMobileOpen(false); if (label !== 'Dashboard') toast(`${label}: modul ini siap dikembangkan.`); }} className={`nav-item ${active === label ? 'selected' : ''}`}><Icon size={17} /><span className="nav-label">{!collapsed && label}</span>{!collapsed && badge && data && <span className="nav-badge">{number(data.stats[badge])}</span>}</button>)}</div>)}</nav>
+        <nav className="side-nav">{groups.map((group) => <div className="nav-group" key={group.title}><div className="nav-group-title">{!collapsed ? group.title : <span className="nav-divider" />}</div>{group.items.map(({ label, icon: Icon, badge }) => <button key={label} title={collapsed ? label : undefined} onClick={() => { setActive(label); setMobileOpen(false); if (!['Dashboard', 'Pengaturan Profil', 'Syarat & SLA'].includes(label)) toast(`${label}: modul ini siap dikembangkan.`); }} className={`nav-item ${active === label ? 'selected' : ''}`}><Icon size={17} /><span className="nav-label">{!collapsed && label}</span>{!collapsed && badge && data && <span className="nav-badge">{number(data.stats[badge])}</span>}</button>)}</div>)}</nav>
         <div className="sidebar-bottom"><button className="help-card" onClick={() => toast('Hubungi tim platform melalui Pusat Tiket.')}><span className="help-icon"><CircleHelp size={17} /></span>{!collapsed && <span><b>Butuh bantuan?</b><small>Kunjungi pusat bantuan</small></span>}{!collapsed && <ChevronRight size={15} />}</button><button className="profile-card" onClick={logout}><div className="profile-avatar">{admin.name?.slice(0, 1).toUpperCase() || 'P'}</div>{!collapsed && <><span className="profile-info"><b>{admin.name}</b><small>Super Admin</small></span><LogOut size={16} className="logout-icon" /></>}</button></div>
       </aside>
       <main className="main-area">
         <header className="topbar"><div className="topbar-left"><button className="mobile-menu icon-button" onClick={() => setMobileOpen(true)} aria-label="Buka menu"><Menu size={20} /></button><div className="breadcrumbs"><span>Platform</span><ChevronRight size={14} /><b>{active}</b></div></div><div className="topbar-right"><div className="search-box"><Search size={16} /><input placeholder="Cari apa saja..." aria-label="Cari" /><kbd>⌘ K</kbd></div><button className="icon-button notification-button" aria-label="Notifikasi"><Bell size={18} /><i /></button><div className="topbar-separator" /><button className="top-admin"><span className="top-admin-avatar">{admin.name?.slice(0, 1).toUpperCase() || 'P'}</span><span>{admin.name}</span><ChevronDown size={14} /></button></div></header>
         <div className="page-content">
-          {error ? <div className="error-panel"><ShieldCheck size={20} /><div><b>Dashboard belum dapat dimuat</b><p>{error}. Pastikan database sudah disiapkan dan tersedia datanya.</p></div><button className="subtle-button" onClick={() => { setError(''); request('/api/super-admin/dashboard').then(setData).catch((err) => setError(err.message)); }}>Coba lagi</button></div> : data ? <Dashboard data={{ ...data, adminName: admin.name }} onBillingCheck={runBillingCheck} billing={billing} toast={toast} /> : <div className="loading-state"><div className="spinner" />Memuat ringkasan platform...</div>}
+          {active === 'Pengaturan Profil' ? <ProfilePage admin={admin} onUpdate={setAdmin} />
+            : active === 'Syarat & SLA' ? <LegalDocumentsPage />
+            : error ? <div className="error-panel"><ShieldCheck size={20} /><div><b>Dashboard belum dapat dimuat</b><p>{error}. Pastikan database sudah disiapkan dan tersedia datanya.</p></div><button className="subtle-button" onClick={() => { setError(''); request('/api/super-admin/dashboard').then(setData).catch((err) => setError(err.message)); }}>Coba lagi</button></div>
+              : data ? <Dashboard data={{ ...data, adminName: admin.name }} onBillingCheck={runBillingCheck} billing={billing} toast={toast} />
+                : <div className="loading-state"><div className="spinner" />Memuat ringkasan platform...</div>}
         </div>
       </main>
       {toastText && <div className="toast"><Check size={16} />{toastText}<button onClick={() => setToastText('')} aria-label="Tutup"><X size={15} /></button></div>}
