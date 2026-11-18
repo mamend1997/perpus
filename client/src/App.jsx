@@ -6,6 +6,7 @@ import {
   LogOut, Menu, MessageSquare, MoreHorizontal, PanelLeftClose, PanelLeftOpen, Plus,
   Search, Settings2, ShieldCheck, Sparkles, Ticket, Users, X
 } from 'lucide-react';
+import SchoolPortal from './school/SchoolPortal.jsx';
 
 const groups = [
   { title: 'RINGKASAN', items: [{ label: 'Dashboard', icon: LayoutDashboard }] },
@@ -31,18 +32,6 @@ const groups = [
   { title: 'SISTEM', items: [{ label: 'Backup & Restore', icon: Database }] }
 ];
 
-const schoolMenuItems = [
-  { label: 'Dashboard', icon: LayoutDashboard },
-  { label: 'Input Kejadian', icon: ClipboardList },
-  { label: 'Kalender Disiplin', icon: Activity },
-  { label: 'Deteksi Dini', icon: ShieldCheck },
-  { label: 'Buku Penghubung', icon: BookOpen },
-  { label: 'Tindak Lanjut', icon: FileText },
-  { label: 'Data Siswa', icon: Users },
-  { label: 'Data Kelas', icon: Building2 },
-  { label: 'Kategori Poin', icon: Settings2 }
-];
-
 const number = (value) => new Intl.NumberFormat('id-ID').format(value || 0);
 const rupiah = (value) => new Intl.NumberFormat('id-ID', {
   style: 'currency', currency: 'IDR', maximumFractionDigits: 0
@@ -65,7 +54,7 @@ async function request(path, options = {}) {
 
 function currentPage() {
   const path = window.location.pathname;
-  const routes = ['/school/login', '/school/register', '/super-admin/login'];
+  const routes = ['/school/login', '/school/register', '/school/dashboard', '/super-admin/login'];
   if (routes.includes(path)) return path;
   window.history.replaceState({}, '', '/school/login');
   return '/school/login';
@@ -166,6 +155,7 @@ function SchoolAuth({ mode, onNavigate, onLogin }) {
         });
         localStorage.setItem('school-token', result.token);
         onLogin(result.account);
+        onNavigate('/school/dashboard');
       }
     } catch (err) {
       setError(err.message);
@@ -190,6 +180,7 @@ function SchoolAuth({ mode, onNavigate, onLogin }) {
   function enterSchoolDashboard() {
     localStorage.setItem('school-token', registration.token);
     onLogin(registration.account);
+    onNavigate('/school/dashboard');
   }
 
   if (registration) {
@@ -268,80 +259,6 @@ function SchoolAuth({ mode, onNavigate, onLogin }) {
         </div>
       </form>
     </main>
-  );
-}
-
-function SchoolWelcome({ account, onLogout }) {
-  const [active, setActive] = useState('Dashboard');
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const ActiveIcon = schoolMenuItems.find((item) => item.label === active)?.icon || LayoutDashboard;
-
-  return (
-    <div className="school-app-shell">
-      {mobileOpen && <button className="school-sidebar-scrim" onClick={() => setMobileOpen(false)} aria-label="Tutup menu sekolah" />}
-      <aside className={`school-sidebar ${mobileOpen ? 'mobile-open' : ''}`}>
-        <div className="school-sidebar-brand">
-          <div className="brand-mark"><BookOpen size={21} /></div>
-          <div><b>perpuskita<span>.</span></b><small>PORTAL SEKOLAH</small></div>
-        </div>
-        <div className="school-sidebar-tenant">
-          <div className="workspace-logo">{account.school.name.slice(0, 1).toUpperCase()}</div>
-          <div><b>{account.school.name}</b><span>Kode {account.school.code}</span></div>
-        </div>
-        <nav className="school-side-nav" aria-label="Menu sekolah">
-          <p>MENU SEKOLAH</p>
-          {schoolMenuItems.map(({ label, icon: Icon }) => (
-            <button type="button" key={label} onClick={() => { setActive(label); setMobileOpen(false); }} className={`school-nav-item ${active === label ? 'selected' : ''}`}>
-              <Icon size={17} /><span>{label}</span>
-            </button>
-          ))}
-        </nav>
-        <div className="school-sidebar-bottom">
-          <div className="school-admin-profile">
-            <span className="profile-avatar">{account.name.slice(0, 1).toUpperCase()}</span>
-            <div><b>{account.name}</b><small>Administrator</small></div>
-          </div>
-          <button type="button" className="school-logout-button" onClick={onLogout}><LogOut size={16} />Keluar</button>
-        </div>
-      </aside>
-      <main className="school-main-area">
-        <header className="school-topbar">
-          <div className="school-topbar-left">
-            <button type="button" className="school-mobile-menu" onClick={() => setMobileOpen(true)} aria-label="Buka menu sekolah"><Menu size={20} /></button>
-            <div><span>{account.school.name}</span><b>{active}</b></div>
-          </div>
-          <div className="school-topbar-account">{account.email}</div>
-        </header>
-        <div className="school-page-content">
-          {active === 'Dashboard' ? (
-            <>
-              <section className="school-welcome-banner">
-                <div className="welcome-kicker"><span className="live-dot" /> DASHBOARD SEKOLAH</div>
-                <h1>Selamat datang, {account.name}</h1>
-                <p>Kelola aktivitas perpustakaan dan layanan sekolah Anda dari satu tempat.</p>
-              </section>
-              <section className="school-overview-grid">
-                <article><span>Nama sekolah</span><b>{account.school.name}</b></article>
-                <article><span>Kode sekolah</span><b>{account.school.code}</b></article>
-                <article><span>Email administrator</span><b>{account.email}</b></article>
-                <article><span>Status akun</span><b className="school-active-status">Aktif</b></article>
-              </section>
-              <section className="panel school-dashboard-note">
-                <h2>Mulai gunakan menu sekolah</h2>
-                <p>Pilih menu di sisi kiri untuk membuka modul yang Anda perlukan. Data operasional akan muncul di sini setelah modul terkait tersedia.</p>
-              </section>
-            </>
-          ) : (
-            <section className="panel school-module-placeholder">
-              <span><ActiveIcon size={23} /></span>
-              <h1>{active}</h1>
-              <p>Menu {active} sudah tersedia. Fitur dan data untuk modul ini belum diaktifkan.</p>
-            </section>
-          )}
-          <footer className="page-footer"><span>© {new Date().getFullYear()} PerpusKita</span><span>{account.school.name}</span></footer>
-        </div>
-      </main>
-    </div>
   );
 }
 
@@ -588,6 +505,7 @@ function StatCard({ title, value, note, icon: Icon, tone, trend }) {
 
 function Dashboard({ data, onBillingCheck, billing, toast, onShowSchools }) {
   const stats = data.stats;
+  const lastBillingCheck = billing?.checkedAt ? billing : data.lastBillingCheck;
   const formattedDate = (date) => new Intl.DateTimeFormat('id-ID', {
     day: 'numeric', month: 'short', year: 'numeric'
   }).format(new Date(date));
@@ -600,7 +518,7 @@ function Dashboard({ data, onBillingCheck, billing, toast, onShowSchools }) {
           <div className="welcome-kicker"><span className="live-dot" /> PLATFORM OVERVIEW</div>
           <h1>Selamat pagi, {data.adminName || 'Platform Owner'} <span>✦</span></h1>
           <p>Pantau pertumbuhan dan operasional seluruh sekolah dari satu tempat.</p>
-          <div className="welcome-meta"><span><Building2 size={15} />{number(stats.schools)} sekolah terdaftar</span><i /><span><ShieldCheck size={15} />Platform beroperasi normal</span></div>
+          <div className="welcome-meta"><span><Building2 size={15} />{number(stats.schools)} sekolah terdaftar</span><i /><span><ShieldCheck size={15} />{number(stats.activeSchools)} aktif</span><i /><span><Activity size={15} />{number(stats.trialSchools)} uji coba</span></div>
         </div>
         <div className="banner-art" aria-hidden="true"><div className="art-glow" /><BookOpen size={104} strokeWidth={1.2} /><span className="art-spark">✳</span></div>
         <div className="banner-date">{new Intl.DateTimeFormat('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(new Date())}</div>
@@ -623,8 +541,8 @@ function Dashboard({ data, onBillingCheck, billing, toast, onShowSchools }) {
 
       <section className="billing-panel">
         <div className="billing-icon"><CreditCard size={21} /></div>
-        <div className="billing-copy"><div className="billing-title">Penagihan & pembekuan otomatis <span className="scheduled-pill"><span /> TERJADWAL HARIAN</span></div><p>Notifikasi H-7 · Pembuatan tagihan otomatis · Penangguhan setelah masa aktif berakhir</p><div className="billing-stats"><span>Terakhir dijalankan <b>{billing?.checkedAt ? new Date(billing.checkedAt).toLocaleString('id-ID') : 'Belum pernah'}</b></span><i /><span>Tagihan terbuka <b>{billing ? number(billing.openInvoices) : '—'}</b></span><i /><span>Lewat jatuh tempo <b>{billing ? number(billing.overdueInvoices) : '—'}</b></span></div></div>
-        <button className="primary-button billing-button" onClick={onBillingCheck} disabled={billing?.loading}>{billing?.loading ? 'Memeriksa...' : 'Jalankan Pemeriksaan'}<ArrowUpRight size={16} /></button>
+        <div className="billing-copy"><div className="billing-title">Kontrol cron penagihan & pembekuan <span className="scheduled-pill schedule-pending"><span /> CRON BELUM AKTIF</span></div><p>Rencana harian: notifikasi H-7 · pembuatan tagihan otomatis · penangguhan setelah masa aktif berakhir</p><div className="billing-stats"><span>Terakhir dijalankan <b>{lastBillingCheck?.checkedAt ? new Date(lastBillingCheck.checkedAt).toLocaleString('id-ID') : 'Belum pernah'}</b></span><i /><span>Tagihan baru (putaran terakhir) <b>{number(lastBillingCheck?.newInvoices)}</b></span><i /><span>Ditangguhkan (putaran terakhir) <b>{number(lastBillingCheck?.suspendedSchools)}</b></span></div></div>
+        <button className="primary-button billing-button" onClick={onBillingCheck} disabled={billing?.loading}>{billing?.loading ? 'Memeriksa...' : 'Jalankan Pemeriksaan Tagihan Sekarang'}<ArrowUpRight size={16} /></button>
       </section>
       {billing?.error ? <div className="error-box">{billing.error}</div> : billing?.message && <div className="inline-notice"><Check size={15} />{billing.message}</div>}
 
@@ -639,7 +557,7 @@ function Dashboard({ data, onBillingCheck, billing, toast, onShowSchools }) {
         </article>
       </section>
       <section className="panel activity-panel">
-        <div className="panel-heading"><div><h3>Aktivitas terakhir</h3><p>Jejak audit aktivitas Super Admin</p></div><button className="text-button" onClick={() => toast('Modul Audit Logs siap dikembangkan.')}>Lihat semua <ChevronRight size={16} /></button></div>
+        <div className="panel-heading"><div><h3>Aktivitas Terakhir Super Admin</h3><p>Jejak audit aktivitas platform</p></div><button className="text-button" onClick={() => toast('Modul Audit Logs siap dikembangkan.')}>Lihat semua <ChevronRight size={16} /></button></div>
         {data.activities.length ? <div className="activity-table"><div className="activity-header"><span>AKTIVITAS</span><span>ADMIN</span><span>ALAMAT IP</span><span>WAKTU</span></div>{data.activities.map((item) => <div className="activity-row" key={item.id}><span><span className="activity-dot" />{item.activity}</span><span>{item.admin_name || 'Platform'}</span><span>{item.ip_address || '—'}</span><span>{formattedDate(item.created_at)}</span></div>)}</div> : <EmptyState text="Aktivitas penting akan tercatat dan muncul di sini." />}
       </section>
       <footer className="page-footer"><span>© {new Date().getFullYear()} PerpusKita Platform</span><span><span className="live-dot" />Semua sistem beroperasi</span></footer>
@@ -873,6 +791,7 @@ export default function App() {
   const [error, setError] = useState('');
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [active, setActive] = useState('Dashboard');
   const [billing, setBilling] = useState(null);
   const [toastText, setToastText] = useState('');
@@ -941,7 +860,7 @@ export default function App() {
   }
 
   if (page.startsWith('/school/')) {
-    if (schoolAccount) return <SchoolWelcome account={schoolAccount} onLogout={schoolLogout} />;
+    if (schoolAccount) return <SchoolPortal account={schoolAccount} onLogout={schoolLogout} />;
     return <SchoolAuth mode={page === '/school/register' ? 'register' : 'login'} onNavigate={navigate} onLogin={setSchoolAccount} />;
   }
 
@@ -954,10 +873,10 @@ export default function App() {
         <div className="sidebar-brand"><div className="brand-mark"><BookOpen size={21} /></div>{!collapsed && <div className="brand-text"><b>perpuskita<span>.</span></b><small>PLATFORM ADMIN</small></div>}<button className="collapse-button" onClick={() => setCollapsed(!collapsed)} aria-label="Ciutkan sidebar">{collapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}</button></div>
         <div className="workspace-switch"><div className="workspace-logo">P</div>{!collapsed && <><div><b>PerpusKita</b><span>Platform Owner</span></div><ChevronDown size={15} className="workspace-chevron" /></>}</div>
         <nav className="side-nav">{groups.map((group) => <div className="nav-group" key={group.title}><div className="nav-group-title">{!collapsed ? group.title : <span className="nav-divider" />}</div>{group.items.map(({ label, icon: Icon, badge }) => <button key={label} title={collapsed ? label : undefined} onClick={() => { setActive(label); setMobileOpen(false); }} className={`nav-item ${active === label ? 'selected' : ''}`}><Icon size={17} /><span className="nav-label">{!collapsed && label}</span>{!collapsed && badge && data && <span className="nav-badge">{number(data.stats[badge])}</span>}</button>)}</div>)}</nav>
-        <div className="sidebar-bottom"><button className="help-card" onClick={() => toast('Hubungi tim platform melalui Pusat Tiket.')}><span className="help-icon"><CircleHelp size={17} /></span>{!collapsed && <span><b>Butuh bantuan?</b><small>Kunjungi pusat bantuan</small></span>}{!collapsed && <ChevronRight size={15} />}</button><button className="profile-card" onClick={logout}><div className="profile-avatar">{admin.name?.slice(0, 1).toUpperCase() || 'P'}</div>{!collapsed && <><span className="profile-info"><b>{admin.name}</b><small>Super Admin</small></span><LogOut size={16} className="logout-icon" /></>}</button></div>
+        <div className="sidebar-bottom"><button className="profile-card" onClick={logout} aria-label="Keluar dari akun Super Admin"><div className="profile-avatar" aria-hidden="true">{admin.name?.slice(0, 1).toUpperCase() || 'P'}</div><LogOut size={16} className="logout-icon" aria-hidden="true" /></button></div>
       </aside>
       <main className="main-area">
-        <header className="topbar"><div className="topbar-left"><button className="mobile-menu icon-button" onClick={() => setMobileOpen(true)} aria-label="Buka menu"><Menu size={20} /></button><div className="breadcrumbs"><span>Platform</span><ChevronRight size={14} /><b>{active}</b></div></div><div className="topbar-right"><div className="search-box"><Search size={16} /><input placeholder="Cari apa saja..." aria-label="Cari" /><kbd>⌘ K</kbd></div><button className="icon-button notification-button" aria-label="Notifikasi"><Bell size={18} /><i /></button><div className="topbar-separator" /><button className="top-admin"><span className="top-admin-avatar">{admin.name?.slice(0, 1).toUpperCase() || 'P'}</span><span>{admin.name}</span><ChevronDown size={14} /></button></div></header>
+        <header className="topbar"><div className="topbar-left"><button className="mobile-menu icon-button" onClick={() => setMobileOpen(true)} aria-label="Buka menu"><Menu size={20} /></button><div className="breadcrumbs"><span>Platform</span><ChevronRight size={14} /><b>{active}</b></div></div><div className="topbar-right"><div className="search-box"><Search size={16} /><input placeholder="Cari apa saja..." aria-label="Cari" /><kbd>⌘ K</kbd></div><button className="icon-button notification-button" aria-label="Notifikasi"><Bell size={18} /><i /></button><div className="topbar-separator" /><div className="top-admin-menu-wrap"><button type="button" className="top-admin" aria-label={`Profil ${admin.name}`} aria-expanded={profileMenuOpen} aria-haspopup="menu" onClick={() => setProfileMenuOpen((open) => !open)}><span className="top-admin-avatar">{admin.name?.slice(0, 1).toUpperCase() || 'P'}</span><span>{admin.name}</span><ChevronDown size={14} /></button>{profileMenuOpen && <div className="top-admin-dropdown" role="menu"><div><b>{admin.name}</b><span>{admin.email || admin.username}</span></div><button type="button" role="menuitem" onClick={() => { setProfileMenuOpen(false); setActive('Pengaturan Profil'); }}><Users size={15} />Pengaturan Profil</button><button type="button" role="menuitem" onClick={() => { setProfileMenuOpen(false); logout(); }}><LogOut size={15} />Keluar</button></div>}</div></div></header>
         <div className="page-content">
           {active === 'Daftar Sekolah' ? <SchoolListPage />
             : active === 'Pembayaran & Penagihan' ? <BillingPage billing={billing} onBillingCheck={runBillingCheck} />

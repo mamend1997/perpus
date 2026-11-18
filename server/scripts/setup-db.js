@@ -29,6 +29,50 @@ try {
   const schema = await readFile(fileURLToPath(schemaUrl), 'utf8');
   await connection.query(schema);
 
+  const [bookColumns] = await connection.execute(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'books'`
+  );
+  const bookColumnNames = new Set(bookColumns.map((column) => column.COLUMN_NAME));
+  if (!bookColumnNames.has('collection_id')) {
+    await connection.query(
+      'ALTER TABLE books ADD COLUMN collection_id BIGINT UNSIGNED NULL AFTER publisher_id'
+    );
+  }
+  const [bookIndexes] = await connection.execute(
+    `SELECT INDEX_NAME FROM information_schema.STATISTICS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'books'
+       AND INDEX_NAME = 'idx_books_collection'`
+  );
+  if (bookIndexes.length === 0) {
+    await connection.query(
+      'ALTER TABLE books ADD KEY idx_books_collection (school_id, collection_id)'
+    );
+  }
+  const [bookConstraints] = await connection.execute(
+    `SELECT CONSTRAINT_NAME FROM information_schema.REFERENTIAL_CONSTRAINTS
+     WHERE CONSTRAINT_SCHEMA = DATABASE() AND TABLE_NAME = 'books'
+       AND CONSTRAINT_NAME = 'fk_books_collection'`
+  );
+  if (bookConstraints.length === 0) {
+    await connection.query(
+      `ALTER TABLE books ADD CONSTRAINT fk_books_collection
+       FOREIGN KEY (school_id, collection_id) REFERENCES master_categories (school_id, id)
+       ON DELETE RESTRICT`
+    );
+  }
+
+  const [loanColumns] = await connection.execute(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'loans'`
+  );
+  if (!loanColumns.some((column) => column.COLUMN_NAME === 'fine_status')) {
+    await connection.query(
+      `ALTER TABLE loans ADD COLUMN fine_status
+       ENUM('unpaid', 'paid', 'waived') NOT NULL DEFAULT 'unpaid' AFTER fine_amount`
+    );
+  }
+
   const [settingsValueColumns] = await connection.execute(
     `SELECT DATA_TYPE FROM information_schema.COLUMNS
      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'platform_settings'

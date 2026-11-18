@@ -205,6 +205,13 @@ router.get('/dashboard', async (req, res, next) => {
       ORDER BY a.created_at DESC
       LIMIT 6
     `);
+    const [billingRuns] = await pool.query(`
+      SELECT checked_at AS checkedAt, new_invoice_count AS newInvoices,
+             suspended_school_count AS suspendedSchools
+      FROM billing_check_runs
+      ORDER BY checked_at DESC, id DESC
+      LIMIT 1
+    `);
 
     const total = Number(schoolStats.total || 0);
     return res.json({
@@ -223,7 +230,8 @@ router.get('/dashboard', async (req, res, next) => {
       },
       latestSchools,
       actions,
-      activities
+      activities,
+      lastBillingCheck: billingRuns[0] || null
     });
   } catch (error) {
     return next(error);
@@ -336,8 +344,13 @@ router.get('/billing', async (req, res, next) => {
 });
 
 router.post('/billing-check', async (req, res, next) => {
+  let connection;
+  let transactionStarted = false;
   try {
-    const [[result]] = await pool.query(`
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    transactionStarted = true;
+    const [[result]] = await connection.query(`
       SELECT
         COUNT(*) AS open_invoices,
         COALESCE(SUM(amount), 0) AS open_amount,
@@ -345,15 +358,35 @@ router.post('/billing-check', async (req, res, next) => {
       FROM tenant_invoices
       WHERE status IN ('unpaid', 'pending_verification')
     `);
+    const openInvoices = Number(result.open_invoices || 0);
+    const openAmount = Number(result.open_amount || 0);
+    const overdueInvoices = Number(result.overdue_invoices || 0);
+    await connection.execute(
+      `INSERT INTO billing_check_runs
+       (admin_id, open_invoice_count, overdue_invoice_count, open_amount, new_invoice_count, suspended_school_count)
+       VALUES (?, ?, ?, ?, 0, 0)`,
+      [req.admin.id, openInvoices, overdueInvoices, openAmount]
+    );
+    await connection.execute(
+      'INSERT INTO audit_logs (admin_id, activity, ip_address) VALUES (?, ?, ?)',
+      [req.admin.id, 'Menjalankan pemeriksaan tagihan (read-only)', req.ip]
+    );
+    await connection.commit();
+    transactionStarted = false;
     return res.json({
       checkedAt: new Date().toISOString(),
-      openInvoices: Number(result.open_invoices || 0),
-      openAmount: Number(result.open_amount || 0),
-      overdueInvoices: Number(result.overdue_invoices || 0),
-      message: 'Pemeriksaan selesai. Ini hanya ringkasan; tidak membuat tagihan atau menangguhkan sekolah.'
+      openInvoices,
+      openAmount,
+      overdueInvoices,
+      newInvoices: 0,
+      suspendedSchools: 0,
+      message: 'Pemeriksaan tersimpan. Otomatisasi pembuatan tagihan dan penangguhan belum aktif; tidak ada perubahan pada sekolah atau invoice.'
     });
   } catch (error) {
+    if (transactionStarted) await connection.rollback();
     return next(error);
+  } finally {
+    if (connection) connection.release();
   }
 });
 

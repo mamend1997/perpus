@@ -49,14 +49,15 @@ Jangan simpan kredensial produksi di GitHub atau di `railway.json`; atur semuany
 ```text
 client/
   src/App.jsx                 # Login dan dashboard Super Admin
+  src/school/                 # Portal sekolah, navigasi, dashboard, dan API client
   src/styles.css              # Tema responsif oranye-biru
   vite.config.js              # Proxy API lokal
 server/
   sql/schema.sql              # Skema MySQL multi-tenant
   scripts/                    # Setup skema dan seed admin
   src/config/                 # Pool koneksi database
-  src/middleware/             # Proteksi akses Super Admin
-  src/routes/                 # Autentikasi dan API dashboard
+  src/middleware/             # Proteksi akses Super Admin dan sekolah
+  src/routes/                 # Autentikasi, dashboard Super Admin, dan sekolah
 .env.example
 ```
 
@@ -64,7 +65,8 @@ server/
 
 - API Super Admin dan akun sekolah menggunakan JWT berumur 8 jam; pendaftaran sekolah membuat tenant trial aktif dan administrator pertamanya dalam satu transaksi.
 - Kode sekolah berisi 4 huruf/angka uppercase, dibuat secara acak oleh server, dan dijaga indeks unik di MySQL. Admin sekolah memerlukan kode sekolah, email, serta kata sandi untuk login.
-- Endpoint pemeriksaan billing bersifat **read-only**. Ia merangkum tagihan yang terbuka/terlambat; pembuatan invoice, suspend tenant, scheduler, dan pengiriman notifikasi belum dijalankan sampai aturan bisnis dan kebijakan penagihan dikonfirmasi.
-- Data dashboard akan menampilkan status kosong sampai sekolah, invoice, tiket, atau audit log diisikan.
-- Menu lain ditampilkan sebagai navigasi awal/placeholder UI. Login, ringkasan dashboard, dan pemeriksaan billing terhubung ke API.
+- Endpoint pemeriksaan billing bersifat **read-only** terhadap invoice dan tenant; setiap pemeriksaan disimpan pada `billing_check_runs` dan dicatat di audit log. Cron H-7, pembuatan invoice otomatis, suspend tenant, dan notifikasi WhatsApp belum aktif.
+- Dashboard sekolah mengambil statistik pengunjung, eksemplar aktif, peminjaman, pengajuan, pengadaan terbaru, dan ketersediaan koleksi dari API ber-tenant.
+- Skema operasional mencakup katalog, eksemplar, peminjaman, pengadaan, kunjungan, ulasan, reservasi, dan pengumuman. Tabel `tenants_schools` adalah tabel sekolah/tenant kanonis agar kompatibel dengan data SaaS yang sudah ada.
+- Menu operasional lain sudah memiliki navigasi dan kerangka modul; alur CRUD, import/export Excel, cetak barcode, laporan, dan notifikasi WhatsApp masih perlu dihubungkan ke API sebelum digunakan untuk transaksi.
 - Pada deployment, layani frontend melalui HTTPS, simpan rahasia di environment platform, gunakan migrasi database terkelola, dan batasi CORS ke domain frontend produksi.

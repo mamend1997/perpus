@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { pool } from './config/database.js';
 import authRoutes from './routes/auth.routes.js';
+import schoolRoutes from './routes/school.routes.js';
 import superAdminRoutes from './routes/super-admin.routes.js';
 
 if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
@@ -26,6 +27,7 @@ app.get('/api/health', async (_req, res, next) => {
   }
 });
 app.use('/api/auth', authRoutes);
+app.use('/api/school', schoolRoutes);
 app.use('/api/super-admin', superAdminRoutes);
 
 const clientDistPath = fileURLToPath(new URL('../../client/dist/', import.meta.url));
