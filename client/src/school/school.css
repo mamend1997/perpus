@@ -1,6 +1,158 @@
+.school-app-shell.library-app-frame {
+  display: grid;
+  grid-template-columns: 252px minmax(0, 1fr);
+  gap: 0;
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: 20px;
+  background: #b89bea;
+}
+
+.school-app-shell.library-app-frame .school-sidebar {
+  position: sticky;
+  inset: auto;
+  top: 20px;
+  width: auto;
+  height: calc(100vh - 40px);
+  overflow: hidden;
+  border-radius: 18px 0 0 18px;
+}
+
+.school-app-shell.library-app-frame .school-main-area {
+  min-height: calc(100vh - 40px);
+  margin-left: 0;
+  overflow: hidden;
+  border-radius: 0 18px 18px 0;
+  background: #f7f8fb;
+  box-shadow: 0 14px 45px #37236320;
+}
+
+.school-app-shell.library-app-frame .school-topbar {
+  height: 66px;
+  padding: 0 24px;
+  background: #fff;
+}
+
+.school-app-shell.library-app-frame .school-page-content {
+  padding: 22px 24px 0;
+}
+
+.school-app-shell .school-sidebar {
+  background: linear-gradient(160deg, #f97316 0%, #ed682b 30%, #3b73df 68%, #243d94 100%);
+  border-right: 0;
+  box-shadow: 3px 0 18px #213b8b24;
+}
+
+.school-app-shell .school-sidebar-brand {
+  border-bottom-color: #ffffff3d;
+}
+
+.school-app-shell .school-sidebar-brand .brand-mark {
+  border: 1px solid #ffffff4d;
+  background: #ffffff24;
+  box-shadow: none;
+}
+
+.school-app-shell .school-sidebar-brand b,
+.school-app-shell .school-sidebar-brand small,
+.school-app-shell .school-sidebar-brand b span {
+  color: #fff;
+}
+
+.school-app-shell .school-sidebar-brand small {
+  opacity: 0.72;
+}
+
+.school-app-shell .school-sidebar-tenant {
+  border-color: #ffffff40;
+  background: #ffffff15;
+  backdrop-filter: blur(8px);
+}
+
+.school-app-shell .school-sidebar-tenant b {
+  color: #fff;
+}
+
+.school-app-shell .school-sidebar-tenant span {
+  color: #ffffffb8;
+}
+
+.school-app-shell .school-sidebar-tenant .workspace-logo {
+  background: #fff;
+  color: #e96824;
+}
+
+.school-app-shell .school-nav-section > p {
+  color: #ffffffa8;
+}
+
+.school-app-shell .school-nav-item {
+  color: #ffffffdf;
+}
+
+.school-app-shell .school-nav-item:hover:not(.selected) {
+  background: #ffffff20;
+  color: #fff;
+}
+
+.school-app-shell .school-nav-item.selected {
+  background: #fff;
+  color: #274caa;
+}
+
+.school-app-shell .school-nav-item.selected svg {
+  color: #ed6b25;
+}
+
+.school-app-shell .school-nav-group.selected {
+  background: #ffffff25;
+  color: #fff;
+}
+
+.school-app-shell .school-nav-group.selected svg {
+  color: #fff;
+}
+
+.school-nav-group > svg:last-child {
+  color: #ffffffbd;
+}
+
+.school-app-shell .school-nav-children {
+  border-left-color: #ffffff70;
+}
+
+.school-app-shell .school-sidebar-bottom {
+  border-top-color: #ffffff3d;
+}
+
+.school-app-shell .school-admin-profile b {
+  color: #fff;
+}
+
+.school-app-shell .school-admin-profile small {
+  color: #ffffffb8;
+}
+
+.school-app-shell .school-admin-profile .profile-avatar {
+  background: #ffffffed;
+  color: #3156ab;
+}
+
+.school-app-shell .school-logout-button {
+  border-color: #ffffff70;
+  background: #ffffff15;
+  color: #fff;
+}
+
+.school-app-shell .school-logout-button:hover {
+  border-color: #fff;
+  background: #fff;
+  color: #3156ab;
+}
+
 .school-nav-section > p {
   margin: 12px 10px 8px;
-  color: #a6aebb;
+  color: #ffffffa8;
   font-size: 9px;
   font-weight: 750;
   letter-spacing: 0.8px;
@@ -12,7 +164,7 @@
 
 .school-nav-group > svg:last-child {
   margin-left: auto;
-  color: #9ba4b1;
+  color: #ffffffbd;
 }
 
 .school-nav-children {
@@ -397,4 +549,229 @@
   .library-stat-card b { font-size: 17px; }
   .library-feature-list { grid-template-columns: 1fr; }
   .library-error { align-items: flex-start; flex-direction: column; }
+}
+
+.school-sidebar-brand {
+  gap: 10px;
+}
+
+.school-sidebar-brand-copy {
+  min-width: 0;
+  display: grid;
+  flex: 1;
+  gap: 4px;
+}
+
+.school-sidebar-toggle {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  padding: 0;
+  border: 1px solid #ffffff4d;
+  border-radius: 7px;
+  background: #ffffff15;
+  color: #fff;
+}
+
+.school-sidebar-toggle:hover {
+  background: #ffffff30;
+}
+
+.school-app-shell.library-app-frame.sidebar-collapsed {
+  grid-template-columns: 76px minmax(0, 1fr);
+}
+
+.school-app-shell.sidebar-collapsed .school-sidebar {
+  width: 100%;
+  transition: width 0.2s ease;
+}
+
+.school-app-shell.sidebar-collapsed .school-main-area {
+  margin-left: 0;
+}
+
+.school-app-shell.sidebar-collapsed .school-sidebar.hover-expanded {
+  width: 252px;
+  box-shadow: 3px 0 24px #17233b33;
+}
+
+.school-app-shell.sidebar-collapsed .school-sidebar.collapsed:not(.hover-expanded) .school-sidebar-brand {
+  justify-content: center;
+  gap: 4px;
+  padding: 0 9px;
+}
+
+.school-app-shell.sidebar-collapsed .school-sidebar.collapsed:not(.hover-expanded) .brand-mark {
+  width: 30px;
+  height: 30px;
+}
+
+.school-app-shell.sidebar-collapsed .school-sidebar.collapsed:not(.hover-expanded) .school-sidebar-toggle {
+  width: 22px;
+  height: 24px;
+  border: 0;
+  background: transparent;
+}
+
+.school-app-shell.sidebar-collapsed .school-sidebar.collapsed.hover-expanded .school-sidebar-brand {
+  gap: 11px;
+  padding: 0 18px;
+}
+
+.school-app-shell.sidebar-collapsed .school-sidebar.collapsed.hover-expanded .brand-mark {
+  width: 36px;
+  height: 36px;
+}
+
+.school-app-shell.sidebar-collapsed .school-sidebar.collapsed:not(.hover-expanded) .school-sidebar-brand-copy,
+.school-app-shell.sidebar-collapsed .school-sidebar.collapsed:not(.hover-expanded) .school-nav-section > p,
+.school-app-shell.sidebar-collapsed .school-sidebar.collapsed:not(.hover-expanded) .school-nav-item > span,
+.school-app-shell.sidebar-collapsed .school-sidebar.collapsed:not(.hover-expanded) .school-nav-group > svg:last-child,
+.school-app-shell.sidebar-collapsed .school-sidebar.collapsed:not(.hover-expanded) .school-nav-children {
+  display: none;
+}
+
+.school-app-shell.sidebar-collapsed .school-sidebar.collapsed:not(.hover-expanded) .school-nav-item {
+  justify-content: center;
+  gap: 0;
+  padding: 0;
+}
+
+.school-app-shell.sidebar-collapsed .school-sidebar.collapsed:not(.hover-expanded) .school-side-nav {
+  padding-right: 9px;
+  padding-left: 9px;
+}
+
+@media (max-width: 850px) {
+  .school-app-shell.library-app-frame,
+  .school-app-shell.library-app-frame.sidebar-collapsed {
+    display: block;
+    min-height: 100vh;
+    padding: 0;
+    background: #f7f8fb;
+  }
+
+  .school-app-shell.library-app-frame .school-sidebar,
+  .school-app-shell.sidebar-collapsed .school-sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    width: 252px;
+    height: 100vh;
+    border-radius: 0 18px 18px 0;
+    transform: translateX(-100%);
+    transition: transform 0.22s ease;
+  }
+
+  .school-app-shell.library-app-frame .school-sidebar.mobile-open {
+    transform: translateX(0);
+  }
+
+  .school-app-shell.library-app-frame .school-main-area {
+    min-height: 100vh;
+    margin-left: 0;
+    border-radius: 0;
+  }
+
+  .school-sidebar-toggle {
+    display: none;
+  }
+
+  .school-app-shell.sidebar-collapsed .school-sidebar.collapsed:not(.hover-expanded) .school-sidebar-brand-copy { display: grid; }
+  .school-app-shell.sidebar-collapsed .school-sidebar.collapsed:not(.hover-expanded) .school-nav-section > p { display: block; }
+  .school-app-shell.sidebar-collapsed .school-sidebar.collapsed:not(.hover-expanded) .school-nav-item > span { display: inline; }
+  .school-app-shell.sidebar-collapsed .school-sidebar.collapsed:not(.hover-expanded) .school-nav-group > svg:last-child { display: block; }
+  .school-app-shell.sidebar-collapsed .school-sidebar.collapsed:not(.hover-expanded) .school-nav-children { display: block; }
+
+  .school-app-shell.sidebar-collapsed .school-sidebar.collapsed:not(.hover-expanded) .school-sidebar-brand {
+    justify-content: flex-start;
+    gap: 11px;
+    padding: 0 18px;
+  }
+
+  .school-app-shell.sidebar-collapsed .school-sidebar.collapsed:not(.hover-expanded) .brand-mark {
+    width: 36px;
+    height: 36px;
+  }
+
+  .school-app-shell.sidebar-collapsed .school-sidebar.collapsed:not(.hover-expanded) .school-nav-item {
+    justify-content: flex-start;
+    gap: 11px;
+    padding: 0 10px;
+  }
+}
+
+.library-page-transition {
+  animation: library-page-enter 0.24s ease-out both;
+}
+
+.school-app-shell button {
+  transition: background-color 0.18s ease, color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+}
+
+.school-app-shell button:active {
+  transform: scale(0.98);
+}
+
+.school-app-shell .school-sidebar-toggle {
+  border-color: #ffffff60;
+  background: linear-gradient(130deg, #f97316, #4f6fe5);
+  box-shadow: 0 3px 9px #152b7a30;
+}
+
+.school-app-shell .school-sidebar-toggle:hover {
+  box-shadow: 0 5px 13px #152b7a45;
+}
+
+.school-app-shell .school-profile-trigger:hover,
+.school-app-shell .school-profile-trigger[aria-expanded="true"] {
+  background: linear-gradient(120deg, #f97316, #5375e4);
+  color: #fff;
+  box-shadow: 0 4px 12px #385dcc30;
+}
+
+.school-app-shell .school-profile-trigger:hover .school-profile-trigger-copy b,
+.school-app-shell .school-profile-trigger:hover .school-profile-trigger-copy small,
+.school-app-shell .school-profile-trigger[aria-expanded="true"] .school-profile-trigger-copy b,
+.school-app-shell .school-profile-trigger[aria-expanded="true"] .school-profile-trigger-copy small,
+.school-app-shell .school-profile-trigger:hover > svg,
+.school-app-shell .school-profile-trigger[aria-expanded="true"] > svg {
+  color: #fff;
+}
+
+.school-app-shell .school-profile-dropdown > button:hover {
+  background: linear-gradient(100deg, #fff1e7, #eef3ff);
+  color: #d65d36;
+}
+
+.school-app-shell .school-mobile-menu:hover {
+  background: linear-gradient(130deg, #f97316, #5375e4);
+  color: #fff;
+}
+
+.school-app-shell .library-error button {
+  border-color: transparent;
+  background: linear-gradient(120deg, #f97316, #5375e4);
+  color: #fff;
+}
+
+.school-app-shell .library-error button:hover {
+  box-shadow: 0 4px 12px #385dcc30;
+  transform: translateY(-1px);
+}
+
+@keyframes library-page-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .school-app-shell *,
+  .school-app-shell *::before,
+  .school-app-shell *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

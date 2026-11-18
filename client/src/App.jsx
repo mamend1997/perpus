@@ -28,8 +28,15 @@ const groups = [
     { label: 'Petunjuk Pengguna', icon: CircleHelp },
     { label: 'Audit Logs', icon: Activity }
   ] },
-  { title: 'INTEGRASI', items: [{ label: 'WhatsApp Gateway', icon: MessageSquare }] },
-  { title: 'SISTEM', items: [{ label: 'Backup & Restore', icon: Database }] }
+  { title: 'INTEGRASI', items: [
+    { label: 'WhatsApp Gateway', icon: MessageSquare },
+    { label: 'AI Tutorial Edupoin', icon: Sparkles }
+  ] },
+  { title: 'SISTEM', items: [
+    { label: 'Backup & Restore', icon: Database },
+    { label: 'Database Manager', icon: Database },
+    { label: 'Buka Panel Sekolah', icon: Building2 }
+  ] }
 ];
 
 const number = (value) => new Intl.NumberFormat('id-ID').format(value || 0);
@@ -474,7 +481,10 @@ const moduleDescriptions = {
   'Petunjuk Pengguna': 'Lihat dan kelola panduan penggunaan platform.',
   'Audit Logs': 'Telusuri aktivitas penting yang tercatat pada platform.',
   'WhatsApp Gateway': 'Atur koneksi WhatsApp untuk notifikasi platform.',
+  'AI Tutorial Edupoin': 'Atur integrasi asisten AI dan tutorial otomatis Edupoin.',
   'Backup & Restore': 'Kelola informasi pencadangan dan pemulihan data platform.',
+  'Database Manager': 'Kelola database platform melalui panel administrasi yang dibatasi.',
+  'Buka Panel Sekolah': 'Pilih tenant untuk meninjau panel sekolah dalam mode dukungan.',
   'Pengaturan Profil': 'Kelola identitas dan keamanan akun Super Admin.',
   'Syarat & SLA': 'Kelola dokumen Syarat & Ketentuan dan Service Level Agreement.'
 };
@@ -787,6 +797,10 @@ export default function App() {
   const [admin, setAdmin] = useState(null);
   const [schoolAccount, setSchoolAccount] = useState(null);
   const [page, setPage] = useState(currentPage);
+  const [adminSessionLoading, setAdminSessionLoading] = useState(() => Boolean(localStorage.getItem('super-admin-token')));
+  const [schoolSessionLoading, setSchoolSessionLoading] = useState(() => (
+    window.location.pathname.startsWith('/school/') && Boolean(localStorage.getItem('school-token'))
+  ));
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [collapsed, setCollapsed] = useState(false);
@@ -813,21 +827,56 @@ export default function App() {
   }
 
   useEffect(() => {
-    if (!page.startsWith('/school/')) return;
+    if (!page.startsWith('/school/')) {
+      setSchoolSessionLoading(false);
+      return undefined;
+    }
     const token = localStorage.getItem('school-token');
-    if (!token) return;
+    if (!token) {
+      setSchoolSessionLoading(false);
+      setSchoolAccount(null);
+      return undefined;
+    }
+    let active = true;
+    setSchoolSessionLoading(true);
     request('/api/auth/school/me', {
       headers: { Authorization: `Bearer ${token}` }
     })
-      .then(({ account }) => setSchoolAccount(account))
-      .catch(() => localStorage.removeItem('school-token'));
+      .then(({ account }) => {
+        if (active) setSchoolAccount(account);
+      })
+      .catch(() => {
+        if (!active) return;
+        localStorage.removeItem('school-token');
+        setSchoolAccount(null);
+      })
+      .finally(() => {
+        if (active) setSchoolSessionLoading(false);
+      });
+    return () => { active = false; };
   }, [page]);
 
   useEffect(() => {
-    if (!localStorage.getItem('super-admin-token')) return;
+    const token = localStorage.getItem('super-admin-token');
+    if (!token) {
+      setAdminSessionLoading(false);
+      return undefined;
+    }
+    let active = true;
+    setAdminSessionLoading(true);
     request('/api/super-admin/me')
-      .then(({ admin: current }) => setAdmin(current))
-      .catch(() => localStorage.removeItem('super-admin-token'));
+      .then(({ admin: current }) => {
+        if (active) setAdmin(current);
+      })
+      .catch(() => {
+        if (!active) return;
+        localStorage.removeItem('super-admin-token');
+        setAdmin(null);
+      })
+      .finally(() => {
+        if (active) setAdminSessionLoading(false);
+      });
+    return () => { active = false; };
   }, []);
 
   useEffect(() => {
@@ -856,15 +905,20 @@ export default function App() {
   function schoolLogout() {
     localStorage.removeItem('school-token');
     setSchoolAccount(null);
+    setSchoolSessionLoading(false);
     navigate('/school/login');
   }
 
   if (page.startsWith('/school/')) {
     if (schoolAccount) return <SchoolPortal account={schoolAccount} onLogout={schoolLogout} />;
+    if (schoolSessionLoading) return <div className="loading-state"><div className="spinner" />Memulihkan sesi sekolah...</div>;
     return <SchoolAuth mode={page === '/school/register' ? 'register' : 'login'} onNavigate={navigate} onLogin={setSchoolAccount} />;
   }
 
-  if (!admin) return <Login onLogin={setAdmin} />;
+  if (!admin) {
+    if (adminSessionLoading) return <div className="loading-state"><div className="spinner" />Memulihkan sesi Super Admin...</div>;
+    return <Login onLogin={setAdmin} />;
+  }
 
   return (
     <div className={`app-shell ${collapsed ? 'sidebar-collapsed' : ''}`}>
