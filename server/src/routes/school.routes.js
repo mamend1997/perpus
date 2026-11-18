@@ -411,7 +411,7 @@ router.delete('/users/:id', requireSchoolAdmin, async (req, res, next) => {
 
 router.get('/identity', requireSchoolPermission('master.identity', 'view'), async (req, res, next) => {
   try {
-    const [rows, [letterheadRows]] = await Promise.all([
+    const [[rows], [letterheadRows]] = await Promise.all([
       pool.execute(
         `SELECT name, npsn, education_level, phone, email, website, address,
                 principal_name, principal_nip, librarian_name, librarian_nip, logo
