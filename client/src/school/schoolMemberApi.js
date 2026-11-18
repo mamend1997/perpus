@@ -32,6 +32,10 @@ export function addMembers(studentIds) {
   return request('', { method: 'POST', body: { studentIds } });
 }
 
+export function deleteMembers(studentIds) {
+  return request('', { method: 'DELETE', body: { studentIds } });
+}
+
 export function updateMemberCredentials(id, credentials) {
   return request(`/${encodeURIComponent(id)}/credentials`, { method: 'PATCH', body: credentials });
 }

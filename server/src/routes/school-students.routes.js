@@ -327,6 +327,54 @@ router.post('/members', staffOnly, requireSchoolPermission('master.students', 'e
   }
 });
 
+router.delete('/members', staffOnly, requireSchoolPermission('master.students', 'delete'), async (req, res, next) => {
+  const rawIds = req.body?.studentIds;
+  if (!Array.isArray(rawIds) || rawIds.length < 1 || rawIds.length > 500) {
+    return res.status(400).json({ message: 'Pilih 1 sampai 500 member untuk dihapus keanggotaannya.' });
+  }
+  const ids = [...new Set(rawIds.map(String))];
+  if (ids.length !== rawIds.length || ids.some((id) => !validId(id))) {
+    return res.status(400).json({ message: 'Daftar member yang dipilih tidak valid.' });
+  }
+
+  let connection;
+  let transactionStarted = false;
+  try {
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    transactionStarted = true;
+    const placeholders = ids.map(() => '?').join(', ');
+    const [members] = await connection.execute(
+      `SELECT id FROM users
+       WHERE school_id = ? AND role = 'member' AND is_library_member = 1
+         AND id IN (${placeholders}) FOR UPDATE`,
+      [req.school.id, ...ids]
+    );
+    if (members.length !== ids.length) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(409).json({ message: 'Sebagian siswa sudah bukan member atau tidak ditemukan. Segarkan daftar lalu coba lagi.' });
+    }
+    await connection.execute(
+      `UPDATE users SET is_library_member = 0
+       WHERE school_id = ? AND role = 'member' AND is_library_member = 1
+         AND id IN (${placeholders})`,
+      [req.school.id, ...ids]
+    );
+    await connection.commit();
+    transactionStarted = false;
+    return res.json({
+      removed: ids.length,
+      message: `${ids.length} keanggotaan berhasil dihapus. Data siswa dan akun tetap tersimpan.`
+    });
+  } catch (error) {
+    if (transactionStarted && connection) await connection.rollback();
+    return next(error);
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
 router.patch('/members/:id/credentials', staffOnly, requireSchoolPermission('master.students', 'edit'), async (req, res, next) => {
   const id = String(req.params.id);
   if (!validId(id)) return res.status(400).json({ message: 'ID member tidak valid.' });

@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, LoaderCircle, Pencil, Plus, Search, Users, X } from 'lucide-react';
+import { Check, LoaderCircle, Pencil, Plus, Search, Trash2, Users, X } from 'lucide-react';
 import { fetchStudentClasses } from './schoolStudentApi.js';
 import {
-  addMembers, fetchMemberCandidates, fetchMembers, updateMemberCredentials
+  addMembers, deleteMembers, fetchMemberCandidates, fetchMembers, updateMemberCredentials
 } from './schoolMemberApi.js';
+import SchoolConfirmDialog from './SchoolConfirmDialog.jsx';
 
 const pageSize = 25;
 
@@ -41,6 +42,8 @@ function AddMembersModal({ classes, onClose, onAdd }) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const selectedCount = Object.keys(selected).length;
+  const allVisibleSelected = students.length > 0 && students.every((student) => Boolean(selected[String(student.id)]));
 
   useEffect(() => {
     const timer = window.setTimeout(() => setSearch(queryInput.trim()), 250);
@@ -78,45 +81,71 @@ function AddMembersModal({ classes, onClose, onAdd }) {
     }
   }
 
+  function toggleVisibleStudents(checked) {
+    setSelected((current) => {
+      const next = { ...current };
+      students.forEach((student) => {
+        const id = String(student.id);
+        if (checked) next[id] = true;
+        else delete next[id];
+      });
+      return next;
+    });
+  }
+
   return (
-    <MemberDialog onClose={onClose} className="member-select-modal">
+    <MemberDialog onClose={() => { if (!saving) onClose(); }} className="member-select-modal">
       <header className="master-modal-heading">
-        <div><span className="library-eyebrow">DATA MEMBER</span><h2>Tambah Member</h2></div>
+        <div><span className="library-eyebrow">DATA MEMBER</span><h2>Tambah Member</h2><p>Pilih satu atau beberapa siswa untuk didaftarkan sekaligus.</p></div>
         <button type="button" className="master-icon-button" onClick={onClose} disabled={saving} aria-label="Tutup form"><X size={17} /></button>
       </header>
-      <p className="member-dialog-intro">Cari dan pilih siswa yang akan menjadi member perpustakaan.</p>
       <div className="member-candidate-filters">
-        <label className="master-search"><Search size={16} /><input value={queryInput} onChange={(event) => setQueryInput(event.target.value)} placeholder="Cari nama atau NIS/NISN..." maxLength={100} /></label>
-        <label>Filter kelas
+        <label className="master-search member-candidate-search"><Search size={16} /><input value={queryInput} onChange={(event) => setQueryInput(event.target.value)} placeholder="Cari nama, NIS/NISN, atau kode member..." maxLength={100} /></label>
+        <label className="member-class-filter">Filter kelas
           <select value={rombel} onChange={(event) => setRombel(event.target.value)}>
             <option value="">Semua Kelas</option>
             {classes.map((item) => <option value={item.className} key={item.className}>{item.className}</option>)}
           </select>
         </label>
       </div>
-      <div className="member-candidate-list" aria-label="Hasil pencarian siswa">
-        {loading ? <div className="master-empty-cell">Mencari siswa...</div>
-          : students.length === 0 ? <div className="master-empty-cell">Tidak ada siswa yang cocok atau semua sudah menjadi member.</div>
+      <div className="member-candidate-toolbar">
+        <div><b>Siswa tersedia</b><span>{loading ? 'Memuat daftar...' : `${students.length} hasil ditampilkan`}</span></div>
+        {students.length > 0 && <button type="button" className="member-select-all" onClick={() => toggleVisibleStudents(!allVisibleSelected)} disabled={loading || saving}>
+          <span className={`member-select-all-check ${allVisibleSelected ? 'is-checked' : ''}`}>{allVisibleSelected && <Check size={13} />}</span>
+          {allVisibleSelected ? 'Batalkan pilihan hasil' : 'Pilih semua hasil'}
+        </button>}
+      </div>
+      <div className="member-candidate-list" aria-label="Hasil pencarian siswa" aria-busy={loading}>
+        {loading ? <div className="member-empty-state"><span className="member-empty-icon"><LoaderCircle size={22} className="book-stock-spinner" /></span><b>Memuat daftar siswa</b><span>Mohon tunggu sebentar.</span></div>
+          : students.length === 0 ? <div className="member-empty-state"><span className="member-empty-icon"><Users size={22} /></span><b>{search || rombel ? 'Siswa tidak ditemukan' : 'Belum ada siswa tersedia'}</b><span>{search || rombel ? 'Coba ubah kata pencarian atau filter kelas.' : 'Tambahkan data siswa terlebih dahulu. Siswa yang sudah menjadi member tidak ditampilkan.'}</span></div>
             : students.map((student) => {
               const id = String(student.id);
-              return <label className="member-candidate-option" key={id}>
-                <input type="checkbox" checked={Boolean(selected[id])} onChange={(event) => setSelected((current) => {
+              const isSelected = Boolean(selected[id]);
+              return <label className={`member-candidate-option ${isSelected ? 'is-selected' : ''}`} key={id}>
+                <input type="checkbox" checked={isSelected} disabled={saving} onChange={(event) => setSelected((current) => {
                   const next = { ...current };
-                  if (event.target.checked) next[id] = student;
+                  if (event.target.checked) next[id] = true;
                   else delete next[id];
                   return next;
                 })} />
-                <span><b>{student.name}</b><small>{student.nis_nisn} · {student.rombel || 'Belum diatur'}</small></span>
+                {student.photo ? <img className="member-candidate-avatar" src={student.photo} alt="" /> : <span className="member-candidate-avatar member-candidate-avatar-fallback">{student.name?.trim()?.[0]?.toUpperCase() || '?'}</span>}
+                <span className="member-candidate-copy"><b>{student.name}</b><small>NIS/NISN {student.nis_nisn || '—'} <i /> {student.rombel || 'Kelas belum diatur'}</small></span>
+                <span className="member-candidate-status">{isSelected ? <><Check size={14} />Dipilih</> : 'Pilih'}</span>
               </label>;
             })}
       </div>
-      {students.length === 100 && <small className="member-candidate-limit">Menampilkan 100 hasil. Gunakan pencarian atau filter kelas untuk mempersempit daftar.</small>}
+      {students.length === 100 && <small className="member-candidate-limit">Menampilkan 100 hasil. Pilihan tetap tersimpan saat Anda mengganti pencarian untuk memilih siswa lainnya.</small>}
+      <div className={`member-selection-summary ${selectedCount ? 'has-selection' : ''}`}>
+        <span className="member-selection-icon"><Users size={17} /></span>
+        <div><b>{selectedCount} siswa dipilih</b><small>{selectedCount ? 'Semua pilihan akan ditambahkan sekaligus.' : 'Centang beberapa siswa untuk menambahkannya dalam satu proses.'}</small></div>
+        {selectedCount > 0 && <button type="button" onClick={() => setSelected({})} disabled={saving}>Kosongkan</button>}
+      </div>
       {error && <div className="library-error" role="alert">{error}</div>}
       <footer className="master-modal-actions">
         <button type="button" className="master-button master-button-muted" onClick={onClose} disabled={saving}>Batal</button>
-        <button type="button" className="master-button master-button-primary" onClick={submit} disabled={saving || loading || !Object.keys(selected).length}>
+        <button type="button" className="master-button master-button-primary" onClick={submit} disabled={saving || loading || !selectedCount}>
           {saving ? <LoaderCircle size={15} className="book-stock-spinner" /> : <Plus size={15} />}
-          {saving ? 'Menambahkan...' : `Jadikan Member (${Object.keys(selected).length})`}
+          {saving ? 'Menambahkan...' : `Jadikan ${selectedCount || ''} Member`}
         </button>
       </footer>
     </MemberDialog>
@@ -182,7 +211,9 @@ function MemberCredentialsModal({ member, onClose, onSave }) {
 
 export default function SchoolMembersPage({ rights }) {
   const canEdit = Boolean(rights?.edit);
+  const canDelete = Boolean(rights?.delete);
   const [members, setMembers] = useState([]);
+  const [selectedMembers, setSelectedMembers] = useState({});
   const [classes, setClasses] = useState([]);
   const [pagination, setPagination] = useState({ page: 1, total: 0, totalPages: 0 });
   const [page, setPage] = useState(1);
@@ -193,7 +224,12 @@ export default function SchoolMembersPage({ rights }) {
   const [notice, setNotice] = useState('');
   const [addOpen, setAddOpen] = useState(false);
   const [editingMember, setEditingMember] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
+  const selectedIds = Object.keys(selectedMembers);
+  const allVisibleSelected = members.length > 0 && members.every((member) => Boolean(selectedMembers[String(member.id)]));
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -202,6 +238,10 @@ export default function SchoolMembersPage({ rights }) {
     }, 250);
     return () => window.clearTimeout(timer);
   }, [queryInput]);
+
+  useEffect(() => {
+    setSelectedMembers({});
+  }, [page, search, refreshKey]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -219,7 +259,9 @@ export default function SchoolMembersPage({ rights }) {
       .then((result) => {
         if (controller.signal.aborted) return;
         setMembers(result.members || []);
-        setPagination(normalizePagination(result.pagination));
+        const nextPagination = normalizePagination(result.pagination);
+        setPagination(nextPagination);
+        if (page > Math.max(1, nextPagination.totalPages)) setPage(Math.max(1, nextPagination.totalPages));
       })
       .catch((loadError) => { if (!controller.signal.aborted) setError(loadError.message); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
@@ -241,6 +283,35 @@ export default function SchoolMembersPage({ rights }) {
     setRefreshKey((current) => current + 1);
   }
 
+  async function removeSelectedMembers() {
+    if (!deleteTarget?.length) return;
+    setDeleting(true);
+    setDeleteError('');
+    try {
+      const result = await deleteMembers(deleteTarget);
+      setDeleteTarget(null);
+      setSelectedMembers({});
+      setNotice(result.message);
+      setRefreshKey((current) => current + 1);
+    } catch (removeError) {
+      setDeleteError(removeError.message);
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  function toggleVisibleMembers(checked) {
+    setSelectedMembers((current) => {
+      const next = { ...current };
+      members.forEach((member) => {
+        const id = String(member.id);
+        if (checked) next[id] = true;
+        else delete next[id];
+      });
+      return next;
+    });
+  }
+
   return (
     <div className="library-module-page school-members-page">
       <header className="library-module-heading">
@@ -255,14 +326,28 @@ export default function SchoolMembersPage({ rights }) {
         {canEdit && <button type="button" className="master-button master-button-primary" onClick={() => { setNotice(''); setAddOpen(true); }}><Plus size={15} />Tambah Member</button>}
       </section>
       <section className="master-data-panel member-table-panel">
-        <div className="school-settings-panel-heading"><div><h2>Daftar Member</h2><p>{pagination.total.toLocaleString('id-ID')} siswa terpilih sebagai member</p></div></div>
+        <div className="school-settings-panel-heading member-table-heading">
+          <div><h2>Daftar Member</h2><p>{pagination.total.toLocaleString('id-ID')} siswa terpilih sebagai member</p></div>
+          {canDelete && <button type="button" className="master-button procurement-delete-selected" disabled={!selectedIds.length || deleting} onClick={() => { setDeleteError(''); setDeleteTarget(selectedIds); }}>
+            <Trash2 size={15} />Hapus Terpilih{selectedIds.length ? ` (${selectedIds.length})` : ''}
+          </button>}
+        </div>
         <div className="master-table-scroll">
           <table className="master-table member-table">
-            <thead><tr><th>No</th><th>NIS / NISN</th><th>Nama Siswa</th><th>Kelas / Rombel</th><th>Username</th><th>Email</th><th>No. Telepon</th><th>Status Akun Login</th>{canEdit && <th>Aksi</th>}</tr></thead>
+            <thead><tr>
+              {canDelete && <th className="member-table-checkbox"><input type="checkbox" checked={allVisibleSelected} onChange={(event) => toggleVisibleMembers(event.target.checked)} aria-label="Pilih semua member pada halaman ini" /></th>}
+              <th>No</th><th>NIS / NISN</th><th>Nama Siswa</th><th>Kelas / Rombel</th><th>Username</th><th>Email</th><th>No. Telepon</th><th>Status Akun Login</th>{(canEdit || canDelete) && <th>Aksi</th>}
+            </tr></thead>
             <tbody>
-              {loading ? <tr><td className="master-empty-cell" colSpan={canEdit ? 9 : 8}>Memuat data member...</td></tr>
-                : members.length === 0 ? <tr><td className="master-empty-cell" colSpan={canEdit ? 9 : 8}>Belum ada siswa yang dipilih sebagai member.</td></tr>
+              {loading ? <tr><td className="master-empty-cell" colSpan={8 + (canDelete ? 1 : 0) + (canEdit || canDelete ? 1 : 0)}>Memuat data member...</td></tr>
+                : members.length === 0 ? <tr><td className="master-empty-cell" colSpan={8 + (canDelete ? 1 : 0) + (canEdit || canDelete ? 1 : 0)}>Belum ada siswa yang dipilih sebagai member.</td></tr>
                   : members.map((member, index) => <tr key={member.id}>
+                    {canDelete && <td className="member-table-checkbox"><input type="checkbox" checked={Boolean(selectedMembers[String(member.id)])} onChange={(event) => setSelectedMembers((current) => {
+                      const next = { ...current };
+                      if (event.target.checked) next[String(member.id)] = true;
+                      else delete next[String(member.id)];
+                      return next;
+                    })} aria-label={`Pilih ${member.name}`} /></td>}
                     <td>{(page - 1) * pageSize + index + 1}</td>
                     <td>{member.nis_nisn}</td>
                     <td><b>{member.name}</b></td>
@@ -273,7 +358,10 @@ export default function SchoolMembersPage({ rights }) {
                     <td><span className={`master-status ${member.has_login_password && member.username ? 'is-active' : 'is-inactive'}`}>
                       {member.has_login_password && member.username ? 'Siap login' : 'Belum diatur'}
                     </span></td>
-                    {canEdit && <td><button type="button" className="master-row-edit" onClick={() => setEditingMember(member)} aria-label={`Edit akun ${member.name}`}><Pencil size={14} />Edit</button></td>}
+                    {(canEdit || canDelete) && <td><div className="student-row-actions">
+                      {canEdit && <button type="button" className="master-icon-button" onClick={() => setEditingMember(member)} aria-label={`Edit akun ${member.name}`} title="Edit akun"><Pencil size={14} /></button>}
+                      {canDelete && <button type="button" className="master-icon-button" onClick={() => { setDeleteError(''); setDeleteTarget([String(member.id)]); }} aria-label={`Hapus keanggotaan ${member.name}`} title="Hapus keanggotaan"><Trash2 size={14} /></button>}
+                    </div></td>}
                   </tr>)}
             </tbody>
           </table>
@@ -286,6 +374,15 @@ export default function SchoolMembersPage({ rights }) {
       </section>
       {addOpen && <AddMembersModal classes={classes} onClose={() => setAddOpen(false)} onAdd={addSelectedMembers} />}
       {editingMember && <MemberCredentialsModal key={editingMember.id} member={editingMember} onClose={() => setEditingMember(null)} onSave={saveCredentials} />}
+      {deleteTarget && <SchoolConfirmDialog
+        title={deleteTarget.length > 1 ? 'Hapus keanggotaan terpilih?' : 'Hapus keanggotaan member?'}
+        message="Siswa akan dilepas dari keanggotaan perpustakaan. Data siswa dan akun login tetap tersimpan; akun tidak dapat digunakan sampai siswa ditambahkan kembali sebagai member."
+        itemName={`${deleteTarget.length} member`}
+        loading={deleting}
+        error={deleteError}
+        onClose={() => { if (!deleting) { setDeleteTarget(null); setDeleteError(''); } }}
+        onConfirm={removeSelectedMembers}
+      />}
     </div>
   );
 }
