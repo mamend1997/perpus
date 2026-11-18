@@ -25,9 +25,10 @@ router.post('/school/register', async (req, res, next) => {
     });
   }
 
-  const connection = await pool.getConnection();
+  let connection;
   let transactionStarted = false;
   try {
+    connection = await pool.getConnection();
     const passwordHash = await bcrypt.hash(password, 12);
     await connection.beginTransaction();
     transactionStarted = true;
@@ -109,7 +110,7 @@ router.post('/school/register', async (req, res, next) => {
     }
     return next(error);
   } finally {
-    connection.release();
+    if (connection) connection.release();
   }
 });
 
