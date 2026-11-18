@@ -2,6 +2,8 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { pool } from './config/database.js';
 import authRoutes from './routes/auth.routes.js';
 import superAdminRoutes from './routes/super-admin.routes.js';
@@ -25,6 +27,12 @@ app.get('/api/health', async (_req, res, next) => {
 });
 app.use('/api/auth', authRoutes);
 app.use('/api/super-admin', superAdminRoutes);
+
+const clientDistPath = fileURLToPath(new URL('../../client/dist/', import.meta.url));
+app.use(express.static(clientDistPath));
+app.get(/^\/(?!api\/).*/, (_req, res) => {
+  res.sendFile(path.join(clientDistPath, 'index.html'));
+});
 
 app.use((error, _req, res, _next) => {
   console.error(error);

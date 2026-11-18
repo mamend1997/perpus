@@ -28,6 +28,20 @@ npm run dev
 
 Buka `http://localhost:5173` dan masuk menggunakan kredensial Super Admin dari `.env`. API berjalan di `http://localhost:4000`; pemeriksaan koneksi tersedia di `/api/health`.
 
+## Deploy ke Railway
+
+1. Buat project Railway dan tambahkan layanan **MySQL**.
+2. Tambahkan layanan dari repo GitHub ini (`mamend1997/perpus`, branch `main`). Konfigurasi build, start, dan health check dibaca dari `railway.json`; frontend dan API berjalan di satu layanan/domain.
+3. Tambahkan environment variables layanan aplikasi:
+   - `DATABASE_URL`: reference variable connection URL dari layanan MySQL Railway (`MYSQL_URL`).
+   - `JWT_SECRET`: string acak kuat minimal 32 karakter.
+   - `SUPER_ADMIN_NAME`, `SUPER_ADMIN_EMAIL`, `SUPER_ADMIN_PASSWORD`: kredensial bootstrap admin; password minimal 12 karakter.
+   - `CLIENT_ORIGIN`: URL publik layanan aplikasi, misalnya `https://nama-layanan.up.railway.app`.
+4. Deploy. Jalankan `npm run db:setup` lalu `npm run seed:admin` sekali dari Railway service shell untuk menyiapkan tabel dan akun admin.
+5. Generate domain publik Railway, lalu buka domain tersebut. `/api/health` adalah health check deployment.
+
+Jangan simpan kredensial produksi di GitHub atau di `railway.json`; atur semuanya melalui Railway Variables.
+
 ## Struktur
 
 ```text
