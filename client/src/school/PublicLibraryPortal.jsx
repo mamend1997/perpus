@@ -4,6 +4,7 @@ import CameraBarcodeScanner from './CameraBarcodeScanner.jsx';
 import { createReservation } from './schoolReservationApi.js';
 import { createReview } from './schoolReviewsApi.js';
 import { fetchPublicSchool, loginPublicMember, searchPublicBooks } from './publicLibraryApi.js';
+import useSchoolFavicon from './useSchoolFavicon.js';
 
 const portalSections = [
   { key: 'check', label: 'Cek Buku', suffix: '', icon: BookOpen },
@@ -50,6 +51,8 @@ export default function PublicLibraryPortal({
     ...item,
     href: `/public/${encodeURIComponent(normalizedCode)}${item.suffix}`
   })), [normalizedCode]);
+
+  useSchoolFavicon(school?.logo);
 
   useEffect(() => {
     const controller = new AbortController();

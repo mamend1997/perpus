@@ -24,6 +24,7 @@ import { fetchMobileNavbarSettings, fetchMySchoolPermissions } from './schoolSet
 import { defaultMobileNavbarSettings, masterCategoryTypes, schoolNavigation } from './schoolNavigation.js';
 import { defaultSchoolPermissions, schoolPermissionByLabel } from './schoolPermissions.js';
 import SchoolPrintHeader from './SchoolPrintHeader.jsx';
+import useSchoolFavicon from './useSchoolFavicon.js';
 import './school.css';
 
 const SchoolCirculationAnalyticsPage = lazy(() => import('./SchoolCirculationAnalyticsPage.jsx'));
@@ -190,23 +191,7 @@ export default function SchoolPortal({ account, onLogout, onAccountUpdated }) {
     return () => { activeRequest = false; };
   }, [profileLoaded, profileOpen]);
 
-  useEffect(() => {
-    if (!school.logo) return undefined;
-    let favicon = document.querySelector('link[rel~="icon"]');
-    const created = !favicon;
-    if (!favicon) {
-      favicon = document.createElement('link');
-      favicon.rel = 'icon';
-      document.head.appendChild(favicon);
-    }
-    const previousHref = favicon.getAttribute('href');
-    favicon.href = school.logo;
-    return () => {
-      if (created) favicon.remove();
-      else if (previousHref) favicon.setAttribute('href', previousHref);
-      else favicon.removeAttribute('href');
-    };
-  }, [school.logo]);
+  useSchoolFavicon(school.logo);
 
   useEffect(() => {
     if (role !== 'admin' && !permissions?.['master.identity']?.view) {

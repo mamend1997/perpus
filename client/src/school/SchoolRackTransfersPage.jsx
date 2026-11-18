@@ -137,7 +137,8 @@ export default function SchoolRackTransfersPage({ rights }) {
         <div className="library-panel-heading"><div><span className="library-eyebrow">TRANSAKSI LOKASI</span><h2>Data pemindahan buku</h2></div><ArrowRightLeft size={19} /></div>
         <div className="rack-transfer-grid">
           <label className="rack-transfer-book-field">
-            Cari atau scan buku
+            Cari nama buku atau scan barcode
+            <CameraBarcodeScanner label="Scan barcode" onScan={(value) => setQueryInput(value)} />
             <div className="master-search"><Search size={16} /><input value={queryInput} onChange={(event) => {
               setQueryInput(event.target.value);
               setSelectedBookId('');
@@ -145,7 +146,6 @@ export default function SchoolRackTransfersPage({ rights }) {
               setToRackId('');
               setQuantity('');
             }} placeholder="Judul, kode, nomor induk, atau barcode eksemplar" autoComplete="off" disabled={!canEdit} /></div>
-            <CameraBarcodeScanner label="Scan kamera" onScan={(value) => setQueryInput(value)} />
             {queryInput.trim().length >= 2 && !selectedBook && <div className="rack-transfer-book-options" role="listbox">
               {books.map((book) => <button type="button" role="option" key={book.id} onClick={() => chooseBook(book)}>
                 <b>{book.title}</b><small>{book.kode_buku || book.nomor_induk || 'Kode belum tersedia'} · {book.stocks.reduce((total, stock) => total + stock.available_qty, 0)} eksemplar tersedia</small>
