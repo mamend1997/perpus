@@ -4,6 +4,7 @@ import {
   Phone, RefreshCw, Upload, UserRound
 } from 'lucide-react';
 import { fetchSchoolIdentity, updateSchoolIdentity } from './schoolAccountApi.js';
+import { resizeSchoolImage } from './schoolImageUtils.js';
 
 const emptyIdentity = {
   name: '',
@@ -22,6 +23,7 @@ const emptyIdentity = {
 const identityTextFields = Object.keys(emptyIdentity).filter((field) => field !== 'logo');
 const defaultLetterhead = {
   mode: 'identity',
+  logo: null,
   lines: Array.from({ length: 5 }, () => ({
     text: '',
     fontSize: 14,
@@ -38,6 +40,7 @@ function normalizeLetterhead(value) {
   }
   return {
     mode: value.mode,
+    logo: typeof value.logo === 'string' ? value.logo : null,
     lines: value.lines.map((line) => ({
       text: typeof line.text === 'string' ? line.text : '',
       fontSize: letterheadFontSizes.includes(Number(line.fontSize)) ? Number(line.fontSize) : 14,
@@ -59,52 +62,6 @@ function normalizeIdentity(value) {
     ])),
     logo: value.logo || null
   };
-}
-
-function resizeSchoolLogo(file) {
-  if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
-    return Promise.reject(new Error('Gunakan logo JPG, PNG, atau WebP.'));
-  }
-  if (file.size > 5 * 1024 * 1024) {
-    return Promise.reject(new Error('Ukuran file logo maksimal 5 MB.'));
-  }
-
-  return new Promise((resolve, reject) => {
-    const objectUrl = URL.createObjectURL(file);
-    const image = new Image();
-    image.onload = () => {
-      URL.revokeObjectURL(objectUrl);
-      const scale = Math.min(1, 720 / Math.max(image.naturalWidth, image.naturalHeight));
-      const canvas = document.createElement('canvas');
-      canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
-      canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
-      const context = canvas.getContext('2d');
-      if (!context) {
-        reject(new Error('Logo tidak dapat diproses di browser ini.'));
-        return;
-      }
-      context.drawImage(image, 0, 0, canvas.width, canvas.height);
-      canvas.toBlob((blob) => {
-        if (!blob) {
-          reject(new Error('Logo gagal diproses.'));
-          return;
-        }
-        if (blob.size > 500 * 1024) {
-          reject(new Error('Ukuran logo hasil kompresi masih terlalu besar.'));
-          return;
-        }
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = () => reject(new Error('Logo gagal dibaca.'));
-        reader.readAsDataURL(blob);
-      }, 'image/webp', 0.84);
-    };
-    image.onerror = () => {
-      URL.revokeObjectURL(objectUrl);
-      reject(new Error('File yang dipilih bukan logo yang valid.'));
-    };
-    image.src = objectUrl;
-  });
 }
 
 export default function SchoolIdentityPage({ rights, onSaved, mode = 'identity' }) {
@@ -160,8 +117,24 @@ export default function SchoolIdentityPage({ rights, onSaved, mode = 'identity' 
     setLogoError('');
     setLogoLoading(true);
     try {
-      const logo = await resizeSchoolLogo(file);
+      const logo = await resizeSchoolImage(file);
       setIdentity((current) => ({ ...current, logo }));
+    } catch (logoProcessingError) {
+      setLogoError(logoProcessingError.message);
+    } finally {
+      setLogoLoading(false);
+    }
+  }
+
+  async function selectLetterheadLogo(event) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    setLogoError('');
+    setLogoLoading(true);
+    try {
+      const logo = await resizeSchoolImage(file);
+      setLetterhead((current) => ({ ...current, logo }));
     } catch (logoProcessingError) {
       setLogoError(logoProcessingError.message);
     } finally {
@@ -309,8 +282,31 @@ export default function SchoolIdentityPage({ rights, onSaved, mode = 'identity' 
           </div>
         </section>}
 
+        {isLetterhead && <section className="school-letterhead-logo-section">
+          <div className="school-identity-section-heading">
+            <span className="school-identity-section-icon"><Camera size={18} /></span>
+            <div><h2>Logo Kop Sekolah (Opsional)</h2><p>Gunakan logo khusus untuk kop. Jika dikosongkan, logo dari Identitas Sekolah yang dipakai.</p></div>
+          </div>
+          <div className="school-letterhead-logo-control">
+            <div className="school-identity-logo-preview">
+              {logoLoading ? <LoaderCircle size={22} className="book-stock-spinner" />
+                : letterhead.logo || identity.logo
+                  ? <img src={letterhead.logo || identity.logo} alt="Pratinjau logo kop sekolah" />
+                  : <Building2 size={28} />}
+            </div>
+            {canEdit && <div className="school-identity-logo-actions">
+              <label className="master-button master-button-light">
+                <Upload size={15} />{logoLoading ? 'Memproses...' : 'Pilih Logo Kop'}
+                <input type="file" accept="image/jpeg,image/png,image/webp" onChange={selectLetterheadLogo} disabled={saving || loading || logoLoading || !loaded} />
+              </label>
+              {letterhead.logo && <button type="button" className="master-button master-button-muted" onClick={() => setLetterhead((current) => ({ ...current, logo: null }))} disabled={saving || loading || logoLoading || !loaded}>Gunakan Logo Utama</button>}
+              {logoError && <p className="school-identity-logo-error" role="alert">{logoError}</p>}
+            </div>}
+          </div>
+        </section>}
+
         {isLetterhead && <section className={`school-letterhead-preview ${letterhead.mode === 'manual' ? 'is-manual' : ''}`} aria-label="Pratinjau kop sekolah">
-          {identity.logo && <img src={identity.logo} alt="" />}
+          {(letterhead.logo || identity.logo) && <img src={letterhead.logo || identity.logo} alt="" />}
           {letterhead.mode === 'manual' ? <div className="school-letterhead-preview-lines">
             {letterhead.lines.map((line, index) => <span key={`preview-${index + 1}`} style={{
               fontSize: `${line.fontSize}px`,

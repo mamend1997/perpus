@@ -72,6 +72,24 @@ export function addBookStock(bookId, quantity, note, stockDate) {
   });
 }
 
+export async function fetchBookStockHistory({ page = 1, limit = 25, signal } = {}) {
+  return requestBookApi(`/stock/history?${new URLSearchParams({ page: String(page), limit: String(limit) })}`, { signal });
+}
+
+export function updateBookStockMovement(id, movement) {
+  return requestBookApi(`/stock/history/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: movement
+  });
+}
+
+export function deleteBookStockMovements(movementIds) {
+  return requestBookApi('/stock/history', {
+    method: 'DELETE',
+    body: { movementIds }
+  });
+}
+
 export function fetchBookItems({ page = 1, limit = 25, search = '', sort = 'serial', direction = 'asc', status = '', signal } = {}) {
   const query = new URLSearchParams({
     page: String(page),

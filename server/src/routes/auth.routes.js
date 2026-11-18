@@ -115,29 +115,33 @@ router.post('/school/register', async (req, res, next) => {
 });
 
 router.post('/school/login', async (req, res, next) => {
-  const { schoolCode, email, password } = req.body || {};
+  const { schoolCode, identifier, email, password } = req.body || {};
   const code = typeof schoolCode === 'string' ? schoolCode.trim().toUpperCase() : '';
-  const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
+  const loginName = typeof identifier === 'string' ? identifier.trim().toLowerCase()
+    : typeof email === 'string' ? email.trim().toLowerCase() : '';
   if (!/^[A-Z0-9]{4}$/.test(code)
-      || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)
+      || (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(loginName) && !/^[a-z0-9._-]{3,32}$/.test(loginName))
       || typeof password !== 'string' || password.length === 0) {
-    return res.status(400).json({ message: 'Kode sekolah, email, atau kata sandi tidak valid.' });
+    return res.status(400).json({ message: 'Kode sekolah, username/email, atau kata sandi tidak valid.' });
   }
 
   try {
     const [rows] = await pool.execute(
       `SELECT u.id, u.school_id, u.name, u.email, u.password, u.role,
+              u.is_library_member,
               s.name AS school_name, s.school_code, s.logo AS school_logo,
               s.status AS school_status
        FROM users u
        JOIN tenants_schools s ON s.id = u.school_id
-       WHERE s.school_code = ? AND u.email = ? AND u.status = 'active'
+       WHERE s.school_code = ? AND (u.email = ? OR (u.role = 'member' AND u.username = ? AND u.is_library_member = 1))
+         AND u.status = 'active'
        LIMIT 1`,
-      [code, normalizedEmail]
+      [code, loginName, loginName]
     );
     const account = rows[0];
-    if (!account || !(await bcrypt.compare(password, account.password))) {
-      return res.status(401).json({ message: 'Kode sekolah, email, atau kata sandi salah.' });
+    if (!account || (account.role === 'member' && !account.is_library_member)
+      || !account.password || !(await bcrypt.compare(password, account.password))) {
+      return res.status(401).json({ message: 'Kode sekolah, username/email, atau kata sandi salah.' });
     }
     if (account.school_status !== 'active') {
       return res.status(403).json({ message: 'Akun sekolah sedang tidak aktif. Hubungi administrator platform.' });
@@ -192,6 +196,7 @@ router.get('/school/me', async (req, res, next) => {
        FROM users u
        JOIN tenants_schools s ON s.id = u.school_id
        WHERE u.id = ? AND u.school_id = ? AND u.status = 'active' AND s.status = 'active'
+         AND (u.role <> 'member' OR u.is_library_member = 1)
        LIMIT 1`,
       [claims.sub, claims.schoolId]
     );

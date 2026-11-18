@@ -1023,6 +1023,43 @@ router.get('/stock/books', requireSchoolPermission('books.stock', 'view'), async
   }
 });
 
+router.get('/stock/history', requireSchoolPermission('books.stock', 'view'), async (req, res, next) => {
+  const page = parsePageValue(req.query.page, 1, 1000000);
+  const limit = parsePageValue(req.query.limit, 25, 100);
+  if (!page || !limit) return res.status(400).json({ message: 'Nomor halaman atau jumlah data riwayat tidak valid.' });
+  try {
+    const [[count], [history]] = await Promise.all([
+      pool.execute('SELECT COUNT(*) AS total FROM book_stock_movements WHERE school_id = ?', [req.school.id]),
+      pool.execute(
+        `SELECT m.id, m.book_id, b.title AS book_title, m.actor_id, u.name AS actor_name,
+                m.quantity_added, m.previous_qty, m.resulting_qty,
+                DATE_FORMAT(m.stock_date, '%Y-%m-%d') AS stock_date, m.note, m.created_at
+         FROM book_stock_movements m
+         JOIN books b ON b.school_id = m.school_id AND b.id = m.book_id
+         LEFT JOIN users u ON u.id = m.actor_id
+         WHERE m.school_id = ?
+         ORDER BY m.stock_date DESC, m.id DESC
+         LIMIT ? OFFSET ?`,
+        [req.school.id, limit, (page - 1) * limit]
+      )
+    ]);
+    const total = Number(count.total);
+    return res.json({
+      history: history.map((movement) => ({
+        ...movement,
+        id: String(movement.id),
+        book_id: String(movement.book_id),
+        quantity_added: Number(movement.quantity_added),
+        previous_qty: Number(movement.previous_qty),
+        resulting_qty: Number(movement.resulting_qty)
+      })),
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 router.post('/stock', requireSchoolPermission('books.stock', 'edit'), async (req, res, next) => {
   if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
     return res.status(400).json({ message: 'Data penambahan stok tidak valid.' });
@@ -1097,6 +1134,188 @@ router.post('/stock', requireSchoolPermission('books.stock', 'edit'), async (req
         note: normalizedNote || null
       }
     });
+  } catch (error) {
+    if (transactionStarted && connection) {
+      try {
+        await connection.rollback();
+      } catch (rollbackError) {
+        error.rollbackError = rollbackError;
+        return next(error);
+      }
+    }
+    if (error.status) return res.status(error.status).json({ message: error.message });
+    return next(error);
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+router.patch('/stock/history/:id', requireSchoolPermission('books.stock', 'edit'), async (req, res, next) => {
+  const id = String(req.params.id);
+  if (!/^[1-9]\d*$/.test(id)) return res.status(400).json({ message: 'ID riwayat stok tidak valid.' });
+  const body = req.body;
+  if (!body || typeof body !== 'object' || Array.isArray(body)
+    || !Number.isSafeInteger(body.quantity) || body.quantity < 1 || body.quantity > MAX_BOOK_QUANTITY
+    || (body.note != null && typeof body.note !== 'string')) {
+    return res.status(400).json({ message: `Data riwayat tidak valid. Jumlah harus antara 1 dan ${MAX_BOOK_QUANTITY}.` });
+  }
+  const stockDateResult = normalizeDate(body, 'stockDate', 'Tanggal');
+  if (stockDateResult.error) return res.status(400).json({ message: stockDateResult.error });
+  if (!stockDateResult.value) return res.status(400).json({ message: 'Tanggal penambahan stok wajib diisi.' });
+  const note = typeof body.note === 'string' ? body.note.trim() : '';
+  if (note.length > 1000) return res.status(400).json({ message: 'Keterangan maksimal 1000 karakter.' });
+
+  let connection;
+  let transactionStarted = false;
+  try {
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    transactionStarted = true;
+    const [movements] = await connection.execute(
+      `SELECT id, book_id, quantity_added, previous_qty
+       FROM book_stock_movements
+       WHERE id = ? AND school_id = ? FOR UPDATE`,
+      [id, req.school.id]
+    );
+    const movement = movements[0];
+    if (!movement) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(404).json({ message: 'Riwayat penambahan stok tidak ditemukan.' });
+    }
+    const [books] = await connection.execute(
+      'SELECT id, qty, rack_id FROM books WHERE id = ? AND school_id = ? FOR UPDATE',
+      [movement.book_id, req.school.id]
+    );
+    if (!books[0]) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(404).json({ message: 'Buku pada riwayat stok tidak ditemukan.' });
+    }
+    const delta = body.quantity - Number(movement.quantity_added);
+    const resultingBookQty = Number(books[0].qty) + delta;
+    if (resultingBookQty < 0 || resultingBookQty > MAX_BOOK_QUANTITY) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(409).json({ message: 'Jumlah stok setelah perubahan berada di luar batas yang diizinkan.' });
+    }
+    await connection.execute(
+      'UPDATE books SET qty = ? WHERE id = ? AND school_id = ?',
+      [resultingBookQty, movement.book_id, req.school.id]
+    );
+    await synchronizeBookItems(connection, req.school.id, String(movement.book_id), resultingBookQty, books[0].rack_id);
+    await connection.execute(
+      `UPDATE book_stock_movements
+       SET quantity_added = ?, resulting_qty = previous_qty + ?, stock_date = ?, note = ?
+       WHERE id = ? AND school_id = ?`,
+      [body.quantity, body.quantity, stockDateResult.value, note || null, id, req.school.id]
+    );
+    if (delta) {
+      await connection.execute(
+        `UPDATE book_stock_movements
+         SET previous_qty = previous_qty + ?, resulting_qty = resulting_qty + ?
+         WHERE school_id = ? AND book_id = ? AND id > ?`,
+        [delta, delta, req.school.id, movement.book_id, id]
+      );
+    }
+    await connection.commit();
+    transactionStarted = false;
+    return res.json({
+      message: 'Riwayat penambahan stok berhasil diperbarui.',
+      book: { id: String(movement.book_id), qty: resultingBookQty }
+    });
+  } catch (error) {
+    if (transactionStarted && connection) {
+      try {
+        await connection.rollback();
+      } catch (rollbackError) {
+        error.rollbackError = rollbackError;
+        return next(error);
+      }
+    }
+    if (error.status) return res.status(error.status).json({ message: error.message });
+    return next(error);
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+router.delete('/stock/history', requireSchoolPermission('books.stock', 'delete'), async (req, res, next) => {
+  const rawIds = req.body?.movementIds;
+  if (!Array.isArray(rawIds) || rawIds.length < 1 || rawIds.length > 500) {
+    return res.status(400).json({ message: 'Pilih 1 sampai 500 riwayat stok untuk dihapus.' });
+  }
+  const ids = [...new Set(rawIds.map(String))];
+  if (ids.length !== rawIds.length || ids.some((id) => !/^[1-9]\d*$/.test(id))) {
+    return res.status(400).json({ message: 'Daftar riwayat stok yang dipilih tidak valid.' });
+  }
+
+  let connection;
+  let transactionStarted = false;
+  try {
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    transactionStarted = true;
+    const placeholders = ids.map(() => '?').join(', ');
+    const [movements] = await connection.execute(
+      `SELECT id, book_id, quantity_added
+       FROM book_stock_movements
+       WHERE school_id = ? AND id IN (${placeholders})
+       ORDER BY book_id, id FOR UPDATE`,
+      [req.school.id, ...ids]
+    );
+    if (movements.length !== ids.length) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(409).json({ message: 'Sebagian riwayat sudah tidak tersedia. Segarkan daftar lalu coba lagi.' });
+    }
+
+    const groups = new Map();
+    movements.forEach((movement) => {
+      const bookId = String(movement.book_id);
+      if (!groups.has(bookId)) groups.set(bookId, []);
+      groups.get(bookId).push(movement);
+    });
+    for (const [bookId, bookMovements] of groups) {
+      const [books] = await connection.execute(
+        'SELECT id, qty, rack_id FROM books WHERE id = ? AND school_id = ? FOR UPDATE',
+        [bookId, req.school.id]
+      );
+      if (!books[0]) {
+        const error = new Error('Buku pada riwayat stok tidak ditemukan.');
+        error.status = 409;
+        throw error;
+      }
+      const removedQuantity = bookMovements.reduce((total, movement) => total + Number(movement.quantity_added), 0);
+      const resultingQty = Number(books[0].qty) - removedQuantity;
+      if (resultingQty < 0) {
+        const error = new Error('Stok buku tidak mencukupi untuk menghapus riwayat yang dipilih.');
+        error.status = 409;
+        throw error;
+      }
+      await connection.execute(
+        'UPDATE books SET qty = ? WHERE id = ? AND school_id = ?',
+        [resultingQty, bookId, req.school.id]
+      );
+      await synchronizeBookItems(connection, req.school.id, bookId, resultingQty, books[0].rack_id);
+      for (const movement of bookMovements) {
+        await connection.execute(
+          `UPDATE book_stock_movements
+           SET previous_qty = previous_qty - ?, resulting_qty = resulting_qty - ?
+           WHERE school_id = ? AND book_id = ? AND id > ?`,
+          [movement.quantity_added, movement.quantity_added, req.school.id, bookId, movement.id]
+        );
+      }
+      const bookMovementIds = bookMovements.map((movement) => String(movement.id));
+      await connection.execute(
+        `DELETE FROM book_stock_movements
+         WHERE school_id = ? AND book_id = ? AND id IN (${bookMovementIds.map(() => '?').join(', ')})`,
+        [req.school.id, bookId, ...bookMovementIds]
+      );
+    }
+    await connection.commit();
+    transactionStarted = false;
+    return res.json({ deleted: movements.length, message: `${movements.length} riwayat penambahan stok berhasil dihapus.` });
   } catch (error) {
     if (transactionStarted && connection) {
       try {

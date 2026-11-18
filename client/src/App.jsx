@@ -136,10 +136,10 @@ function SchoolAuth({ mode, onNavigate, onLogin }) {
     { label: 'Minimal 1 angka', valid: /\d/.test(password) },
     { label: 'Minimal 1 simbol', valid: /[^A-Za-z0-9\s]/.test(password) }
   ];
-  const emailInvalid = Boolean(email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
-  const emailWarning = emailInvalid
+  const emailInvalid = Boolean(registering && email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
+  const emailWarning = registering && emailInvalid
     ? 'Masukkan alamat email dengan format yang benar, misalnya nama@sekolah.sch.id.'
-    : email ? 'Pastikan email ini aktif dan dapat menerima notifikasi akun.' : '';
+    : registering && email ? 'Pastikan email ini aktif dan dapat menerima notifikasi akun.' : '';
 
   async function submit(event) {
     event.preventDefault();
@@ -172,7 +172,7 @@ function SchoolAuth({ mode, onNavigate, onLogin }) {
       } else {
         const result = await request('/api/auth/school/login', {
           method: 'POST',
-          body: JSON.stringify({ schoolCode, email, password })
+          body: JSON.stringify({ schoolCode, identifier: email, password })
         });
         localStorage.setItem('school-token', result.token);
         onLogin(result.account);
@@ -252,7 +252,9 @@ function SchoolAuth({ mode, onNavigate, onLogin }) {
           </label>
         )}
 
-        <label>Email administrator<input autoComplete="username" type="email" required maxLength={190} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="admin@sekolah.sch.id" aria-describedby={emailWarning ? 'school-email-hint' : undefined} /></label>
+        <label>{registering ? 'Email administrator' : 'Username atau email'}
+          <input autoComplete="username" type={registering ? 'email' : 'text'} required maxLength={190} value={email} onChange={(e) => setEmail(e.target.value)} placeholder={registering ? 'admin@sekolah.sch.id' : 'username atau email'} aria-describedby={emailWarning ? 'school-email-hint' : undefined} />
+        </label>
         {emailWarning && <small id="school-email-hint" className={`auth-email-hint ${emailInvalid ? 'is-warning' : ''}`} role="status">{emailWarning}</small>}
         {registering && <label>No. WhatsApp
           <div className="phone-field">

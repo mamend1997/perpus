@@ -89,6 +89,7 @@ function NewLoanModal({ account, role, durationDays, onClose, onSave }) {
   const duration = Number(manualDuration);
   const dueDate = new Date();
   dueDate.setDate(dueDate.getDate() + (Number.isInteger(duration) && duration > 0 ? duration : durationDays));
+  const dueDateValue = `${dueDate.getFullYear()}-${String(dueDate.getMonth() + 1).padStart(2, '0')}-${String(dueDate.getDate()).padStart(2, '0')}`;
 
   useEffect(() => {
     if (isMember || memberSearch.trim().length < 2) {
@@ -103,7 +104,7 @@ function NewLoanModal({ account, role, durationDays, onClose, onSave }) {
         .then((results) => {
           setMemberResults(results);
           const term = memberSearch.trim().toLocaleLowerCase('id-ID');
-          const exactMatches = results.filter((member) => [member.name, member.nis_nisn]
+          const exactMatches = results.filter((member) => [member.name, member.nis_nisn, member.member_code]
             .some((value) => String(value || '').toLocaleLowerCase('id-ID') === term));
           if (exactMatches.length === 1) {
             setSelectedMember(exactMatches[0]);
@@ -214,7 +215,7 @@ function NewLoanModal({ account, role, durationDays, onClose, onSave }) {
             onClear={() => setSelectedMember(null)}
             onScan={!isMember ? (value) => { setMemberSearch(value); setSelectedMember(null); setError(''); } : undefined}
             getTitle={(member) => member.name}
-            getSubtitle={(member) => member.nis_nisn ? `NIS/NISN ${member.nis_nisn}` : 'Anggota perpustakaan'}
+            getSubtitle={(member) => member.member_code ? `Barcode ${member.member_code} · NIS/NISN ${member.nis_nisn || '—'}` : member.nis_nisn ? `NIS/NISN ${member.nis_nisn}` : 'Anggota perpustakaan'}
             fixed={isMember}
           />
           <LoanSearchPicker
@@ -231,23 +232,21 @@ function NewLoanModal({ account, role, durationDays, onClose, onSave }) {
             getTitle={(item) => item.book_title}
             getSubtitle={(item) => `${item.serial_number}${item.kode_buku ? ` · ${item.kode_buku}` : ''}`}
           />
-          {selectedItem && <>
-            <label className="loan-form-field">
-              <span className="loan-form-label">Jumlah dipinjam</span>
-              <input type="number" min="1" max={Math.min(Number(selectedItem.available_count || 1), 100)} step="1" value={quantity} onChange={(event) => setQuantity(event.target.value)} required />
-              <small>{selectedItem.available_count || 1} eksemplar tersedia; maksimal 100 per transaksi.</small>
-            </label>
-            <label className="loan-form-field">
-              <span className="loan-form-label">Durasi pinjam (hari)</span>
-              <input type="number" min="1" max="365" step="1" value={manualDuration} onChange={(event) => setManualDuration(event.target.value)} required />
-              <small>Durasi standar sekolah: {durationDays} hari. Anda dapat mengubahnya untuk transaksi ini.</small>
-            </label>
-          </>}
-          <div className="loan-date-preview">
-            <div><small>Tanggal pinjam</small><b>Otomatis hari ini</b></div>
-            <div><small>Batas pengembalian</small><b>{formatDate(`${dueDate.getFullYear()}-${String(dueDate.getMonth() + 1).padStart(2, '0')}-${String(dueDate.getDate()).padStart(2, '0')}`)}</b></div>
-            <span>Durasi {Number.isInteger(duration) && duration > 0 ? duration : durationDays} hari</span>
-          </div>
+          {selectedItem && <label className="loan-form-field">
+            <span className="loan-form-label">Jumlah dipinjam</span>
+            <input type="number" min="1" max={Math.min(Number(selectedItem.available_count || 1), 100)} step="1" value={quantity} onChange={(event) => setQuantity(event.target.value)} required />
+            <small>{selectedItem.available_count || 1} eksemplar tersedia; maksimal 100 per transaksi.</small>
+          </label>}
+          <label className="loan-form-field">
+            <span className="loan-form-label">Durasi pinjam (hari)</span>
+            <input type="number" min="1" max="365" step="1" value={manualDuration} onChange={(event) => setManualDuration(event.target.value)} required />
+            <small>Durasi standar sekolah: {durationDays} hari. Anda dapat mengubahnya untuk transaksi ini.</small>
+          </label>
+          <label className="loan-form-field">
+            <span className="loan-form-label">Tanggal harus dikembalikan</span>
+            <input type="date" value={dueDateValue} readOnly aria-readonly="true" />
+            <small>Dihitung otomatis berdasarkan tanggal pinjam dan durasi.</small>
+          </label>
           <p className="loan-modal-note">{isMember
             ? 'Permintaan akan berstatus Pending sampai disetujui petugas perpustakaan.'
             : 'Peminjaman akan langsung aktif dan status eksemplar berubah menjadi Dipinjam.'}</p>

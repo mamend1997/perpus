@@ -287,7 +287,7 @@ export default function PublicLibraryPortal({
                   {account && <div className="public-library-message is-error" role="status">Sesi saat ini bukan akun member pada sekolah ini. Keluar, lalu masuk dengan akun member.</div>}
                   {account && <button type="button" className="master-button master-button-muted public-member-logout" onClick={onLogout}>Keluar dari sesi saat ini</button>}
                   <form className="public-member-login" onSubmit={submitLogin}>
-                    <label>Email anggota<input type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
+                    <label>Username atau email<input type="text" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
                     <label>Kata sandi<input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>
                     <div className="public-login-submit">
                       {loginError && <p className="public-library-message is-error" role="alert">{loginError}</p>}

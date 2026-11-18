@@ -169,7 +169,7 @@ router.post('/', requireSchoolPermission('reservations', 'edit'), async (req, re
     }
     const [members] = await connection.execute(
       `SELECT id FROM users
-       WHERE id = ? AND school_id = ? AND role = 'member' AND status = 'active'
+       WHERE id = ? AND school_id = ? AND role = 'member' AND is_library_member = 1 AND status = 'active'
        FOR UPDATE`,
       [req.school.userId, req.school.id]
     );
@@ -381,7 +381,7 @@ router.post('/:id/fulfill', requireSchoolPermission('reservations', 'edit'), asy
     }
     const [members] = await connection.execute(
       `SELECT id FROM users
-       WHERE id = ? AND school_id = ? AND role = 'member' AND status = 'active'
+       WHERE id = ? AND school_id = ? AND role = 'member' AND is_library_member = 1 AND status = 'active'
        FOR UPDATE`,
       [reservation.user_id, req.school.id]
     );

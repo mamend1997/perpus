@@ -60,8 +60,8 @@ router.get('/members', requireSchoolPermission('circulation.loans', 'view'), asy
   try {
     if (req.school.role === 'member') {
       const [members] = await pool.execute(
-        `SELECT id, name, nis_nisn, role FROM users
-         WHERE id = ? AND school_id = ? AND status = 'active' AND role = 'member'
+        `SELECT id, name, nis_nisn, member_code, role FROM users
+         WHERE id = ? AND school_id = ? AND status = 'active' AND role = 'member' AND is_library_member = 1
          LIMIT 1`,
         [req.school.userId, req.school.id]
       );
@@ -69,12 +69,12 @@ router.get('/members', requireSchoolPermission('circulation.loans', 'view'), asy
     }
 
     const [members] = await pool.execute(
-      `SELECT id, name, nis_nisn, role FROM users
-       WHERE school_id = ? AND role = 'member' AND status = 'active'
-         AND (? = '' OR name LIKE ? OR nis_nisn LIKE ?)
+      `SELECT id, name, nis_nisn, member_code, role FROM users
+       WHERE school_id = ? AND role = 'member' AND is_library_member = 1 AND status = 'active'
+         AND (? = '' OR name LIKE ? OR nis_nisn LIKE ? OR member_code LIKE ?)
        ORDER BY name ASC
        LIMIT 20`,
-      [req.school.id, search, `%${search}%`, `%${search}%`]
+      [req.school.id, search, `%${search}%`, `%${search}%`, `%${search}%`]
     );
     return res.json({ members });
   } catch (error) {
@@ -359,12 +359,12 @@ router.post('/', requireSchoolPermission('circulation.loans', 'edit'), async (re
     transactionStarted = true;
 
     const [members] = await connection.execute(
-      `SELECT id, name, role, status FROM users
+      `SELECT id, name, role, status, is_library_member FROM users
        WHERE id = ? AND school_id = ? FOR UPDATE`,
       [userId, req.school.id]
     );
     const member = members[0];
-    if (!member || member.role !== 'member' || member.status !== 'active') {
+    if (!member || member.role !== 'member' || !member.is_library_member || member.status !== 'active') {
       await connection.rollback();
       transactionStarted = false;
       return res.status(404).json({ message: 'Anggota aktif tidak ditemukan di sekolah ini.' });

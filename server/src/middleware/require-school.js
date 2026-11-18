@@ -24,6 +24,7 @@ export async function requireSchool(req, res, next) {
        FROM users u
        JOIN tenants_schools s ON s.id = u.school_id
        WHERE u.id = ? AND u.school_id = ? AND u.status = 'active' AND s.status = 'active'
+         AND (u.role <> 'member' OR u.is_library_member = 1)
        LIMIT 1`,
       [claims.sub, claims.schoolId]
     );

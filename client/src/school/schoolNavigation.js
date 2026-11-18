@@ -59,6 +59,7 @@ export const schoolNavigation = [
           { label: 'Kop Sekolah', icon: FileText, roles: staffRoles, permission: 'master.identity' },
           { label: 'Tahun Pelajaran', icon: CalendarDays, roles: allRoles, permission: 'master.academic-years' },
           { label: 'Data Siswa & Rombel', icon: Users, roles: staffRoles, permission: 'master.students' },
+          { label: 'Member', icon: Users, roles: staffRoles, permission: 'master.students' },
           ...Object.entries(masterCategoryTypes)
             .map(([label, type]) => ({ label, icon: Tags, roles: allRoles, permission: `master.${type}` }))
         ]
@@ -164,8 +165,12 @@ export const schoolModuleDetails = {
     features: ['Nama tahun pelajaran', 'Tanggal mulai dan akhir', 'Periode aktif', 'Riwayat periode']
   },
   'Data Siswa & Rombel': {
-    description: 'Kelola data anggota perpustakaan dan ringkasan siswa berdasarkan kelas.',
+    description: 'Kelola data siswa dan ringkasan siswa berdasarkan kelas.',
     features: ['Pencarian nama dan NIS/NISN', 'Filter kelas / rombel', 'Import dan export Excel', 'Aksi massal siswa']
+  },
+  Member: {
+    description: 'Pilih siswa yang menjadi anggota perpustakaan dan atur kredensial akun loginnya.',
+    features: ['Daftar member terpilih', 'Tambah siswa sebagai member', 'Atur username, email, telepon, dan kata sandi']
   },
   'Pengadaan Buku': {
     description: 'Tinjau usulan buku dan kelola tindak lanjut pengadaan.',

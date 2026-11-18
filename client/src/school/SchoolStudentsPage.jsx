@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import ExcelJS from 'exceljs';
+import JsBarcode from 'jsbarcode';
 import {
-  Download, FileSpreadsheet, LoaderCircle, Pencil, Plus, Printer, Search, Trash2, Upload, Users
+  Camera, Download, FileSpreadsheet, LoaderCircle, Pencil, Plus, Printer, Search, Trash2, Upload, Users, X
 } from 'lucide-react';
 import SchoolConfirmDialog from './SchoolConfirmDialog.jsx';
 import SchoolPrintHeader from './SchoolPrintHeader.jsx';
@@ -10,10 +11,11 @@ import {
   createStudent, deleteStudent, deleteStudents, fetchStudentAcademicYears, fetchStudentArchives,
   fetchStudentClasses, fetchStudents, importStudents, updateStudent
 } from './schoolStudentApi.js';
+import { resizeSchoolImage } from './schoolImageUtils.js';
 
 const pageSize = 25;
-const templateHeaders = ['NIS/NISN', 'Nama Lengkap', 'Email', 'Kata Sandi', 'Kelas/Rombel', 'Jenis Kelamin', 'No. WhatsApp', 'Status'];
-const emptyStudent = { nis_nisn: '', name: '', email: '', password: '', rombel: '', gender: '', phone: '', status: 'active' };
+const templateHeaders = ['NIS/NISN', 'Nama Lengkap', 'Kelas/Rombel', 'Jenis Kelamin', 'No. WhatsApp', 'Status'];
+const emptyStudent = { nis_nisn: '', name: '', rombel: '', gender: '', phone: '', status: 'active', photo: null };
 
 function normalizePagination(value) {
   const page = Number(value?.page);
@@ -27,7 +29,7 @@ function normalizePagination(value) {
 }
 
 function studentStatusLabel(status) {
-  return ({ active: 'Aktif', inactive: 'Nonaktif', blocked: 'Diblokir' })[status] || status;
+  return status === 'active' ? 'Aktif' : 'Nonaktif';
 }
 
 function genderLabel(gender) {
@@ -42,9 +44,25 @@ function cellText(cell) {
 }
 
 function StudentForm({ student, onClose, onSave }) {
-  const [form, setForm] = useState(student ? { ...emptyStudent, ...student, password: '' } : emptyStudent);
+  const [form, setForm] = useState(student ? { ...emptyStudent, ...student } : emptyStudent);
   const [error, setError] = useState('');
+  const [photoError, setPhotoError] = useState('');
+  const [photoLoading, setPhotoLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  async function choosePhoto(file) {
+    if (!file) return;
+    setPhotoLoading(true);
+    setPhotoError('');
+    try {
+      const photo = await resizeSchoolImage(file);
+      setForm((value) => ({ ...value, photo }));
+    } catch (photoLoadError) {
+      setPhotoError(photoLoadError.message);
+    } finally {
+      setPhotoLoading(false);
+    }
+  }
 
   async function submit(event) {
     event.preventDefault();
@@ -67,18 +85,29 @@ function StudentForm({ student, onClose, onSave }) {
         <form className="student-form-grid" onSubmit={submit}>
           <label>NIS / NISN<input value={form.nis_nisn || ''} onChange={(event) => setForm((value) => ({ ...value, nis_nisn: event.target.value }))} maxLength={40} required /></label>
           <label>Nama Lengkap<input value={form.name || ''} onChange={(event) => setForm((value) => ({ ...value, name: event.target.value }))} maxLength={180} required /></label>
-          <label>Email (opsional)<input type="email" value={form.email || ''} onChange={(event) => setForm((value) => ({ ...value, email: event.target.value }))} maxLength={190} /></label>
           <label>Kelas / Rombel<input value={form.rombel || ''} onChange={(event) => setForm((value) => ({ ...value, rombel: event.target.value }))} maxLength={80} placeholder="Contoh: X TKJ 1" /></label>
           <label>Jenis Kelamin<select value={form.gender || ''} onChange={(event) => setForm((value) => ({ ...value, gender: event.target.value }))}><option value="">Pilih</option><option value="male">Laki-laki</option><option value="female">Perempuan</option><option value="other">Lainnya</option></select></label>
           <label>Kontak WhatsApp<input type="tel" value={form.phone || ''} onChange={(event) => setForm((value) => ({ ...value, phone: event.target.value }))} maxLength={30} /></label>
-          <label>Status Akun<select value={form.status || 'active'} onChange={(event) => setForm((value) => ({ ...value, status: event.target.value }))}><option value="active">Aktif</option><option value="inactive">Nonaktif</option><option value="blocked">Diblokir</option></select></label>
-          <label className="student-form-wide">Kata Sandi {student ? '(isi hanya jika ingin mengganti)' : ''}
-            <input type="password" autoComplete="new-password" value={form.password || ''} onChange={(event) => setForm((value) => ({ ...value, password: event.target.value }))} minLength={8} required={!student} />
-            <small>Minimal 8 karakter, huruf besar, angka, dan simbol.</small>
-          </label>
+          <label>Status Siswa<select value={form.status || 'active'} onChange={(event) => setForm((value) => ({ ...value, status: event.target.value }))}><option value="active">Aktif</option><option value="inactive">Nonaktif</option></select></label>
+          <div className="student-photo-field">
+            <span>Foto Siswa <small>(opsional)</small></span>
+            <div className="student-photo-control">
+              {form.photo
+                ? <img src={form.photo} alt="Pratinjau foto siswa" />
+                : <div className="student-photo-placeholder"><Camera size={22} /><span>Belum ada foto</span></div>}
+              <div>
+                <label className="master-button master-button-light">{photoLoading ? <LoaderCircle size={15} className="book-stock-spinner" /> : <Upload size={15} />}Pilih Foto
+                  <input type="file" accept="image/jpeg,image/png,image/webp" disabled={photoLoading || saving} onChange={(event) => { void choosePhoto(event.target.files?.[0]); event.target.value = ''; }} />
+                </label>
+                {form.photo && <button type="button" className="master-button master-button-muted" onClick={() => setForm((value) => ({ ...value, photo: null }))} disabled={photoLoading || saving}><X size={15} />Hapus Foto</button>}
+                <small>JPG, PNG, atau WebP; maksimal 5 MB.</small>
+              </div>
+            </div>
+            {photoError && <small className="library-error" role="alert">{photoError}</small>}
+          </div>
           <footer className="master-modal-actions student-form-wide">
-            <button type="button" className="master-button master-button-muted" onClick={onClose} disabled={saving}>Batal</button>
-            <button type="submit" className="master-button master-button-primary" disabled={saving}>{saving ? <LoaderCircle size={15} className="book-stock-spinner" /> : <Plus size={15} />}{saving ? 'Menyimpan...' : 'Simpan Data'}</button>
+            <button type="button" className="master-button master-button-muted" onClick={onClose} disabled={saving || photoLoading}>Batal</button>
+            <button type="submit" className="master-button master-button-primary" disabled={saving || photoLoading}>{saving ? <LoaderCircle size={15} className="book-stock-spinner" /> : <Plus size={15} />}{saving ? 'Menyimpan...' : photoLoading ? 'Memproses Foto...' : 'Simpan Data'}</button>
           </footer>
         </form>
       </section>
@@ -107,11 +136,10 @@ function ImportStudentsModal({ onClose, onImport }) {
       const sheet = workbook.worksheets[0];
       if (!sheet || sheet.rowCount < 2) throw new Error('File belum memiliki baris data siswa.');
       const headers = sheet.getRow(1).values.slice(1).map((value) => String(value || '').trim().toLocaleLowerCase('id-ID'));
-      const requiredHeaders = ['nis/nisn', 'nama lengkap', 'kata sandi', 'kelas/rombel', 'jenis kelamin', 'no. whatsapp', 'status'];
+      const requiredHeaders = ['nis/nisn', 'nama lengkap', 'kelas/rombel', 'jenis kelamin', 'no. whatsapp', 'status'];
       const indexes = Object.fromEntries(requiredHeaders.map((header) => [header, headers.indexOf(header)]));
       const missingHeaders = requiredHeaders.filter((header) => indexes[header] < 0);
       if (missingHeaders.length) throw new Error(`Kolom wajib tidak ditemukan: ${missingHeaders.join(', ')}.`);
-      const emailIndex = headers.indexOf('email');
       const importedRows = [];
       for (let rowNumber = 2; rowNumber <= sheet.rowCount; rowNumber += 1) {
         const row = sheet.getRow(rowNumber);
@@ -123,15 +151,12 @@ function ImportStudentsModal({ onClose, onImport }) {
           : genderRaw === 'perempuan' || genderRaw === 'female' ? 'female'
             : genderRaw === 'lainnya' || genderRaw === 'other' ? 'other' : '';
         const status = !statusRaw || statusRaw === 'aktif' || statusRaw === 'active' ? 'active'
-          : statusRaw === 'nonaktif' || statusRaw === 'inactive' ? 'inactive'
-            : statusRaw === 'diblokir' || statusRaw === 'blocked' ? 'blocked' : '';
+          : statusRaw === 'nonaktif' || statusRaw === 'inactive' ? 'inactive' : '';
         if (genderRaw && !gender) throw new Error(`Baris ${rowNumber}: jenis kelamin tidak dikenali.`);
-        if (!status) throw new Error(`Baris ${rowNumber}: status harus Aktif, Nonaktif, atau Diblokir.`);
+        if (!status) throw new Error(`Baris ${rowNumber}: status harus Aktif atau Nonaktif.`);
         importedRows.push({
           nis_nisn: cellText(row.getCell(indexes['nis/nisn'] + 1)),
           name: cellText(row.getCell(indexes['nama lengkap'] + 1)),
-          email: emailIndex < 0 ? '' : cellText(row.getCell(emailIndex + 1)),
-          password: cellText(row.getCell(indexes['kata sandi'] + 1)),
           rombel: cellText(row.getCell(indexes['kelas/rombel'] + 1)),
           gender,
           phone: cellText(row.getCell(indexes['no. whatsapp'] + 1)),
@@ -172,30 +197,32 @@ function ImportStudentsModal({ onClose, onImport }) {
     }
   }
 
-  return (
-    <div className="master-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) onClose(); }}>
+  return createPortal((
+    <div className="master-modal-backdrop student-form-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) onClose(); }}>
       <section className="master-modal student-import-modal" role="dialog" aria-modal="true" aria-labelledby="student-import-title">
         <header className="master-modal-heading"><div><span className="library-eyebrow">IMPORT SISWA</span><h2 id="student-import-title">Import Data Siswa</h2></div><button type="button" className="master-icon-button" onClick={onClose} disabled={busy} aria-label="Tutup import">×</button></header>
-        <button type="button" className="master-button master-button-light" onClick={downloadTemplate}><Download size={15} />Unduh Template Excel (.xlsx)</button>
-        <label className={`student-import-drop ${dragging ? 'is-dragging' : ''}`} onDragOver={(event) => { event.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={(event) => { event.preventDefault(); setDragging(false); void parseFile(event.dataTransfer.files?.[0]); }}>
-          <Upload size={23} /><b>Seret file ke sini atau klik untuk mencari</b><span>{fileName || 'Format .xlsx, maksimal 5 MB; data akan ditinjau sebelum diimpor.'}</span>
-          <input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(event) => { void parseFile(event.target.files?.[0]); event.target.value = ''; }} />
-        </label>
-        {error && <div className="library-error" role="alert">{error}</div>}
-        {rows.length > 0 && <div className="student-import-preview">
-          <div className="catalog-table-heading"><div><h3>Pratinjau {rows.length} siswa</h3><p>Periksa kolom sebelum menekan tombol import.</p></div></div>
-          <div className="master-table-scroll"><table className="master-table"><thead><tr>{templateHeaders.filter((header) => header !== 'Kata Sandi').map((header) => <th key={header}>{header}</th>)}</tr></thead>
-            <tbody>{rows.slice(0, 10).map((row, index) => <tr key={`${row.nis_nisn}-${index}`}><td>{row.nis_nisn}</td><td>{row.name}</td><td>{row.email || '—'}</td><td>{row.rombel || '—'}</td><td>{genderLabel(row.gender)}</td><td>{row.phone || '—'}</td><td>{studentStatusLabel(row.status)}</td></tr>)}</tbody>
-          </table></div>
-          {rows.length > 10 && <small>Menampilkan 10 baris pertama; total {rows.length} siswa akan diimpor.</small>}
-        </div>}
+        <div className="student-import-content">
+          <button type="button" className="master-button master-button-light" onClick={downloadTemplate}><Download size={15} />Unduh Template Excel (.xlsx)</button>
+          <label className={`student-import-drop ${dragging ? 'is-dragging' : ''}`} onDragOver={(event) => { event.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={(event) => { event.preventDefault(); setDragging(false); void parseFile(event.dataTransfer.files?.[0]); }}>
+            <Upload size={23} /><b>Seret file ke sini atau klik untuk mencari</b><span>{fileName || 'Format .xlsx, maksimal 5 MB; data akan ditinjau sebelum diimpor.'}</span>
+            <input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(event) => { void parseFile(event.target.files?.[0]); event.target.value = ''; }} />
+          </label>
+          {error && <div className="library-error" role="alert">{error}</div>}
+          {rows.length > 0 && <div className="student-import-preview">
+            <div className="catalog-table-heading"><div><h3>Pratinjau {rows.length} siswa</h3><p>Periksa kolom sebelum menekan tombol import.</p></div></div>
+            <div className="master-table-scroll"><table className="master-table"><thead><tr>{templateHeaders.map((header) => <th key={header}>{header}</th>)}</tr></thead>
+                <tbody>{rows.slice(0, 10).map((row, index) => <tr key={`${row.nis_nisn}-${index}`}><td>{row.nis_nisn}</td><td>{row.name}</td><td>{row.rombel || '—'}</td><td>{genderLabel(row.gender)}</td><td>{row.phone || '—'}</td><td>{studentStatusLabel(row.status)}</td></tr>)}</tbody>
+            </table></div>
+            {rows.length > 10 && <small>Menampilkan 10 baris pertama; total {rows.length} siswa akan diimpor.</small>}
+          </div>}
+        </div>
         <footer className="master-modal-actions">
           <button type="button" className="master-button master-button-muted" onClick={onClose} disabled={busy}>Batal</button>
           <button type="button" className="master-button master-button-primary" onClick={submit} disabled={busy || !rows.length}>{busy ? <LoaderCircle size={15} className="book-stock-spinner" /> : <FileSpreadsheet size={15} />}{busy ? 'Mengimpor...' : `Import ${rows.length || ''} Siswa`}</button>
         </footer>
       </section>
     </div>
-  );
+  ), document.body);
 }
 
 export default function SchoolStudentsPage({ rights, schoolIdentity }) {
@@ -233,9 +260,10 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
   const [deleteError, setDeleteError] = useState('');
   const [exporting, setExporting] = useState(false);
   const [pdfRows, setPdfRows] = useState(null);
+  const [memberCards, setMemberCards] = useState(null);
   const selectedIds = Object.keys(selected);
   const allVisibleSelected = students.length > 0 && students.every((student) => Boolean(selected[String(student.id)]));
-  const columnCount = 7 + (canDelete ? 1 : 0) + (canEdit || canDelete ? 1 : 0);
+  const columnCount = 9 + (canDelete ? 1 : 0);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => { setSearch(queryInput.trim()); setPage(1); }, 250);
@@ -325,14 +353,15 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
   }, [page, search, classFilter, statusFilter, refreshKey]);
 
   useEffect(() => {
-    if (!pdfRows) return undefined;
+    if (!pdfRows && !memberCards) return undefined;
     const timer = window.setTimeout(() => window.print(), 100);
     return () => window.clearTimeout(timer);
-  }, [pdfRows]);
+  }, [pdfRows, memberCards]);
 
   useEffect(() => {
     function clearPrintRows() {
       setPdfRows(null);
+      setMemberCards(null);
     }
     window.addEventListener('afterprint', clearPrintRows);
     return () => window.removeEventListener('afterprint', clearPrintRows);
@@ -385,11 +414,11 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
       }
       const workbook = new ExcelJS.Workbook();
       const sheet = workbook.addWorksheet('Data Siswa');
-      sheet.addRow(['NIS/NISN', 'Nama Lengkap', 'Email', 'Kelas/Rombel', 'Jenis Kelamin', 'No. WhatsApp', 'Status Akun']);
+      sheet.addRow(['NIS/NISN', 'Nama Lengkap', 'Kelas/Rombel', 'Jenis Kelamin', 'No. WhatsApp', 'Status Siswa']);
       allStudents.forEach((student) => sheet.addRow([
-        student.nis_nisn, student.name, student.email, student.rombel, genderLabel(student.gender), student.phone, studentStatusLabel(student.status)
+        student.nis_nisn, student.name, student.rombel, genderLabel(student.gender), student.phone, studentStatusLabel(student.status)
       ]));
-      sheet.columns = [18, 30, 30, 18, 18, 20, 16].map((width) => ({ width }));
+      sheet.columns = [18, 30, 18, 18, 20, 16].map((width) => ({ width }));
       const output = await workbook.xlsx.writeBuffer();
       const url = URL.createObjectURL(new Blob([output], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
       const anchor = document.createElement('a');
@@ -441,7 +470,7 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
       <header className="library-module-heading">
         <span className="library-eyebrow">MASTER DATA</span>
         <h1>Data Siswa &amp; Rombel</h1>
-        <p>Kelola akun anggota perpustakaan, kelompokkan berdasarkan kelas, dan pantau status akun.</p>
+        <p>Kelola data siswa dan kelompokkan berdasarkan kelas. Siswa dapat ditambahkan sebagai member secara terpisah.</p>
       </header>
       {notice && <div className="master-message master-message-success" role="status">{notice}</div>}
       {error && <div className="library-error" role="alert">{error}</div>}
@@ -462,7 +491,7 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
               </select>
             </label>
             <label>Status
-              <select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setPage(1); }}><option value="">Semua Status</option><option value="active">Aktif</option><option value="inactive">Nonaktif</option><option value="blocked">Diblokir</option></select>
+              <select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setPage(1); }}><option value="">Semua Status</option><option value="active">Aktif</option><option value="inactive">Nonaktif</option></select>
             </label>
             <div className="student-toolbar-actions">
               <button type="button" className="master-button master-button-light" onClick={exportExcel} disabled={exporting}><Download size={15} />{exporting ? 'Mengekspor...' : 'Export Excel'}</button>
@@ -474,11 +503,11 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
           </section>
 
           <section className="master-data-panel student-table-panel">
-            <div className="school-settings-panel-heading"><div><h2>Daftar Siswa</h2><p>{pagination.total.toLocaleString('id-ID')} anggota perpustakaan</p></div></div>
+            <div className="school-settings-panel-heading"><div><h2>Daftar Siswa</h2><p>{pagination.total.toLocaleString('id-ID')} siswa</p></div></div>
             <div className="master-table-scroll">
               <table className="master-table student-table">
                 <thead><tr>{canDelete && <th className="student-checkbox"><input type="checkbox" checked={allVisibleSelected} onChange={(event) => toggleVisibleStudents(event.target.checked)} aria-label="Pilih semua siswa di halaman ini" /></th>}
-                  <th>No</th><th>NIS / NISN</th><th>Nama Lengkap</th><th>Kelas / Rombel</th><th>Jenis Kelamin</th><th>Kontak WhatsApp</th><th>Status Akun</th>{(canEdit || canDelete) && <th>Aksi</th>}
+                  <th>No</th><th>Foto</th><th>NIS / NISN</th><th>Nama Lengkap</th><th>Kelas / Rombel</th><th>Jenis Kelamin</th><th>Kontak WhatsApp</th><th>Status Akun</th><th>Kartu / Aksi</th>
                 </tr></thead>
                 <tbody>
                   {loading ? <tr><td className="master-empty-cell" colSpan={columnCount}>Memuat data siswa...</td></tr>
@@ -490,9 +519,9 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
                           else delete next[String(student.id)];
                           return next;
                         })} aria-label={`Pilih ${student.name}`} /></td>}
-                        <td>{(page - 1) * pageSize + index + 1}</td><td>{student.nis_nisn}</td><td><b>{student.name}</b></td><td>{student.rombel || 'Belum diatur'}</td>
+                        <td>{(page - 1) * pageSize + index + 1}</td><td>{student.photo ? <img className="student-table-photo" src={student.photo} alt={`Foto ${student.name}`} /> : <span className="student-table-photo-empty">—</span>}</td><td>{student.nis_nisn}</td><td><b>{student.name}</b></td><td>{student.rombel || 'Belum diatur'}</td>
                         <td>{genderLabel(student.gender)}</td><td>{student.phone || '—'}</td><td><span className={`master-status ${student.status === 'active' ? 'is-active' : 'is-inactive'}`}>{studentStatusLabel(student.status)}</span></td>
-                        {(canEdit || canDelete) && <td><div className="student-row-actions">{canEdit && <button type="button" className="master-icon-button" title="Edit siswa" onClick={() => setEditor(student)}><Pencil size={15} /></button>}{canDelete && <button type="button" className="master-icon-button" title="Hapus siswa" onClick={() => { setDeleteError(''); setDeleteTarget(student); }}><Trash2 size={15} /></button>}</div></td>}
+                        <td><div className="student-row-actions"><button type="button" className="master-icon-button" title="Cetak kartu member" onClick={() => setMemberCards([student])}><Printer size={15} /></button>{canEdit && <button type="button" className="master-icon-button" title="Edit siswa" onClick={() => setEditor(student)}><Pencil size={15} /></button>}{canDelete && <button type="button" className="master-icon-button" title="Hapus siswa" onClick={() => { setDeleteError(''); setDeleteTarget(student); }}><Trash2 size={15} /></button>}</div></td>
                       </tr>)}
                 </tbody>
               </table>
@@ -558,7 +587,7 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
         </>
       )}
 
-      <section className="school-student-print-heading"><h1>Data Siswa {selectedClass ? `· ${selectedClass.className}` : ''}</h1><p>PerpusKita · Rekapitulasi anggota perpustakaan</p></section>
+      <section className="school-student-print-heading"><h1>Data Siswa {selectedClass ? `· ${selectedClass.className}` : ''}</h1><p>PerpusKita · Rekapitulasi siswa</p></section>
       {pdfRows && <section className="school-student-print-sheet">
         <SchoolPrintHeader
           identity={schoolIdentity}
@@ -569,6 +598,28 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
           <tbody>{pdfRows.length ? pdfRows.map((student, index) => <tr key={student.id}><td>{index + 1}</td><td>{student.nis_nisn}</td><td>{student.name}</td><td>{student.rombel || 'Belum diatur'}</td><td>{genderLabel(student.gender)}</td><td>{student.phone || '—'}</td><td>{studentStatusLabel(student.status)}</td></tr>)
             : <tr><td colSpan={7}>Tidak ada data siswa yang cocok.</td></tr>}</tbody>
         </table>
+      </section>}
+      {memberCards && <section className="school-member-card-print-sheet" aria-label="Kartu member siswa">
+        {memberCards.map((student) => {
+          const code = student.member_code || `MBR-${student.id}`;
+          return <article className="school-member-card" key={student.id}>
+            <header>
+              {schoolIdentity?.logo && <img src={schoolIdentity.logo} alt="" />}
+              <div><b>{schoolIdentity?.name || 'Perpustakaan Sekolah'}</b><span>KARTU MEMBER PERPUSTAKAAN</span></div>
+            </header>
+            <main>
+              {student.photo ? <img className="school-member-card-photo" src={student.photo} alt={`Foto ${student.name}`} />
+                : <div className="school-member-card-photo school-member-card-photo-empty">{student.name.slice(0, 1).toUpperCase()}</div>}
+              <div className="school-member-card-details"><b>{student.name}</b><span>NIS/NISN: {student.nis_nisn}</span><span>Kelas: {student.rombel || '—'}</span></div>
+            </main>
+            <div className="school-member-card-barcode">
+              <svg ref={(element) => {
+                if (element) JsBarcode(element, code, { format: 'CODE128', displayValue: false, height: 38, width: 1.5, margin: 0 });
+              }} aria-label={`Barcode member ${code}`} />
+              <strong>{code}</strong>
+            </div>
+          </article>;
+        })}
       </section>}
       {editor && <StudentForm student={editor.id ? editor : null} onClose={() => setEditor(null)} onSave={saveStudent} />}
       {importOpen && <ImportStudentsModal onClose={() => setImportOpen(false)} onImport={runImport} />}

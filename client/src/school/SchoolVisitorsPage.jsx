@@ -117,7 +117,7 @@ export default function SchoolVisitorsPage({ rights, role, account, schoolName, 
           if (controller.signal.aborted) return;
           setMembers(results);
           const term = memberSearch.trim().toLocaleLowerCase('id-ID');
-          const exact = results.filter((member) => [member.name, member.nis_nisn]
+          const exact = results.filter((member) => [member.name, member.nis_nisn, member.member_code]
             .some((value) => String(value || '').toLocaleLowerCase('id-ID') === term));
           if (exact.length === 1) {
             setSelectedMember(exact[0]);
@@ -349,7 +349,7 @@ export default function SchoolVisitorsPage({ rights, role, account, schoolName, 
                         event.preventDefault();
                         if (!members.length) return;
                         const term = memberSearch.trim().toLocaleLowerCase('id-ID');
-                        const exact = members.find((member) => [member.name, member.nis_nisn]
+                        const exact = members.find((member) => [member.name, member.nis_nisn, member.member_code]
                           .some((value) => String(value || '').toLocaleLowerCase('id-ID') === term));
                         if (exact || members.length === 1) chooseMember(exact || members[0]);
                       }

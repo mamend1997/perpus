@@ -285,24 +285,42 @@ router.post('/users', requireSchoolAdmin, async (req, res, next) => {
     });
   }
 
+  let connection;
+  let transactionStarted = false;
   try {
     const passwordHash = await bcrypt.hash(password, 12);
-    const [result] = await pool.execute(
-      `INSERT INTO users (school_id, role, name, email, password, phone, nis_nisn, rombel, gender, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
-      [req.school.id, role, name, email, passwordHash, phone || null, nisNisn || null, rombel || null, gender]
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    transactionStarted = true;
+    const [result] = await connection.execute(
+      `INSERT INTO users (school_id, role, is_library_member, name, email, password, phone, nis_nisn, rombel, gender, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
+      [req.school.id, role, role === 'member' ? 1 : 0, name, email, passwordHash, phone || null, nisNisn || null, rombel || null, gender]
     );
+    const memberCode = role === 'member' ? `MBR${req.school.code}-${result.insertId}` : null;
+    if (memberCode) {
+      await connection.execute(
+        'UPDATE users SET member_code = ? WHERE id = ? AND school_id = ?',
+        [memberCode, result.insertId, req.school.id]
+      );
+    }
+    await connection.commit();
+    transactionStarted = false;
     return res.status(201).json({
       user: {
         id: result.insertId, role, name, email, phone: phone || null,
+        member_code: memberCode,
         nis_nisn: nisNisn || null, rombel: rombel || null, gender, status: 'active'
       }
     });
   } catch (error) {
+    if (transactionStarted && connection) await connection.rollback();
     if (error.code === 'ER_DUP_ENTRY') {
       return res.status(409).json({ message: 'Email atau NIS/NISN tersebut sudah digunakan di sekolah ini.' });
     }
     return next(error);
+  } finally {
+    if (connection) connection.release();
   }
 });
 
@@ -351,6 +369,7 @@ router.patch('/users/:id', requireSchoolAdmin, async (req, res, next) => {
     await pool.execute(
       `UPDATE users
        SET role = ?, name = ?, email = ?, phone = ?, nis_nisn = ?, rombel = ?, gender = ?, status = ?,
+           is_library_member = CASE WHEN ? = 'member' THEN is_library_member ELSE 0 END,
            password = COALESCE(?, password)
        WHERE id = ? AND school_id = ? AND role <> 'admin'`,
       [
@@ -358,7 +377,7 @@ router.patch('/users/:id', requireSchoolAdmin, async (req, res, next) => {
         role === 'member' ? nisNisn || null : null,
         role === 'member' ? rombel || null : null,
         role === 'member' ? gender : null,
-        status, passwordHash, id, req.school.id
+        status, role, passwordHash, id, req.school.id
       ]
     );
     return res.json({

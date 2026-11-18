@@ -323,7 +323,7 @@ router.get('/schools/:id', async (req, res, next) => {
     const [[counts]] = await pool.execute(
       `SELECT
          (SELECT COUNT(*) FROM users WHERE school_id = ?) AS total_users,
-         (SELECT COUNT(*) FROM users WHERE school_id = ? AND role = 'member' AND status = 'active') AS active_members,
+         (SELECT COUNT(*) FROM users WHERE school_id = ? AND role = 'member' AND is_library_member = 1 AND status = 'active') AS active_members,
          (SELECT COUNT(*) FROM books WHERE school_id = ?) AS book_titles,
          (SELECT COALESCE(SUM(qty), 0) FROM books WHERE school_id = ?) AS book_stock,
          (SELECT COUNT(*) FROM book_items WHERE school_id = ?) AS book_items,

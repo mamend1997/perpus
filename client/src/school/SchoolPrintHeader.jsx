@@ -1,11 +1,12 @@
 export default function SchoolPrintHeader({ identity, title, subtitle }) {
   const school = identity || {};
   const letterhead = school.letterhead;
+  const logo = letterhead?.logo || school.logo;
   const manualLines = letterhead?.mode === 'manual' && Array.isArray(letterhead.lines);
 
   return (
     <header className="school-print-header">
-      {school.logo && <img src={school.logo} alt="" />}
+      {logo && <img src={logo} alt="" />}
       <div className={`school-print-header-content ${manualLines ? 'is-manual' : ''}`}>
         {manualLines ? letterhead.lines.map((line, index) => <span key={index} style={{
           fontSize: `${line.fontSize}px`,

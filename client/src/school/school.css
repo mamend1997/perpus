@@ -1911,6 +1911,24 @@
 .book-stock-field textarea:disabled { background: #f7f8fa; color: #8994a6; cursor: not-allowed; }
 .book-stock-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 15px; border-top: 1px solid #edf0f5; }
 .book-stock-page .master-button-primary { background: linear-gradient(110deg, #f97316, #3b82f6); }
+.book-stock-history { margin-top: 16px; padding: 0; overflow: hidden; }
+.book-stock-history-heading { align-items: center; padding: 16px; }
+.book-stock-history-heading > div { display: grid; gap: 5px; }
+.book-stock-history-heading h2 { margin: 0; color: #35415a; font-size: 15px; }
+.book-stock-history-heading p { margin: 0; color: #8994a6; font-size: 10px; }
+.book-stock-history-table { min-width: 1050px; }
+.book-stock-history-table th, .book-stock-history-table td { vertical-align: middle; }
+.book-stock-history-checkbox { width: 38px; }
+.book-stock-history-checkbox input { width: 15px; height: 15px; accent-color: #f97316; }
+.book-stock-history-added { color: #18845b; font-weight: 750; }
+.book-stock-history-note { max-width: 220px; overflow-wrap: anywhere; }
+.book-stock-history .catalog-pagination { padding: 10px 15px; }
+.stock-history-edit-modal { width: min(520px, 100%); }
+.stock-history-edit-modal > .master-form-grid { margin-top: 14px; }
+.stock-history-edit-book { margin: 0; padding: 10px 12px; border-radius: 9px; background: #f8fafc; color: #475569; font-size: 13px; font-weight: 650; }
+.stock-history-edit-wide { grid-column: 1 / -1; }
+.stock-history-edit-modal textarea { box-sizing: border-box; width: 100%; padding: 9px 11px; border: 1px solid #e0e5ed; border-radius: 9px; color: #35415a; font: inherit; resize: vertical; }
+.stock-history-edit-modal textarea:focus { border-color: #f97316; outline: 0; box-shadow: 0 0 0 3px #f973161c; }
 .book-stock-summary { display: grid; align-content: start; gap: 13px; padding: 17px; }
 .book-stock-summary-icon {
   width: 42px;
@@ -2311,6 +2329,8 @@
 .school-letterhead-mode-select { display: grid; max-width: 460px; gap: 7px; color: #59657b; font-size: 13px; font-weight: 700; }
 .school-letterhead-mode-select select { min-height: 42px; padding: 8px 10px; border: 1px solid #dfe5ec; border-radius: 8px; background: #fff; color: #35415a; font: inherit; }
 .school-letterhead-identity-note { margin: 14px 0 0; padding: 11px 13px; border: 1px solid #fed7aa; border-radius: 8px; background: #fff7ed; color: #9a3412; font-size: 12px; line-height: 1.5; }
+.school-letterhead-logo-section { display: grid; gap: 12px; margin-top: 16px; }
+.school-letterhead-logo-control { display: flex; align-items: center; gap: 14px; }
 .school-letterhead-manual-editor { display: grid; gap: 14px; padding-top: 16px; }
 .school-letterhead-lines { display: grid; gap: 10px; }
 .school-letterhead-line-editor { display: grid; grid-template-columns: minmax(180px, 1fr) 92px 74px 78px 115px; align-items: end; gap: 9px; padding: 10px; border: 1px solid #e8edf4; border-radius: 9px; background: #fafbfd; }
@@ -2550,7 +2570,7 @@
 .student-checkbox { width: 40px; text-align: center; }
 .student-checkbox input { width: 16px; height: 16px; accent-color: #f97316; cursor: pointer; }
 .student-row-actions { display: flex; gap: 5px; }
-.student-form-modal { width: min(650px, 100%); }
+.student-form-modal { width: min(650px, 100%); box-sizing: border-box; }
 .student-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px; }
 .student-form-grid > label { display: grid; align-content: start; gap: 6px; color: #59657b; font-weight: 700; }
 .student-form-grid input, .student-form-grid select {
@@ -2569,7 +2589,20 @@
 .student-form-grid input:focus, .student-form-grid select:focus { border-color: #f97316; box-shadow: 0 0 0 3px #f973161c; }
 .student-form-grid small { color: #8994a6; font-weight: 450; }
 .student-form-wide { grid-column: 1 / -1; }
-.student-import-modal { width: min(850px, 100%); }
+.student-photo-field { display: grid; align-content: start; gap: 8px; color: #475569; font-size: 13px; font-weight: 650; }
+.student-photo-field > span small { font-size: 12px; }
+.student-photo-control { display: flex; align-items: center; gap: 12px; }
+.student-photo-control > img, .student-photo-placeholder { width: 76px; height: 88px; border: 1px solid #e2e8f0; border-radius: 9px; object-fit: cover; }
+.student-photo-placeholder { display: grid; place-content: center; justify-items: center; gap: 5px; background: #f8fafc; color: #94a3b8; font-size: 10px; font-weight: 500; }
+.student-photo-control > div:last-child { display: grid; justify-items: start; gap: 7px; }
+.student-photo-control input { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; }
+.student-photo-field .library-error { font-size: 12px; }
+.student-table-photo { width: 36px; height: 42px; border-radius: 5px; object-fit: cover; }
+.student-table-photo-empty { color: #94a3b8; }
+.student-import-modal { width: min(850px, 100%); max-height: calc(100dvh - 36px); box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; }
+.student-import-content { display: grid; min-height: 0; gap: 12px; overflow-y: auto; overscroll-behavior: contain; }
+.student-import-modal > .master-modal-heading,
+.student-import-modal > .master-modal-actions { flex: 0 0 auto; }
 .student-import-drop {
   display: grid;
   justify-items: center;
@@ -2592,6 +2625,22 @@
 .student-import-preview > small { color: #8994a6; }
 .school-student-print-heading { display: none; }
 .school-student-print-sheet { display: none; }
+.school-member-card-print-sheet { display: none; }
+.school-member-card { width: 85.6mm; height: 54mm; box-sizing: border-box; padding: 4mm; overflow: hidden; border: .35mm solid #cbd5e1; border-radius: 3mm; background: #fff; color: #172033; font-family: Arial, sans-serif; }
+.school-member-card > header { display: flex; align-items: center; gap: 2mm; height: 11mm; border-bottom: .25mm solid #e2e8f0; padding-bottom: 2mm; }
+.school-member-card > header img { width: 10mm; height: 10mm; object-fit: contain; }
+.school-member-card > header div { display: grid; gap: 1mm; }
+.school-member-card > header b { font-size: 8pt; }
+.school-member-card > header span { color: #64748b; font-size: 5.5pt; letter-spacing: .3mm; }
+.school-member-card > main { display: flex; align-items: center; gap: 3mm; height: 22mm; padding-top: 2mm; }
+.school-member-card-photo { width: 16mm; height: 19mm; border-radius: 1mm; object-fit: cover; }
+.school-member-card-photo-empty { display: grid; place-items: center; background: #f1f5f9; color: #64748b; font-size: 18pt; font-weight: 700; }
+.school-member-card-details { display: grid; gap: 1.5mm; min-width: 0; }
+.school-member-card-details b { overflow: hidden; font-size: 9pt; text-overflow: ellipsis; white-space: nowrap; }
+.school-member-card-details span { color: #475569; font-size: 6.5pt; }
+.school-member-card-barcode { display: grid; justify-items: center; gap: .5mm; height: 13mm; }
+.school-member-card-barcode svg { width: 54mm; height: 9mm; }
+.school-member-card-barcode strong { font-size: 6pt; letter-spacing: .3mm; }
 .academic-year-copy-option { grid-column: 1 / -1; }
 .academic-year-copy-option > span { display: flex; align-items: flex-start; gap: 9px; }
 .academic-year-copy-option input { width: 17px; height: 17px; margin: 2px 0 0; accent-color: #f97316; }
@@ -2678,7 +2727,7 @@
 @media print {
   .school-students-page,
   .school-students-page * { visibility: visible !important; }
-  .school-students-page > :not(.school-student-print-sheet) { display: none !important; }
+  .school-students-page > :not(.school-student-print-sheet):not(.school-member-card-print-sheet) { display: none !important; }
   .school-students-page { position: absolute; inset: 0 auto auto 0; display: block; width: 100%; padding: 0 !important; color: #111827; }
   .page-footer,
   .school-topbar,
@@ -2689,6 +2738,8 @@
   .school-student-print-sheet p { margin: 4px 0; color: #475569; }
   .school-student-print-sheet .master-table { min-width: 0; font-size: 9pt; }
   .school-student-print-sheet th, .school-student-print-sheet td { padding: 5px; border: 1px solid #cbd5e1; color: #111827; white-space: normal; }
+  .school-member-card-print-sheet { display: grid; grid-template-columns: repeat(2, 85.6mm); gap: 6mm; align-content: start; }
+  .school-member-card { break-inside: avoid; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
 
 .school-global-print-header { display: none; }

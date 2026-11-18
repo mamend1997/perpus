@@ -30,6 +30,7 @@ import './school.css';
 const SchoolCirculationAnalyticsPage = lazy(() => import('./SchoolCirculationAnalyticsPage.jsx'));
 const SchoolReportsPage = lazy(() => import('./SchoolReportsPage.jsx'));
 const SchoolStudentsPage = lazy(() => import('./SchoolStudentsPage.jsx'));
+const SchoolMembersPage = lazy(() => import('./SchoolMembersPage.jsx'));
 
 class StudentPageErrorBoundary extends Component {
   state = { error: null, retryKey: 0 };
@@ -370,6 +371,10 @@ export default function SchoolPortal({ account, onLogout, onAccountUpdated }) {
                   <SchoolStudentsPage rights={activeRights} schoolIdentity={printIdentity} />
                 </Suspense>
               </StudentPageErrorBoundary>
+            ) : active === 'Member' ? (
+              <Suspense fallback={<div className="library-empty-state">Memuat data member...</div>}>
+                <SchoolMembersPage rights={activeRights} />
+              </Suspense>
             ) : active === 'Analitik Sirkulasi' ? (
               <Suspense fallback={<div className="library-empty-state">Memuat analitik sirkulasi...</div>}>
                 <SchoolCirculationAnalyticsPage rights={activeRights} schoolName={schoolName} schoolIdentity={printIdentity} />

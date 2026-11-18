@@ -16,10 +16,10 @@ export function searchPublicBooks(schoolCode, { barcode = '', search = '' }, sig
   return publicRequest(`/api/public/library/${encodeURIComponent(schoolCode)}/books?${query}`, { signal });
 }
 
-export function loginPublicMember(schoolCode, email, password) {
+export function loginPublicMember(schoolCode, identifier, password) {
   return publicRequest('/api/auth/school/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ schoolCode, email, password })
+    body: JSON.stringify({ schoolCode, identifier, password })
   });
 }

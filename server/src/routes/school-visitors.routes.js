@@ -21,8 +21,8 @@ router.get('/members', requireSchoolPermission('visitors', 'edit'), async (req, 
   try {
     if (req.school.role === 'member') {
       const [members] = await pool.execute(
-        `SELECT id, name, nis_nisn, rombel FROM users
-         WHERE id = ? AND school_id = ? AND role = 'member' AND status = 'active'
+        `SELECT id, name, nis_nisn, member_code, rombel FROM users
+         WHERE id = ? AND school_id = ? AND role = 'member' AND is_library_member = 1 AND status = 'active'
          LIMIT 1`,
         [req.school.userId, req.school.id]
       );
@@ -30,12 +30,12 @@ router.get('/members', requireSchoolPermission('visitors', 'edit'), async (req, 
     }
 
     const [members] = await pool.execute(
-      `SELECT id, name, nis_nisn, rombel FROM users
-       WHERE school_id = ? AND role = 'member' AND status = 'active'
-         AND (? = '' OR name LIKE ? OR nis_nisn LIKE ?)
+      `SELECT id, name, nis_nisn, member_code, rombel FROM users
+       WHERE school_id = ? AND role = 'member' AND is_library_member = 1 AND status = 'active'
+         AND (? = '' OR name LIKE ? OR nis_nisn LIKE ? OR member_code LIKE ?)
        ORDER BY name ASC
        LIMIT 20`,
-      [req.school.id, search, `%${search}%`, `%${search}%`]
+      [req.school.id, search, `%${search}%`, `%${search}%`, `%${search}%`]
     );
     return res.json({ members });
   } catch (error) {
@@ -64,10 +64,10 @@ router.get('/', requireSchoolPermission('visitors', 'view'), async (req, res, ne
   }
   if (search) {
     conditions.push(`(
-      u.name LIKE ? OR COALESCE(u.nis_nisn, '') LIKE ?
+      u.name LIKE ? OR COALESCE(u.nis_nisn, '') LIKE ? OR COALESCE(u.member_code, '') LIKE ?
       OR COALESCE(u.rombel, '') LIKE ? OR COALESCE(v.purpose, '') LIKE ?
     )`);
-    values.push(...Array(4).fill(`%${search}%`));
+    values.push(...Array(5).fill(`%${search}%`));
   }
 
   const from = `FROM visitors v
@@ -78,7 +78,7 @@ router.get('/', requireSchoolPermission('visitors', 'view'), async (req, res, ne
       pool.execute(`SELECT COUNT(*) AS total ${from} WHERE ${where}`, values),
       pool.execute(
         `SELECT v.id, v.visit_date, v.purpose, u.name AS visitor_name,
-                u.nis_nisn, u.rombel
+                u.nis_nisn, u.member_code, u.rombel
          ${from}
          WHERE ${where}
          ORDER BY v.visit_date DESC, v.id DESC
@@ -93,6 +93,7 @@ router.get('/', requireSchoolPermission('visitors', 'view'), async (req, res, ne
         visit_date: row.visit_date,
         visitor_name: row.visitor_name || 'Pengunjung',
         nis_nisn: row.nis_nisn,
+        member_code: row.member_code,
         rombel: row.rombel,
         purpose: row.purpose || '—'
       })),
@@ -114,8 +115,8 @@ router.post('/', requireSchoolPermission('visitors', 'edit'), async (req, res, n
 
   try {
     const [members] = await pool.execute(
-      `SELECT id, name, nis_nisn, rombel FROM users
-       WHERE id = ? AND school_id = ? AND role = 'member' AND status = 'active'
+      `SELECT id, name, nis_nisn, member_code, rombel FROM users
+       WHERE id = ? AND school_id = ? AND role = 'member' AND is_library_member = 1 AND status = 'active'
        LIMIT 1`,
       [userId, req.school.id]
     );
@@ -138,6 +139,7 @@ router.post('/', requireSchoolPermission('visitors', 'edit'), async (req, res, n
         visit_date: visits[0].visit_date,
         visitor_name: member.name,
         nis_nisn: member.nis_nisn,
+        member_code: member.member_code,
         rombel: member.rombel,
         purpose
       },

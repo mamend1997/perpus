@@ -60,7 +60,7 @@ function announcementInput(body) {
 
 async function notifyAudience(connection, schoolId, announcementId, announcement) {
   let audienceCondition = '1 = 1';
-  if (announcement.targetAudience === 'students') audienceCondition = "role = 'member'";
+  if (announcement.targetAudience === 'students') audienceCondition = "role = 'member' AND is_library_member = 1";
   if (announcement.targetAudience === 'staff') audienceCondition = "role <> 'member'";
   await connection.execute(
     `INSERT IGNORE INTO school_notifications

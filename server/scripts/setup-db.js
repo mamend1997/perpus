@@ -183,12 +183,50 @@ try {
   }
 
   const [userColumns] = await connection.execute(
-    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+    `SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE FROM information_schema.COLUMNS
      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users'`
   );
   const userColumnNames = new Set(userColumns.map((column) => column.COLUMN_NAME));
   if (!userColumnNames.has('avatar')) {
     await connection.query('ALTER TABLE users ADD COLUMN avatar MEDIUMTEXT NULL AFTER email');
+  }
+  if (!userColumnNames.has('username')) {
+    await connection.query('ALTER TABLE users ADD COLUMN username VARCHAR(32) NULL AFTER name');
+  }
+  if (!userColumnNames.has('member_code')) {
+    await connection.query('ALTER TABLE users ADD COLUMN member_code VARCHAR(40) NULL AFTER username');
+  }
+  if (!userColumnNames.has('photo')) {
+    await connection.query('ALTER TABLE users ADD COLUMN photo MEDIUMTEXT NULL AFTER password');
+  }
+  if (!userColumnNames.has('is_library_member')) {
+    await connection.query('ALTER TABLE users ADD COLUMN is_library_member TINYINT(1) NOT NULL DEFAULT 0 AFTER role');
+    await connection.query("UPDATE users SET is_library_member = 1 WHERE role = 'member'");
+  }
+  if (userColumns.some((column) => column.COLUMN_NAME === 'password' && column.IS_NULLABLE === 'NO')) {
+    await connection.query('ALTER TABLE users MODIFY password VARCHAR(255) NULL');
+  }
+  await connection.query(
+    `UPDATE users u
+     JOIN tenants_schools s ON s.id = u.school_id
+     SET u.member_code = CONCAT('MBR', s.school_code, '-', u.id)
+     WHERE u.role = 'member' AND (u.member_code IS NULL OR u.member_code = '')`
+  );
+  const [userIndexes] = await connection.execute(
+    `SELECT INDEX_NAME FROM information_schema.STATISTICS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users'
+       AND INDEX_NAME = 'uq_users_school_username'`
+  );
+  if (!userIndexes.length) {
+    await connection.query('ALTER TABLE users ADD UNIQUE KEY uq_users_school_username (school_id, username)');
+  }
+  const [memberCodeIndexes] = await connection.execute(
+    `SELECT INDEX_NAME FROM information_schema.STATISTICS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users'
+       AND INDEX_NAME = 'uq_users_school_member_code'`
+  );
+  if (!memberCodeIndexes.length) {
+    await connection.query('ALTER TABLE users ADD UNIQUE KEY uq_users_school_member_code (school_id, member_code)');
   }
 
   const [schoolColumns] = await connection.execute(
