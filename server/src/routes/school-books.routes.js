@@ -843,7 +843,7 @@ router.get('/items', requireSchoolPermission('books.items', 'view'), async (req,
     const orderDirection = direction.toUpperCase();
     const offset = (page - 1) * limit;
     const [items] = await pool.execute(
-      `SELECT bi.id, bi.book_id, bi.serial_number, bi.barcode_value, bi.status,
+      `SELECT bi.id, bi.book_id, bi.serial_number, bi.barcode_value, bi.status, bi.\`condition\`,
               b.title AS book_title, b.nomor_induk, b.kode_buku,
               r.name AS rack_name, r.code AS rack_code
        ${from}
@@ -987,6 +987,31 @@ router.patch('/items/:id', requireSchoolPermission('books.items', 'edit'), async
     return next(error);
   } finally {
     if (connection) connection.release();
+  }
+});
+
+router.patch('/items/:id/condition', requireSchoolPermission('books.items', 'edit'), async (req, res, next) => {
+  const id = String(req.params.id);
+  const condition = req.body?.condition;
+  if (!/^[1-9]\d*$/.test(id)) return res.status(400).json({ message: 'ID eksemplar tidak valid.' });
+  if (!['Baik', 'Rusak Ringan', 'Rusak Berat'].includes(condition)) {
+    return res.status(400).json({ message: 'Kondisi buku tidak valid.' });
+  }
+  try {
+    const [result] = await pool.execute(
+      'UPDATE book_items SET `condition` = ? WHERE id = ? AND school_id = ?',
+      [condition, id, req.school.id]
+    );
+    if (!result.affectedRows) {
+      const [items] = await pool.execute(
+        'SELECT id FROM book_items WHERE id = ? AND school_id = ? LIMIT 1',
+        [id, req.school.id]
+      );
+      if (!items.length) return res.status(404).json({ message: 'Eksemplar tidak ditemukan.' });
+    }
+    return res.json({ item: { id, condition } });
+  } catch (error) {
+    return next(error);
   }
 });
 

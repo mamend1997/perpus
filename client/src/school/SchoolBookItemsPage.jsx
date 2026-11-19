@@ -2,10 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import JsBarcode from 'jsbarcode';
 import {
-  BookOpen, Check, ChevronLeft, ChevronRight, Download, LoaderCircle,
+  BookOpen, Check, ChevronLeft, ChevronRight, ClipboardCheck, Download, LoaderCircle,
   Pencil, Printer, Search, Trash2, X
 } from 'lucide-react';
-import { deleteBookItem, fetchBookItems, searchBookItemsBooks, updateBookItem } from './schoolBookApi.js';
+import {
+  deleteBookItem, fetchBookItems, searchBookItemsBooks, updateBookItem, updateBookItemCondition
+} from './schoolBookApi.js';
 import { downloadBookItemsExcel } from './schoolBookItemsExcel.js';
 import { fetchBarcodeLabelSettings } from './schoolSettingsApi.js';
 import SchoolConfirmDialog from './SchoolConfirmDialog.jsx';
@@ -82,6 +84,65 @@ function EditBookItemModal({ item, onClose, onSave }) {
   );
 }
 
+function BookItemConditionModal({ item, onClose, onSave }) {
+  const [condition, setCondition] = useState(item.condition || 'Baik');
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    function closeOnEscape(event) {
+      if (event.key === 'Escape' && !saving) onClose();
+    }
+    document.addEventListener('keydown', closeOnEscape);
+    return () => document.removeEventListener('keydown', closeOnEscape);
+  }, [onClose, saving]);
+
+  async function submit(event) {
+    event.preventDefault();
+    setSaving(true);
+    setError('');
+    try {
+      await onSave(condition);
+    } catch (saveError) {
+      setError(saveError.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return createPortal(
+    <div className="master-modal-backdrop catalog-modal-backdrop" onMouseDown={(event) => {
+      if (event.target === event.currentTarget && !saving) onClose();
+    }}>
+      <section className="master-modal book-item-edit-modal" role="dialog" aria-modal="true" aria-labelledby="book-item-condition-title">
+        <header className="master-modal-heading">
+          <div><span className="library-eyebrow">MANAJEMEN EKSEMPLAR</span><h2 id="book-item-condition-title">Kondisi Buku</h2></div>
+          <button type="button" className="master-icon-button" onClick={onClose} disabled={saving} aria-label="Tutup form"><X size={18} /></button>
+        </header>
+        <p className="book-item-condition-summary">{item.book_title} · {item.serial_number}</p>
+        {error && <div className="library-error" role="alert">{error}</div>}
+        <form className="book-item-edit-form" onSubmit={submit}>
+          <label>Kondisi Buku
+            <select value={condition} onChange={(event) => setCondition(event.target.value)} required>
+              <option value="Baik">Baik</option>
+              <option value="Rusak Ringan">Rusak Ringan</option>
+              <option value="Rusak Berat">Rusak Berat</option>
+            </select>
+          </label>
+          <footer className="book-item-edit-actions">
+            <button type="button" className="master-button master-button-light" onClick={onClose} disabled={saving}>Batal</button>
+            <button type="submit" className="master-button master-button-primary" disabled={saving}>
+              {saving ? <LoaderCircle size={15} className="book-stock-spinner" /> : <Check size={15} />}
+              {saving ? 'Menyimpan...' : 'Simpan Kondisi'}
+            </button>
+          </footer>
+        </form>
+      </section>
+    </div>,
+    document.body
+  );
+}
+
 function itemBarcodeValue(item) {
   return String(item.barcode_value || item.serial_number || `I${item.id}`).replace(/[^\x20-\x7e]/g, '').trim().slice(0, 80) || `I${item.id}`;
 }
@@ -147,6 +208,7 @@ export default function SchoolBookItemsPage({ rights, schoolName }) {
   const [status, setStatus] = useState('');
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [editingItem, setEditingItem] = useState(null);
+  const [conditionEditingItem, setConditionEditingItem] = useState(null);
   const [deleteRequest, setDeleteRequest] = useState(null);
   const [deletingItemId, setDeletingItemId] = useState('');
   const [printItems, setPrintItems] = useState(null);
@@ -263,6 +325,13 @@ export default function SchoolBookItemsPage({ rights, schoolName }) {
     setRefreshKey((key) => key + 1);
   }
 
+  async function saveItemCondition(condition) {
+    await updateBookItemCondition(conditionEditingItem.id, condition);
+    setNotice(`Kondisi eksemplar ${conditionEditingItem.serial_number} berhasil diperbarui.`);
+    setConditionEditingItem(null);
+    setRefreshKey((key) => key + 1);
+  }
+
   function removeItem(item) {
     setError('');
     setDeleteRequest(item);
@@ -314,7 +383,7 @@ export default function SchoolBookItemsPage({ rights, schoolName }) {
       <header className="library-module-heading">
         <span className="library-eyebrow">PENGELOLAAN KOLEKSI FISIK</span>
         <h1>Eksemplar Buku</h1>
-        <p>Kelola serial number dan status setiap salinan fisik yang tersedia di perpustakaan.</p>
+        <p>Kelola serial number, status, dan kondisi setiap salinan fisik di perpustakaan.</p>
       </header>
 
       {notice && <div className="book-stock-success" role="status"><Check size={16} />{notice}</div>}
@@ -433,12 +502,13 @@ export default function SchoolBookItemsPage({ rights, schoolName }) {
                 <th>Serial Number</th>
                 <th>Judul Buku</th>
                 <th>Status</th>
+                <th>Kondisi Buku</th>
                 {(canEdit || canDelete) && <th>Aksi</th>}
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={canEdit || canDelete ? 6 : 5} className="book-items-empty"><LoaderCircle size={17} className="book-stock-spinner" />Memuat data eksemplar...</td></tr>
+                <tr><td colSpan={canEdit || canDelete ? 7 : 6} className="book-items-empty"><LoaderCircle size={17} className="book-stock-spinner" />Memuat data eksemplar...</td></tr>
               ) : items.length ? items.map((item, index) => (
                 <tr key={item.id}>
                   <td>{(page - 1) * pageSize + index + 1}</td>
@@ -448,15 +518,17 @@ export default function SchoolBookItemsPage({ rights, schoolName }) {
                   <td><span className="book-items-serial">{item.serial_number}</span></td>
                   <td><div className="book-items-title"><b>{item.book_title}</b><small>{item.kode_buku || item.nomor_induk || 'Kode buku belum tersedia'}</small></div></td>
                   <td><span className={`book-item-status ${item.status === 'Tersedia' ? 'is-available' : item.status === 'Dipinjam' ? 'is-loaned' : 'is-damaged'}`}>{item.status}</span></td>
+                  <td><span className={`book-item-condition ${item.condition === 'Rusak Berat' ? 'is-heavily-damaged' : item.condition === 'Rusak Ringan' ? 'is-lightly-damaged' : 'is-good'}`}>{item.condition || 'Baik'}</span></td>
                   {(canEdit || canDelete) && <td>
                     <div className="book-items-row-actions">
+                      {canEdit && <button type="button" className="book-item-condition-action" onClick={() => setConditionEditingItem(item)} aria-label={`Ubah kondisi ${item.serial_number}`} title="Kondisi buku"><ClipboardCheck size={14} /></button>}
                       {canEdit && <button type="button" className="master-row-edit" onClick={() => setEditingItem(item)} aria-label={`Edit ${item.serial_number}`}><Pencil size={14} /></button>}
                       {canDelete && <button type="button" className="book-items-delete" onClick={() => removeItem(item)} aria-label={`Hapus ${item.serial_number}`}><Trash2 size={14} /></button>}
                     </div>
                   </td>}
                 </tr>
               )              ) : (
-                <tr><td colSpan={canEdit || canDelete ? 6 : 5} className="book-items-empty"><BookOpen size={20} />{search || status || selectedBook ? 'Tidak ada eksemplar yang cocok dengan pencarian atau filter.' : 'Belum ada data eksemplar buku.'}</td></tr>
+                <tr><td colSpan={canEdit || canDelete ? 7 : 6} className="book-items-empty"><BookOpen size={20} />{search || status || selectedBook ? 'Tidak ada eksemplar yang cocok dengan pencarian atau filter.' : 'Belum ada data eksemplar buku.'}</td></tr>
               )}
             </tbody>
           </table>
@@ -471,6 +543,7 @@ export default function SchoolBookItemsPage({ rights, schoolName }) {
       </section>
 
       {editingItem && <EditBookItemModal item={editingItem} onClose={() => setEditingItem(null)} onSave={saveItem} />}
+      {conditionEditingItem && <BookItemConditionModal item={conditionEditingItem} onClose={() => setConditionEditingItem(null)} onSave={saveItemCondition} />}
       {printItems && barcodeSettings && <BookItemBarcodePrint items={printItems} schoolName={schoolName || 'Perpustakaan Sekolah'} settings={barcodeSettings} onClose={() => setPrintItems(null)} />}
       {deleteRequest && <SchoolConfirmDialog
         title="Hapus Eksemplar?"

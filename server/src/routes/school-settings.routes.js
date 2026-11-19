@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { pool } from '../config/database.js';
 import { requireSchool } from '../middleware/require-school.js';
 import { encryptSchoolSecret, readLibrarySettings } from '../utils/school-settings.js';
+import createBackupRouter from './backup.routes.js';
 import {
   normalizeBarcodeLabelSettings, readBarcodeLabelSettings
 } from '../utils/barcode-label-settings.js';
@@ -128,6 +129,8 @@ function canManageSettings(req, res, next) {
   }
   return next();
 }
+
+router.use('/backups', canManageSettings, createBackupRouter('school'));
 
 router.get('/barcode-label', async (req, res, next) => {
   try {

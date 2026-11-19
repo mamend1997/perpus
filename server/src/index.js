@@ -9,6 +9,7 @@ import authRoutes from './routes/auth.routes.js';
 import schoolRoutes from './routes/school.routes.js';
 import superAdminRoutes from './routes/super-admin.routes.js';
 import publicLibraryRoutes from './routes/public-library.routes.js';
+import { startBackupScheduler } from './utils/telegram-backup.js';
 
 if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
   throw new Error('JWT_SECRET must be set to a random string of at least 32 characters.');
@@ -57,3 +58,4 @@ app.use((error, _req, res, _next) => {
 
 const port = Number(process.env.PORT || 4000);
 app.listen(port, () => console.log(`e-Perpustakaan API listening on http://localhost:${port}`));
+startBackupScheduler();

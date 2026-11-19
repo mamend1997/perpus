@@ -202,6 +202,7 @@ CREATE TABLE IF NOT EXISTS book_items (
   barcode_value VARCHAR(80) NOT NULL,
   rack_id BIGINT UNSIGNED NULL,
   status ENUM('Tersedia', 'Dipinjam', 'Rusak') NOT NULL DEFAULT 'Tersedia',
+  `condition` ENUM('Baik', 'Rusak Ringan', 'Rusak Berat') NOT NULL DEFAULT 'Baik',
   PRIMARY KEY (id),
   UNIQUE KEY uq_book_items_serial (book_id, serial_number),
   UNIQUE KEY uq_book_items_school_id_id (school_id, id),

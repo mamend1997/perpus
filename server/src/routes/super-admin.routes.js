@@ -3,9 +3,11 @@ import { randomBytes } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { pool } from '../config/database.js';
 import { requireSuperAdmin } from '../middleware/require-super-admin.js';
+import createBackupRouter from './backup.routes.js';
 
 const router = Router();
 router.use(requireSuperAdmin);
+router.use('/backups', createBackupRouter('platform'));
 
 async function loadAdminProfile(adminId) {
   const [[admin]] = await pool.execute(

@@ -236,6 +236,10 @@ export default function SchoolReportsPage({ rights }) {
             <b>LAPORAN {title.toUpperCase()}</b><small>Periode {report?.dateRange?.startDate} s.d. {report?.dateRange?.endDate}</small>
           </div>}
         </div>
+        <div className="school-report-document-title">
+          <b>LAPORAN {title.toUpperCase()}</b>
+          <small>Periode {report?.dateRange?.startDate} s.d. {report?.dateRange?.endDate}</small>
+        </div>
         <div className="catalog-table-heading"><div><h2>Data Preview · {title}</h2><p>{report?.pagination?.total?.toLocaleString('id-ID') || 0} baris</p></div></div>
         <div className="master-table-scroll">
           <table className="master-table school-report-table">

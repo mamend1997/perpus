@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  AlertCircle, Bell, BookOpen, Check, Clock3, MoveDown, MoveUp, Pencil, Plus,
+  AlertCircle, Bell, BookOpen, Check, Clock3, Database, MoveDown, MoveUp, Pencil, Plus,
   Save, ScanLine, ShieldCheck, Smartphone, Star, Trash2, UserPlus, Users, Wallet, X
 } from 'lucide-react';
 import {
@@ -15,6 +15,7 @@ import {
 import { defaultMobileNavbarSettings, mobileNavbarOptions } from './schoolNavigation.js';
 import SchoolConfirmDialog from './SchoolConfirmDialog.jsx';
 import BarcodeLabelSettingsPanel from './BarcodeLabelSettingsPanel.jsx';
+import BackupRestorePanel from './BackupRestorePanel.jsx';
 
 const roleLabels = Object.fromEntries(schoolPermissionRoles.map(({ key, label }) => [key, label]));
 
@@ -511,7 +512,7 @@ export default function SchoolSettingsPage({ onMobileNavbarSettingsSaved }) {
       <header className="library-module-heading">
         <span className="library-eyebrow">ADMINISTRASI SEKOLAH</span>
         <h1>Pengaturan</h1>
-        <p>Kelola akun pengguna dan hak akses fitur berdasarkan role.</p>
+        <p>Kelola akun, hak akses, aturan perpustakaan, dan perlindungan data sekolah.</p>
       </header>
 
       <div className="school-settings-tabs" role="tablist" aria-label="Bagian pengaturan">
@@ -529,6 +530,9 @@ export default function SchoolSettingsPage({ onMobileNavbarSettingsSaved }) {
         </button>
         <button type="button" role="tab" aria-selected={tab === 'barcode'} className={tab === 'barcode' ? 'selected' : ''} onClick={() => setTab('barcode')}>
           <ScanLine size={16} />Barcode &amp; Label
+        </button>
+        <button type="button" role="tab" aria-selected={tab === 'backup'} className={tab === 'backup' ? 'selected' : ''} onClick={() => setTab('backup')}>
+          <Database size={16} />Backup &amp; Restore
         </button>
       </div>
 
@@ -623,6 +627,8 @@ export default function SchoolSettingsPage({ onMobileNavbarSettingsSaved }) {
         <MobileNavbarSettingsPanel onSettingsSaved={onMobileNavbarSettingsSaved} />
       ) : tab === 'barcode' ? (
         <BarcodeLabelSettingsPanel />
+      ) : tab === 'backup' ? (
+        <BackupRestorePanel scope="school" />
       ) : <LibrarySettingsPanel />}
 
       {accountModalOpen && <AccountModal key={editingAccount?.id || 'new-account'} account={editingAccount} onClose={() => { setAccountModalOpen(false); setEditingAccount(null); }} onSaved={handleAccountSaved} />}

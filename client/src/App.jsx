@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import SchoolPortal from './school/SchoolPortal.jsx';
 import PublicLibraryPortal from './school/PublicLibraryPortal.jsx';
+import BackupRestorePanel from './school/BackupRestorePanel.jsx';
 import './super-admin.css';
 
 const groups = [
@@ -1178,6 +1179,7 @@ export default function App() {
         <div className="page-content">
           {active === 'Daftar Sekolah' ? <SchoolListPage />
             : active === 'Pembayaran & Penagihan' ? <BillingPage billing={billing} onBillingCheck={runBillingCheck} />
+            : active === 'Backup & Restore' ? <BackupRestorePanel scope="platform" />
             : active === 'Pengaturan Profil' ? <ProfilePage admin={admin} onUpdate={setAdmin} />
             : active === 'Syarat & SLA' ? <LegalDocumentsPage />
             : active === 'Dashboard' ? error ? <div className="error-panel"><ShieldCheck size={20} /><div><b>Dashboard belum dapat dimuat</b><p>{error}. Pastikan database sudah disiapkan dan tersedia datanya.</p></div><button className="subtle-button" onClick={() => { setError(''); request('/api/super-admin/dashboard').then(setData).catch((err) => setError(err.message)); }}>Coba lagi</button></div>

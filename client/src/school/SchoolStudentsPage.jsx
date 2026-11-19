@@ -182,7 +182,6 @@ function SchoolClassForm({ schoolClass, gradeLevels, onClose, onSave }) {
 function ClassStudentsModal({ schoolClass, onClose, onSave }) {
   const [students, setStudents] = useState([]);
   const [pagination, setPagination] = useState({ page: 1, total: 0, totalPages: 0 });
-  const [page, setPage] = useState(1);
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
@@ -194,7 +193,6 @@ function ClassStudentsModal({ schoolClass, onClose, onSave }) {
   useEffect(() => {
     const timeout = window.setTimeout(() => {
       setSearch(searchInput.trim());
-      setPage(1);
     }, 250);
     return () => window.clearTimeout(timeout);
   }, [searchInput]);
@@ -203,12 +201,32 @@ function ClassStudentsModal({ schoolClass, onClose, onSave }) {
     const controller = new AbortController();
     setLoading(true);
     setError('');
-    fetchClassStudents(schoolClass.id, { page, limit: 25, search, signal: controller.signal })
-      .then((result) => {
+    setStudents([]);
+    setPagination({ page: 1, total: 0, totalPages: 0 });
+    async function loadAllClassStudents() {
+      try {
+        const pageLimit = 100;
+        const firstPage = await fetchClassStudents(schoolClass.id, {
+          page: 1,
+          limit: pageLimit,
+          search,
+          signal: controller.signal
+        });
+        const nextStudents = [...(firstPage.students || [])];
+        const firstPagination = normalizePagination(firstPage.pagination);
+        for (let currentPage = 2; currentPage <= firstPagination.totalPages; currentPage += 1) {
+          if (controller.signal.aborted) return;
+          const result = await fetchClassStudents(schoolClass.id, {
+            page: currentPage,
+            limit: pageLimit,
+            search,
+            signal: controller.signal
+          });
+          nextStudents.push(...(result.students || []));
+        }
         if (controller.signal.aborted) return;
-        const nextStudents = result.students || [];
         setStudents(nextStudents);
-        setPagination(normalizePagination(result.pagination));
+        setPagination(firstPagination);
         setOriginal((current) => {
           const next = { ...current };
           nextStudents.forEach((student) => {
@@ -217,11 +235,15 @@ function ClassStudentsModal({ schoolClass, onClose, onSave }) {
           });
           return next;
         });
-      })
-      .catch((loadError) => { if (!controller.signal.aborted) setError(loadError.message); })
-      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+      } catch (loadError) {
+        if (!controller.signal.aborted) setError(loadError.message);
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
+    }
+    loadAllClassStudents();
     return () => controller.abort();
-  }, [schoolClass.id, page, search]);
+  }, [schoolClass.id, search]);
 
   function isSelected(student) {
     if (student.assignedElsewhere) return false;
@@ -269,8 +291,8 @@ function ClassStudentsModal({ schoolClass, onClose, onSave }) {
         {error && <div className="library-error" role="alert">{error}</div>}
         <label className="master-search class-students-search"><Search size={16} /><input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Cari nama atau NIS/NISN..." maxLength={100} /></label>
         <div className="class-students-toolbar">
-          <span>{pagination.total.toLocaleString('id-ID')} siswa · halaman ini {students.length}</span>
-          <label><input type="checkbox" checked={allPageSelected} onChange={(event) => togglePage(event.target.checked)} disabled={loading || !selectableStudents.length} /> Pilih semua di halaman</label>
+          <span>{pagination.total.toLocaleString('id-ID')} siswa · {students.length.toLocaleString('id-ID')} ditampilkan</span>
+          <label><input type="checkbox" checked={allPageSelected} onChange={(event) => togglePage(event.target.checked)} disabled={loading || !selectableStudents.length} /> Pilih semua siswa</label>
         </div>
         <div className="class-students-list">
           {loading ? <div className="class-students-empty"><LoaderCircle size={18} className="book-stock-spinner" />Memuat data siswa...</div>
@@ -284,11 +306,7 @@ function ClassStudentsModal({ schoolClass, onClose, onSave }) {
         </div>
         <div className="class-students-footer">
           <span>{assignIds.length} ditambahkan · {unassignIds.length} dilepas</span>
-          <div>
-            <button type="button" className="master-icon-button" disabled={loading || page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))} aria-label="Halaman siswa sebelumnya">‹</button>
-            <small>Halaman {pagination.totalPages ? page : 0} / {Math.max(1, pagination.totalPages)}</small>
-            <button type="button" className="master-icon-button" disabled={loading || page >= pagination.totalPages} onClick={() => setPage((value) => value + 1)} aria-label="Halaman siswa berikutnya">›</button>
-          </div>
+          <small>{students.length === pagination.total ? 'Seluruh siswa ditampilkan' : `Memuat ${students.length} dari ${pagination.total} siswa`}</small>
         </div>
         {changes.length > 500 && <div className="library-error" role="alert">Maksimal 500 perubahan siswa dapat disimpan sekaligus.</div>}
         <footer className="master-modal-actions">
@@ -399,9 +417,9 @@ function ImportStudentsModal({ onClose, onImport }) {
           {rows.length > 0 && <div className="student-import-preview">
             <div className="catalog-table-heading"><div><h3>Pratinjau {rows.length} siswa</h3><p>Periksa kolom sebelum menekan tombol import.</p></div></div>
             <div className="master-table-scroll"><table className="master-table"><thead><tr>{templateHeaders.map((header) => <th key={header}>{header}</th>)}</tr></thead>
-                <tbody>{rows.slice(0, 10).map((row, index) => <tr key={`${row.nis_nisn}-${index}`}><td>{row.nis_nisn}</td><td>{row.name}</td><td>{row.rombel || '—'}</td><td>{genderLabel(row.gender)}</td><td>{row.phone || '—'}</td><td>{studentStatusLabel(row.status)}</td></tr>)}</tbody>
+                <tbody>{rows.map((row, index) => <tr key={`${row.nis_nisn}-${index}`}><td>{row.nis_nisn}</td><td>{row.name}</td><td>{row.rombel || '—'}</td><td>{genderLabel(row.gender)}</td><td>{row.phone || '—'}</td><td>{studentStatusLabel(row.status)}</td></tr>)}</tbody>
             </table></div>
-            {rows.length > 10 && <small>Menampilkan 10 baris pertama; total {rows.length} siswa akan diimpor.</small>}
+            <small>Menampilkan seluruh {rows.length} siswa yang akan diimpor.</small>
           </div>}
         </div>
         <footer className="master-modal-actions">

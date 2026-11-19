@@ -93,6 +93,11 @@ try {
        SET bi.rack_id = b.rack_id`
     );
   }
+  if (!bookItemColumns.some((column) => column.COLUMN_NAME === 'condition')) {
+    await connection.query(
+      "ALTER TABLE book_items ADD COLUMN `condition` ENUM('Baik', 'Rusak Ringan', 'Rusak Berat') NOT NULL DEFAULT 'Baik' AFTER status"
+    );
+  }
   const [bookItemRackIndexes] = await connection.execute(
     `SELECT INDEX_NAME FROM information_schema.STATISTICS
      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'book_items'

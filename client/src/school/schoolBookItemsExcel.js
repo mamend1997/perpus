@@ -8,7 +8,8 @@ export async function downloadBookItemsExcel(items) {
     { header: 'Judul Buku', key: 'book_title', width: 42 },
     { header: 'Nomor Induk', key: 'nomor_induk', width: 20 },
     { header: 'Kode/Nomor Panggil', key: 'kode_buku', width: 24 },
-    { header: 'Status', key: 'status', width: 16 }
+    { header: 'Status', key: 'status', width: 16 },
+    { header: 'Kondisi Buku', key: 'condition', width: 18 }
   ];
   items.forEach((item, index) => {
     worksheet.addRow({ number: index + 1, ...item });
@@ -16,7 +17,7 @@ export async function downloadBookItemsExcel(items) {
   worksheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
   worksheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF97316' } };
   worksheet.views = [{ state: 'frozen', ySplit: 1 }];
-  worksheet.autoFilter = { from: 'A1', to: `F${Math.max(items.length + 1, 1)}` };
+  worksheet.autoFilter = { from: 'A1', to: `G${Math.max(items.length + 1, 1)}` };
 
   const buffer = await workbook.xlsx.writeBuffer();
   const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });

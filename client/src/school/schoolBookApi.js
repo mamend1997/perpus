@@ -116,6 +116,13 @@ export function updateBookItem(id, item) {
   });
 }
 
+export function updateBookItemCondition(id, condition) {
+  return requestBookApi(`/items/${encodeURIComponent(id)}/condition`, {
+    method: 'PATCH',
+    body: { condition }
+  });
+}
+
 export function deleteBookItem(id) {
   return requestBookApi(`/items/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
