@@ -41,6 +41,13 @@ export async function deleteSchoolUser(id) {
   return schoolRequest(`/users/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
+export async function deleteSchoolUsers(ids) {
+  return schoolRequest('/users/bulk', {
+    method: 'DELETE',
+    body: JSON.stringify({ ids })
+  });
+}
+
 export async function fetchRolePermissions(role) {
   return schoolRequest(`/permissions/${encodeURIComponent(role)}`);
 }

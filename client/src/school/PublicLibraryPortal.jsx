@@ -79,7 +79,7 @@ export default function PublicLibraryPortal({
   const activeSection = section === 'booking' ? 'booking' : 'check';
   const title = activeSection === 'booking' ? 'Booking Buku' : 'Cek Buku';
   const description = activeSection === 'booking'
-    ? 'Ajukan booking buku yang sedang tidak tersedia. Nama anggota diisi dari akun Anda.'
+    ? 'Ajukan booking buku dari koleksi sekolah. Nama anggota diisi dari akun Anda.'
     : 'Cari judul, kode, nomor induk, atau scan barcode untuk melihat detail dan ketersediaan koleksi.';
 
   const appLinks = useMemo(() => portalSections.map((item) => ({
@@ -184,9 +184,6 @@ export default function PublicLibraryPortal({
     setNotice('');
     try {
       if (activeSection === 'booking') {
-        if (Number(selectedBook.available_count) > 0) {
-          throw new Error('Booking hanya dapat dibuat saat tidak ada eksemplar yang tersedia.');
-        }
         const result = await createReservation({
           bookId: selectedBook.id,
           quantity: Number(quantity),
@@ -374,7 +371,7 @@ export default function PublicLibraryPortal({
 
             {isMember && (
               <form className="public-library-card public-request-form" onSubmit={submit}>
-                <div className="public-member-card-heading"><h3>Detail Booking</h3><p>Booking hanya diproses ketika tidak ada eksemplar yang tersedia.</p></div>
+                <div className="public-member-card-heading"><h3>Detail Booking</h3><p>Booking akan masuk ke daftar petugas untuk diproses sesuai ketersediaan buku.</p></div>
                 <label>Jumlah eksemplar
                   <input type="number" min="1" max="100" step="1" value={quantity} onChange={(event) => setQuantity(event.target.value)} required />
                 </label>
@@ -382,8 +379,7 @@ export default function PublicLibraryPortal({
                   <textarea rows="3" maxLength="1000" value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Catatan untuk petugas perpustakaan" />
                   <small>{notes.length}/1.000 karakter</small>
                 </label>
-                {selectedBook && Number(selectedBook.available_count) > 0 && <p className="public-library-message is-error">Buku masih tersedia dan belum dapat di-booking.</p>}
-                <button type="submit" className="master-button master-button-primary" disabled={saving || !selectedBook || Number(selectedBook.available_count) > 0}>
+                <button type="submit" className="master-button master-button-primary" disabled={saving || !selectedBook}>
                   {saving ? <><LoaderCircle size={15} className="book-stock-spinner" />Mengirim...</> : <><Ticket size={15} />Kirim booking</>}
                 </button>
               </form>

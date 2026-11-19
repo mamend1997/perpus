@@ -5,7 +5,7 @@ import {
   Save, ScanLine, ShieldCheck, Smartphone, Star, Trash2, UserPlus, Users, Wallet, X
 } from 'lucide-react';
 import {
-  createSchoolUser, deleteSchoolUser, fetchLibrarySettings, fetchMobileNavbarSettings,
+  createSchoolUser, deleteSchoolUser, deleteSchoolUsers, fetchLibrarySettings, fetchMobileNavbarSettings,
   fetchRolePermissions, fetchSchoolUsers, saveLibrarySettings, saveMobileNavbarSettings,
   saveRolePermissions, updateSchoolUser
 } from './schoolSettingsApi.js';
@@ -19,6 +19,7 @@ import BarcodeLabelSettingsPanel from './BarcodeLabelSettingsPanel.jsx';
 const roleLabels = Object.fromEntries(schoolPermissionRoles.map(({ key, label }) => [key, label]));
 
 function AccountModal({ account, onClose, onSaved }) {
+  const availableRoles = schoolPermissionRoles.filter(({ key }) => key !== 'member' || account?.role === 'member');
   const [form, setForm] = useState(() => ({
     name: account?.name || '',
     email: account?.email || '',
@@ -72,7 +73,7 @@ function AccountModal({ account, onClose, onSaved }) {
             </label>
             <label>Role
               <select name="role" value={form.role} onChange={update}>
-                {schoolPermissionRoles.map(({ key, label }) => <option key={key} value={key}>{label}</option>)}
+                {availableRoles.map(({ key, label }) => <option key={key} value={key}>{label}</option>)}
               </select>
             </label>
             <label>No. telepon
@@ -395,6 +396,11 @@ export default function SchoolSettingsPage({ onMobileNavbarSettingsSaved }) {
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [deleteAccountError, setDeleteAccountError] = useState('');
   const [usersNotice, setUsersNotice] = useState('');
+  const [selectedAccountIds, setSelectedAccountIds] = useState(() => new Set());
+  const deletableUsers = users.filter((user) => user.role !== 'admin'
+    && (user.role !== 'member' || Boolean(user.is_library_member)));
+  const allAccountsSelected = deletableUsers.length > 0
+    && deletableUsers.every((user) => selectedAccountIds.has(String(user.id)));
 
   useEffect(() => {
     let active = true;
@@ -462,6 +468,7 @@ export default function SchoolSettingsPage({ onMobileNavbarSettingsSaved }) {
     });
     setAccountModalOpen(false);
     setEditingAccount(null);
+    setSelectedAccountIds(new Set());
     setUsersError('');
     setUsersNotice(message);
   }
@@ -471,8 +478,12 @@ export default function SchoolSettingsPage({ onMobileNavbarSettingsSaved }) {
     setDeletingAccount(true);
     setDeleteAccountError('');
     try {
-      const result = await deleteSchoolUser(deleteTarget.id);
-      setUsers((current) => current.filter((user) => String(user.id) !== String(deleteTarget.id)));
+      const ids = Array.isArray(deleteTarget) ? deleteTarget : [String(deleteTarget.id)];
+      const result = Array.isArray(deleteTarget)
+        ? await deleteSchoolUsers(ids)
+        : await deleteSchoolUser(deleteTarget.id);
+      setUsers((current) => current.filter((user) => !ids.includes(String(user.id))));
+      setSelectedAccountIds(new Set());
       setDeleteTarget(null);
       setUsersError('');
       setUsersNotice(result.message || 'Akun berhasil dihapus.');
@@ -481,6 +492,18 @@ export default function SchoolSettingsPage({ onMobileNavbarSettingsSaved }) {
     } finally {
       setDeletingAccount(false);
     }
+  }
+
+  function toggleVisibleAccounts(checked) {
+    setSelectedAccountIds((current) => {
+      const next = new Set(current);
+      deletableUsers.forEach((user) => {
+        const id = String(user.id);
+        if (checked) next.add(id);
+        else next.delete(id);
+      });
+      return next;
+    });
   }
 
   return (
@@ -512,21 +535,27 @@ export default function SchoolSettingsPage({ onMobileNavbarSettingsSaved }) {
       {tab === 'accounts' ? (
         <section className="master-data-panel school-accounts-panel">
           <div className="school-settings-panel-heading">
-            <div><h2>Akun Sekolah</h2><p>Tambah akun Kepala Sekolah, Kepala Perpustakaan, dan Member Perpus.</p></div>
+            <div><h2>Akun Sekolah</h2><p>Akun siswa hanya ditampilkan setelah siswa terdaftar sebagai member melalui menu Member.</p></div>
             <button type="button" className="master-button master-button-primary" onClick={() => setAccountModalOpen(true)}><Plus size={16} />Tambah Akun</button>
           </div>
           {usersError && <div className="master-message master-message-error" role="alert"><AlertCircle size={16} />{usersError}</div>}
           {usersNotice && <div className="master-message master-message-success" role="status"><Check size={16} />{usersNotice}</div>}
           <div className="master-table-scroll">
             <table className="master-table school-users-table">
-              <thead><tr><th>Nama</th><th>Email</th><th>Role</th><th>No. Telp</th><th>Status</th><th>Aksi</th></tr></thead>
+              <thead><tr><th className="student-checkbox"><input type="checkbox" checked={allAccountsSelected} onChange={(event) => toggleVisibleAccounts(event.target.checked)} disabled={!deletableUsers.length || usersLoading || deletingAccount} aria-label="Pilih semua akun yang dapat dihapus" /></th><th>Nama</th><th>Email</th><th>Role</th><th>No. Telp</th><th>Status</th><th>Aksi</th></tr></thead>
               <tbody>
                 {usersLoading ? (
-                  <tr><td className="master-empty-cell" colSpan={6}>Memuat akun...</td></tr>
+                  <tr><td className="master-empty-cell" colSpan={7}>Memuat akun...</td></tr>
                 ) : users.length === 0 ? (
-                  <tr><td className="master-empty-cell" colSpan={6}>Belum ada akun.</td></tr>
+                  <tr><td className="master-empty-cell" colSpan={7}>Belum ada akun.</td></tr>
                 ) : users.map((user) => (
                   <tr key={user.id}>
+                    <td className="student-checkbox">{user.role !== 'admin' && (user.role !== 'member' || user.is_library_member) && <input type="checkbox" checked={selectedAccountIds.has(String(user.id))} onChange={(event) => setSelectedAccountIds((current) => {
+                      const next = new Set(current);
+                      if (event.target.checked) next.add(String(user.id));
+                      else next.delete(String(user.id));
+                      return next;
+                    })} aria-label={`Pilih akun ${user.name}`} />}</td>
                     <td><b className="master-primary-text">{user.name}</b></td>
                     <td>{user.email || '—'}</td>
                     <td><span className="school-role-badge">{user.role === 'admin' ? 'Admin Sekolah' : roleLabels[user.role]}</span></td>
@@ -541,7 +570,12 @@ export default function SchoolSettingsPage({ onMobileNavbarSettingsSaved }) {
               </tbody>
             </table>
           </div>
-          <div className="master-table-footer"><span>{users.length} akun terdaftar</span><span>Akun dibatasi untuk sekolah ini</span></div>
+          <div className="master-table-footer"><span>{users.length} akun terdaftar · {selectedAccountIds.size} dipilih</span>
+            <div className="school-account-bulk-actions">
+              <button type="button" className="master-button master-button-danger" disabled={!selectedAccountIds.size || deletingAccount} onClick={() => { setDeleteAccountError(''); setDeleteTarget([...selectedAccountIds]); }}><Trash2 size={15} />Hapus Terpilih ({selectedAccountIds.size})</button>
+              <span>Akun dibatasi untuk sekolah ini</span>
+            </div>
+          </div>
         </section>
       ) : tab === 'permissions' ? (
         <section className="master-data-panel school-permissions-panel">
@@ -593,9 +627,11 @@ export default function SchoolSettingsPage({ onMobileNavbarSettingsSaved }) {
 
       {accountModalOpen && <AccountModal key={editingAccount?.id || 'new-account'} account={editingAccount} onClose={() => { setAccountModalOpen(false); setEditingAccount(null); }} onSaved={handleAccountSaved} />}
       {deleteTarget && <SchoolConfirmDialog
-        title="Hapus akun pengguna?"
-        message="Akun ini akan dihapus dari sekolah. Akun dengan riwayat transaksi tidak dapat dihapus."
-        itemName={deleteTarget.name}
+        title={Array.isArray(deleteTarget) ? 'Hapus akun terpilih?' : 'Hapus akun pengguna?'}
+        message={Array.isArray(deleteTarget)
+          ? `${deleteTarget.length} akun akan dihapus. Akun dengan riwayat transaksi tidak dapat dihapus.`
+          : 'Akun ini akan dihapus dari sekolah. Akun dengan riwayat transaksi tidak dapat dihapus.'}
+        itemName={Array.isArray(deleteTarget) ? `${deleteTarget.length} akun terpilih` : deleteTarget.name}
         loading={deletingAccount}
         error={deleteAccountError}
         onClose={() => { if (!deletingAccount) { setDeleteTarget(null); setDeleteAccountError(''); } }}

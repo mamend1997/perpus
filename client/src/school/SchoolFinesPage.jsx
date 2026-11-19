@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   BadgeCheck, CalendarClock, Check, ChevronLeft, ChevronRight, CircleDollarSign,
-  History, LoaderCircle, RefreshCw, Search, X
+  History, LoaderCircle, RefreshCw, Search, Trash2, X
 } from 'lucide-react';
-import { fetchFines, updateLoanFineStatus } from './schoolLoanApi.js';
+import { deleteFineLoans, fetchFines, updateLoanFineStatus } from './schoolLoanApi.js';
+import SchoolConfirmDialog from './SchoolConfirmDialog.jsx';
 
 const pageSize = 25;
 const numberFormat = new Intl.NumberFormat('id-ID');
@@ -124,7 +125,9 @@ function FinePaymentHistoryModal({ fine, onClose }) {
 
 export default function SchoolFinesPage({ rights }) {
   const canEdit = Boolean(rights?.edit);
+  const canDelete = Boolean(rights?.delete);
   const [fines, setFines] = useState([]);
+  const [selectedFineIds, setSelectedFineIds] = useState(() => new Set());
   const [pagination, setPagination] = useState({ page: 1, total: 0, totalPages: 0 });
   const [page, setPage] = useState(1);
   const [searchInput, setSearchInput] = useState('');
@@ -137,6 +140,16 @@ export default function SchoolFinesPage({ rights }) {
   const [busyLoanId, setBusyLoanId] = useState('');
   const [paymentFine, setPaymentFine] = useState(null);
   const [historyFine, setHistoryFine] = useState(null);
+  const [deleteFinesOpen, setDeleteFinesOpen] = useState(false);
+  const [deleteFinesError, setDeleteFinesError] = useState('');
+  const [deletingFines, setDeletingFines] = useState(false);
+  const allVisibleFinesSelected = fines.length > 0
+    && fines.every((fine) => selectedFineIds.has(String(fine.id)));
+  const fineColumnCount = 8 + (canDelete ? 1 : 0);
+
+  useEffect(() => {
+    setSelectedFineIds(new Set());
+  }, [page, search, statusFilter, refreshKey]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -184,6 +197,35 @@ export default function SchoolFinesPage({ rights }) {
     }
   }
 
+  async function confirmDeleteFines() {
+    if (!selectedFineIds.size) return;
+    setDeletingFines(true);
+    setDeleteFinesError('');
+    try {
+      const result = await deleteFineLoans([...selectedFineIds]);
+      setNotice(result.message);
+      setSelectedFineIds(new Set());
+      setDeleteFinesOpen(false);
+      setRefreshKey((current) => current + 1);
+    } catch (deleteError) {
+      setDeleteFinesError(deleteError.message);
+    } finally {
+      setDeletingFines(false);
+    }
+  }
+
+  function toggleVisibleFines(checked) {
+    setSelectedFineIds((current) => {
+      const next = new Set(current);
+      fines.forEach((fine) => {
+        const id = String(fine.id);
+        if (checked) next.add(id);
+        else next.delete(id);
+      });
+      return next;
+    });
+  }
+
   return (
     <div className="library-module-page fines-page">
       <header className="library-module-heading">
@@ -208,26 +250,34 @@ export default function SchoolFinesPage({ rights }) {
             <option value="waived">Dibebaskan</option>
           </select>
         </label>
+        {canDelete && <button type="button" className="master-button master-button-danger" disabled={!selectedFineIds.size || deletingFines} onClick={() => { setDeleteFinesError(''); setDeleteFinesOpen(true); }}><Trash2 size={15} />Hapus Terpilih ({selectedFineIds.size})</button>}
       </section>
 
       <section className="library-panel loan-table-panel">
         <div className="catalog-table-heading">
           <div><span className="library-eyebrow">DAFTAR PEMBAYARAN</span><h2>Denda Keterlambatan</h2></div>
-          <span>{numberFormat.format(pagination.total)} transaksi</span>
+          <span>{numberFormat.format(pagination.total)} transaksi{selectedFineIds.size ? ` · ${selectedFineIds.size} dipilih` : ''}</span>
         </div>
         <div className="loan-table-scroll">
           <table className="loan-table fine-table">
             <thead>
               <tr>
+                {canDelete && <th className="loan-select-checkbox"><input type="checkbox" checked={allVisibleFinesSelected} onChange={(event) => toggleVisibleFines(event.target.checked)} disabled={loading || !fines.length || deletingFines} aria-label="Pilih semua denda di halaman ini" /></th>}
                 <th>No</th><th>ID Transaksi</th><th>Nama Anggota / NIS</th><th>Judul Buku</th>
                 <th>Keterlambatan</th><th>Jumlah Denda</th><th>Status Pembayaran</th><th>Aksi</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td className="loan-table-empty" colSpan={8}><LoaderCircle size={17} className="book-stock-spinner" />Memuat data denda...</td></tr>
+                <tr><td className="loan-table-empty" colSpan={fineColumnCount}><LoaderCircle size={17} className="book-stock-spinner" />Memuat data denda...</td></tr>
               ) : fines.length ? fines.map((fine, index) => (
                 <tr key={fine.id}>
+                  {canDelete && <td className="loan-select-checkbox"><input type="checkbox" checked={selectedFineIds.has(String(fine.id))} onChange={(event) => setSelectedFineIds((current) => {
+                    const next = new Set(current);
+                    if (event.target.checked) next.add(String(fine.id));
+                    else next.delete(String(fine.id));
+                    return next;
+                  })} aria-label={`Pilih denda transaksi ${fine.id}`} /></td>}
                   <td>{(page - 1) * pageSize + index + 1}</td>
                   <td><span className="loan-id-badge">PJM-{String(fine.id).padStart(5, '0')}</span></td>
                   <td><div className="loan-member-cell"><b>{fine.member_name}</b><small>{fine.nis_nisn ? `NIS/NISN ${fine.nis_nisn}` : 'NIS belum diisi'}</small></div></td>
@@ -253,7 +303,7 @@ export default function SchoolFinesPage({ rights }) {
                   </td>
                 </tr>
               )) : (
-                <tr><td className="loan-table-empty" colSpan={8}>{search || statusFilter ? 'Tidak ada denda yang sesuai dengan pencarian atau filter.' : 'Belum ada denda keterlambatan.'}</td></tr>
+                <tr><td className="loan-table-empty" colSpan={fineColumnCount}>{search || statusFilter ? 'Tidak ada denda yang sesuai dengan pencarian atau filter.' : 'Belum ada denda keterlambatan.'}</td></tr>
               )}
             </tbody>
           </table>
@@ -274,6 +324,16 @@ export default function SchoolFinesPage({ rights }) {
         onConfirm={confirmPayment}
       />}
       {historyFine && <FinePaymentHistoryModal fine={historyFine} onClose={() => setHistoryFine(null)} />}
+      {deleteFinesOpen && <SchoolConfirmDialog
+        title="Hapus denda terpilih?"
+        message="Transaksi peminjaman, data denda, dan riwayat pembayaran terkait akan dihapus permanen."
+        itemName={`${selectedFineIds.size} transaksi denda terpilih`}
+        confirmLabel="Hapus Denda"
+        loading={deletingFines}
+        error={deleteFinesError}
+        onClose={() => { if (!deletingFines) { setDeleteFinesOpen(false); setDeleteFinesError(''); } }}
+        onConfirm={confirmDeleteFines}
+      />}
     </div>
   );
 }

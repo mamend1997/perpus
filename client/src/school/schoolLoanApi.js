@@ -23,11 +23,19 @@ export function fetchLoans({ page = 1, limit = 25, search = '', status = '', sig
   return requestLoanApi(`?${query}`, { signal });
 }
 
+export function deleteLoans(ids) {
+  return requestLoanApi('/bulk', { method: 'DELETE', body: { ids } });
+}
+
 export function fetchFines({ page = 1, limit = 25, search = '', status = '', signal } = {}) {
   const query = new URLSearchParams({ page: String(page), limit: String(limit) });
   if (search) query.set('search', search);
   if (status) query.set('status', status);
   return requestLoanApi(`/fines?${query}`, { signal });
+}
+
+export function deleteFineLoans(ids) {
+  return requestLoanApi('/fines/bulk', { method: 'DELETE', body: { ids } });
 }
 
 export function updateFinePerDay(finePerDay) {

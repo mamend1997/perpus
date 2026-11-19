@@ -225,11 +225,7 @@ router.get('/inactive', staffOnly, requireSchoolPermission('master.students', 'v
   const conditions = [
     'u.school_id = ?',
     "u.role = 'member'",
-    `(u.status IN ('inactive', 'blocked') OR EXISTS (
-      SELECT 1 FROM school_year_student_archives archived
-      WHERE archived.school_id = u.school_id AND archived.student_id = u.id
-        AND archived.promotion_status = 'graduated'
-    ))`
+    "u.status IN ('inactive', 'blocked')"
   ];
   const values = [req.school.id];
   if (search) {
@@ -242,7 +238,7 @@ router.get('/inactive', staffOnly, requireSchoolPermission('master.students', 'v
     const [[count], [students]] = await Promise.all([
       pool.execute(`SELECT COUNT(*) AS total FROM users u WHERE ${where}`, values),
       pool.execute(
-        `SELECT u.id, u.nis_nisn, u.name, u.rombel, u.status,
+        `SELECT u.id, u.nis_nisn, u.name, u.photo, u.rombel, u.gender, u.phone, u.status,
                 CASE WHEN EXISTS (
                   SELECT 1 FROM school_year_student_archives a
                   WHERE a.school_id = u.school_id AND a.student_id = u.id
@@ -457,10 +453,11 @@ router.get('/classes/:id/students', staffOnly, requireSchoolPermission('master.s
       pool.execute(`SELECT COUNT(*) AS total FROM users WHERE ${where}`, values),
       pool.execute(
         `SELECT id, name, nis_nisn, rombel,
-                (TRIM(COALESCE(rombel, '')) = ?) AS assigned
+                (TRIM(COALESCE(rombel, '')) = ?) AS assigned,
+                (TRIM(COALESCE(rombel, '')) <> '' AND TRIM(COALESCE(rombel, '')) <> ?) AS assigned_elsewhere
          FROM users WHERE ${where}
          ORDER BY name ASC, id ASC LIMIT ? OFFSET ?`,
-        [classes[0].class_name, ...values, limit, (page - 1) * limit]
+        [classes[0].class_name, classes[0].class_name, ...values, limit, (page - 1) * limit]
       )
     ]);
     const total = Number(count.total);
@@ -469,7 +466,8 @@ router.get('/classes/:id/students', staffOnly, requireSchoolPermission('master.s
       students: students.map((student) => ({
         ...student,
         id: String(student.id),
-        assigned: Boolean(student.assigned)
+        assigned: Boolean(student.assigned),
+        assignedElsewhere: Boolean(student.assigned_elsewhere)
       })),
       pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
     });
@@ -526,6 +524,15 @@ router.put('/classes/:id/students', staffOnly, requireSchoolPermission('master.s
       await connection.rollback();
       transactionStarted = false;
       return res.status(409).json({ message: 'Sebagian siswa sudah tidak berada di kelas ini. Muat ulang daftar siswa.' });
+    }
+    const studentsToAssign = students.filter((student) => assignIds.includes(String(student.id)));
+    if (studentsToAssign.some((student) => {
+      const currentClass = String(student.rombel || '').trim();
+      return currentClass && currentClass !== className;
+    })) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(409).json({ message: 'Sebagian siswa sudah terdaftar di rombel lain. Lepaskan penetapan kelas sebelumnya terlebih dahulu.' });
     }
     if (assignIds.length) {
       await connection.execute(
@@ -960,6 +967,29 @@ router.patch('/:id', staffOnly, requireSchoolPermission('master.students', 'edit
     return next(error);
   } finally {
     if (connection) connection.release();
+  }
+});
+
+router.patch('/:id/activate', staffOnly, requireSchoolPermission('master.students', 'edit'), async (req, res, next) => {
+  const id = String(req.params.id);
+  if (!validId(id)) return res.status(400).json({ message: 'ID siswa tidak valid.' });
+  try {
+    const [result] = await pool.execute(
+      `UPDATE users SET status = 'active'
+       WHERE id = ? AND school_id = ? AND role = 'member' AND status IN ('inactive', 'blocked')`,
+      [id, req.school.id]
+    );
+    if (!result.affectedRows) {
+      const [[student]] = await pool.execute(
+        'SELECT id FROM users WHERE id = ? AND school_id = ? AND role = ? LIMIT 1',
+        [id, req.school.id, 'member']
+      );
+      if (!student) return res.status(404).json({ message: 'Data siswa tidak ditemukan.' });
+      return res.status(409).json({ message: 'Siswa sudah berstatus aktif.' });
+    }
+    return res.json({ message: 'Siswa berhasil diaktifkan kembali.' });
+  } catch (error) {
+    return next(error);
   }
 });
 

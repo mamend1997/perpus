@@ -1,15 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Check, ChevronLeft, ChevronRight, Clock3, LoaderCircle, Plus, RefreshCw,
-  RotateCcw, Search, X
+  BookOpen, Check, ChevronLeft, ChevronRight, Clock3, LoaderCircle, Plus, RefreshCw,
+  RotateCcw, Search, Trash2, X
 } from 'lucide-react';
 import {
   createLoan, fetchLoans, returnLoan, searchLoanItems, searchLoanMembers,
-  updateLoanStatus
+  deleteLoans, updateLoanStatus
 } from './schoolLoanApi.js';
 import CameraBarcodeScanner from './CameraBarcodeScanner.jsx';
 import { fetchBarcodeLabelSettings } from './schoolSettingsApi.js';
+import SchoolConfirmDialog from './SchoolConfirmDialog.jsx';
 
 const pageSize = 25;
 const numberFormat = new Intl.NumberFormat('id-ID');
@@ -326,6 +327,44 @@ function NewLoanModal({ account, role, durationDays, scanBehavior, onClose, onSa
   );
 }
 
+function ReturnConfirmDialog({ loan, loading, error, onClose, onConfirm }) {
+  useEffect(() => {
+    function closeOnEscape(event) {
+      if (event.key === 'Escape' && !loading) onClose();
+    }
+    document.addEventListener('keydown', closeOnEscape);
+    return () => document.removeEventListener('keydown', closeOnEscape);
+  }, [loading, onClose]);
+
+  return createPortal(
+    <div className="loan-return-backdrop" onMouseDown={(event) => {
+      if (event.target === event.currentTarget && !loading) onClose();
+    }}>
+      <section className="loan-return-dialog" role="alertdialog" aria-modal="true" aria-labelledby="loan-return-title">
+        <button type="button" className="loan-return-close" onClick={onClose} disabled={loading} aria-label="Tutup konfirmasi"><X size={17} /></button>
+        <span className="loan-return-icon"><RotateCcw size={22} /></span>
+        <span className="library-eyebrow">KONFIRMASI PENGEMBALIAN</span>
+        <h2 id="loan-return-title">Proses pengembalian buku?</h2>
+        <p>Pastikan buku dan peminjam sudah sesuai sebelum menyelesaikan transaksi.</p>
+        <div className="loan-return-details">
+          <div className="loan-return-detail-book"><BookOpen size={17} /><span><b>{loan.book_title}</b><small>Serial {loan.serial_number || '—'}</small></span></div>
+          <div><small>Peminjam</small><b>{loan.member_name}</b><span>{loan.nis_nisn ? `NIS/NISN ${loan.nis_nisn}` : 'NIS/NISN belum diisi'}</span></div>
+          <div><small>Batas pengembalian</small><b>{formatDate(loan.due_date)}</b></div>
+        </div>
+        {error && <div className="loan-return-error" role="alert">{error}</div>}
+        <footer className="loan-return-actions">
+          <button type="button" className="master-button master-button-muted" onClick={onClose} disabled={loading}>Batal</button>
+          <button type="button" className="master-button loan-return-confirm" onClick={onConfirm} disabled={loading}>
+            {loading ? <LoaderCircle size={15} className="book-stock-spinner" /> : <Check size={15} />}
+            {loading ? 'Memproses...' : 'Konfirmasi Pengembalian'}
+          </button>
+        </footer>
+      </section>
+    </div>,
+    document.body
+  );
+}
+
 function statusClass(status) {
   if (status === 'Pending') return 'is-pending';
   if (status === 'Terlambat') return 'is-overdue';
@@ -337,7 +376,9 @@ function statusClass(status) {
 export default function SchoolLoansPage({ rights, role, account }) {
   const canEdit = Boolean(rights?.edit);
   const canManage = canEdit && role !== 'member';
+  const canDelete = Boolean(rights?.delete) && role !== 'member';
   const [loans, setLoans] = useState([]);
+  const [selectedLoanIds, setSelectedLoanIds] = useState(() => new Set());
   const [pagination, setPagination] = useState({ page: 1, total: 0, totalPages: 0 });
   const [page, setPage] = useState(1);
   const [searchInput, setSearchInput] = useState('');
@@ -349,11 +390,22 @@ export default function SchoolLoansPage({ rights, role, account }) {
   const [refreshKey, setRefreshKey] = useState(0);
   const [busyLoanId, setBusyLoanId] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
+  const [returnTarget, setReturnTarget] = useState(null);
+  const [deleteLoansOpen, setDeleteLoansOpen] = useState(false);
+  const [deleteLoansError, setDeleteLoansError] = useState('');
+  const [deletingLoans, setDeletingLoans] = useState(false);
   const [loanDurationDays, setLoanDurationDays] = useState(7);
   const [finePerDay, setFinePerDay] = useState(1000);
   const [scanBehavior, setScanBehavior] = useState('focus');
   const [scanSettingsError, setScanSettingsError] = useState('');
   const [scanSettingsRefresh, setScanSettingsRefresh] = useState(0);
+  const allVisibleLoansSelected = loans.length > 0
+    && loans.every((loan) => selectedLoanIds.has(String(loan.id)));
+  const loanColumnCount = 10 + (canDelete ? 1 : 0);
+
+  useEffect(() => {
+    setSelectedLoanIds(new Set());
+  }, [page, search, statusFilter, refreshKey]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -416,8 +468,10 @@ export default function SchoolLoansPage({ rights, role, account }) {
       const result = await action();
       setNotice(result.message);
       setRefreshKey((current) => current + 1);
+      return true;
     } catch (actionError) {
       setError(actionError.message);
+      return false;
     } finally {
       setBusyLoanId('');
     }
@@ -430,8 +484,43 @@ export default function SchoolLoansPage({ rights, role, account }) {
   }
 
   function processReturn(loan) {
-    if (!window.confirm(`Proses pengembalian "${loan.book_title}" dari ${loan.member_name}?`)) return;
-    runAction(loan.id, () => returnLoan(loan.id));
+    setError('');
+    setReturnTarget(loan);
+  }
+
+  async function confirmReturn() {
+    if (!returnTarget) return;
+    const success = await runAction(returnTarget.id, () => returnLoan(returnTarget.id));
+    if (success) setReturnTarget(null);
+  }
+
+  async function confirmDeleteLoans() {
+    if (!selectedLoanIds.size) return;
+    setDeletingLoans(true);
+    setDeleteLoansError('');
+    try {
+      const result = await deleteLoans([...selectedLoanIds]);
+      setNotice(result.message);
+      setSelectedLoanIds(new Set());
+      setDeleteLoansOpen(false);
+      setRefreshKey((current) => current + 1);
+    } catch (deleteError) {
+      setDeleteLoansError(deleteError.message);
+    } finally {
+      setDeletingLoans(false);
+    }
+  }
+
+  function toggleVisibleLoans(checked) {
+    setSelectedLoanIds((current) => {
+      const next = new Set(current);
+      loans.forEach((loan) => {
+        const id = String(loan.id);
+        if (checked) next.add(id);
+        else next.delete(id);
+      });
+      return next;
+    });
   }
 
   return (
@@ -467,6 +556,7 @@ export default function SchoolLoansPage({ rights, role, account }) {
               </select>
             </label>
             {canEdit && <button type="button" className="master-button master-button-primary" onClick={() => setCreateOpen(true)}><Plus size={16} />Peminjaman Baru</button>}
+            {canDelete && <button type="button" className="master-button master-button-danger" disabled={!selectedLoanIds.size || deletingLoans} onClick={() => { setDeleteLoansError(''); setDeleteLoansOpen(true); }}><Trash2 size={15} />Hapus Terpilih ({selectedLoanIds.size})</button>}
           </div>
         </div>
         <div className="loan-policy-note"><Clock3 size={14} />Durasi pinjam {loanDurationDays} hari <span>·</span> Denda {currencyFormat.format(finePerDay)} per hari keterlambatan</div>
@@ -475,12 +565,13 @@ export default function SchoolLoansPage({ rights, role, account }) {
       <section className="library-panel loan-table-panel">
         <div className="catalog-table-heading">
           <div><span className="library-eyebrow">DAFTAR TRANSAKSI</span><h2>Transaksi Peminjaman</h2></div>
-          <span>{numberFormat.format(pagination.total)} transaksi</span>
+          <span>{numberFormat.format(pagination.total)} transaksi{selectedLoanIds.size ? ` · ${selectedLoanIds.size} dipilih` : ''}</span>
         </div>
         <div className="loan-table-scroll">
           <table className="loan-table">
             <thead>
               <tr>
+                {canDelete && <th className="loan-select-checkbox"><input type="checkbox" checked={allVisibleLoansSelected} onChange={(event) => toggleVisibleLoans(event.target.checked)} disabled={loading || !loans.length || deletingLoans} aria-label="Pilih semua transaksi di halaman ini" /></th>}
                 <th>No</th><th>ID Pinjam</th><th>Anggota / NIS</th><th>Buku / Serial</th>
                 <th>Tanggal Pinjam</th><th>Batas Pengembalian</th><th>Tanggal Kembali</th>
                 <th>Status</th><th>Denda</th><th>Aksi</th>
@@ -488,9 +579,15 @@ export default function SchoolLoansPage({ rights, role, account }) {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td className="loan-table-empty" colSpan={10}><LoaderCircle size={17} className="book-stock-spinner" />Memuat transaksi peminjaman...</td></tr>
+                <tr><td className="loan-table-empty" colSpan={loanColumnCount}><LoaderCircle size={17} className="book-stock-spinner" />Memuat transaksi peminjaman...</td></tr>
               ) : loans.length ? loans.map((loan, index) => (
                 <tr key={loan.id}>
+                  {canDelete && <td className="loan-select-checkbox"><input type="checkbox" checked={selectedLoanIds.has(String(loan.id))} onChange={(event) => setSelectedLoanIds((current) => {
+                    const next = new Set(current);
+                    if (event.target.checked) next.add(String(loan.id));
+                    else next.delete(String(loan.id));
+                    return next;
+                  })} aria-label={`Pilih transaksi ${loan.id}`} /></td>}
                   <td>{(page - 1) * pageSize + index + 1}</td>
                   <td><span className="loan-id-badge">PJM-{String(loan.id).padStart(5, '0')}</span></td>
                   <td><div className="loan-member-cell"><b>{loan.member_name}</b><small>{loan.nis_nisn ? `NIS/NISN ${loan.nis_nisn}` : 'NIS belum diisi'}</small></div></td>
@@ -522,7 +619,7 @@ export default function SchoolLoansPage({ rights, role, account }) {
                   </td>
                 </tr>
               )) : (
-                <tr><td className="loan-table-empty" colSpan={10}>{search || statusFilter ? 'Tidak ada transaksi yang sesuai dengan pencarian atau filter.' : 'Belum ada transaksi peminjaman.'}</td></tr>
+                <tr><td className="loan-table-empty" colSpan={loanColumnCount}>{search || statusFilter ? 'Tidak ada transaksi yang sesuai dengan pencarian atau filter.' : 'Belum ada transaksi peminjaman.'}</td></tr>
               )}
             </tbody>
           </table>
@@ -543,6 +640,23 @@ export default function SchoolLoansPage({ rights, role, account }) {
         scanBehavior={scanBehavior}
         onClose={() => setCreateOpen(false)}
         onSave={submitLoan}
+      />}
+      {returnTarget && <ReturnConfirmDialog
+        loan={returnTarget}
+        loading={busyLoanId === String(returnTarget.id)}
+        error={error}
+        onClose={() => { if (busyLoanId !== String(returnTarget.id)) setReturnTarget(null); }}
+        onConfirm={confirmReturn}
+      />}
+      {deleteLoansOpen && <SchoolConfirmDialog
+        title="Hapus transaksi terpilih?"
+        message="Transaksi akan dihapus permanen. Eksemplar yang masih dipinjam akan dikembalikan ke stok, dan riwayat pembayaran denda terkait ikut terhapus."
+        itemName={`${selectedLoanIds.size} transaksi terpilih`}
+        confirmLabel="Hapus Transaksi"
+        loading={deletingLoans}
+        error={deleteLoansError}
+        onClose={() => { if (!deletingLoans) { setDeleteLoansOpen(false); setDeleteLoansError(''); } }}
+        onConfirm={confirmDeleteLoans}
       />}
     </div>
   );

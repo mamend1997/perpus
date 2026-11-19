@@ -250,9 +250,9 @@ router.put('/permissions/:role', requireSchoolAdmin, async (req, res, next) => {
 router.get('/users', requireSchoolAdmin, async (req, res, next) => {
   try {
     const [users] = await pool.execute(
-      `SELECT id, role, name, email, phone, nis_nisn, rombel, gender, status, created_at
+      `SELECT id, role, name, email, phone, nis_nisn, rombel, gender, status, is_library_member, created_at
        FROM users
-       WHERE school_id = ?
+       WHERE school_id = ? AND (role <> 'member' OR is_library_member = 1)
        ORDER BY FIELD(role, 'admin', 'kepsek', 'kapus', 'member'), name ASC`,
       [req.school.id]
     );
@@ -285,6 +285,9 @@ router.post('/users', requireSchoolAdmin, async (req, res, next) => {
       message: 'Periksa nama, email, dan kata sandi (minimal 8 karakter, huruf besar, angka, serta simbol).'
     });
   }
+  if (role === 'member') {
+    return res.status(400).json({ message: 'Daftarkan siswa melalui menu Member terlebih dahulu sebelum mengatur akunnya.' });
+  }
 
   let connection;
   let transactionStarted = false;
@@ -293,38 +296,17 @@ router.post('/users', requireSchoolAdmin, async (req, res, next) => {
     connection = await pool.getConnection();
     await connection.beginTransaction();
     transactionStarted = true;
-    if (role === 'member') {
-      const [schools] = await connection.execute(
-        'SELECT education_level FROM tenants_schools WHERE id = ? FOR UPDATE',
-        [req.school.id]
-      );
-      const classDetails = classDetailsFromRombel(rombel, schools[0]?.education_level);
-      if (classDetails) {
-        await connection.execute(
-          `INSERT IGNORE INTO school_classes (school_id, grade_level, name, class_name)
-           VALUES (?, ?, ?, ?)`,
-          [req.school.id, classDetails.gradeLevel, classDetails.name, classDetails.className]
-        );
-      }
-    }
     const [result] = await connection.execute(
       `INSERT INTO users (school_id, role, is_library_member, name, email, password, phone, nis_nisn, rombel, gender, status)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
-      [req.school.id, role, role === 'member' ? 1 : 0, name, email, passwordHash, phone || null, nisNisn || null, rombel || null, gender]
+      [req.school.id, role, 0, name, email, passwordHash, phone || null, nisNisn || null, rombel || null, gender]
     );
-    const memberCode = role === 'member' ? `MBR${req.school.code}-${result.insertId}` : null;
-    if (memberCode) {
-      await connection.execute(
-        'UPDATE users SET member_code = ? WHERE id = ? AND school_id = ?',
-        [memberCode, result.insertId, req.school.id]
-      );
-    }
     await connection.commit();
     transactionStarted = false;
     return res.status(201).json({
       user: {
         id: result.insertId, role, name, email, phone: phone || null,
-        member_code: memberCode,
+        is_library_member: false,
         nis_nisn: nisNisn || null, rombel: rombel || null, gender, status: 'active'
       }
     });
@@ -372,12 +354,15 @@ router.patch('/users/:id', requireSchoolAdmin, async (req, res, next) => {
 
   try {
     const [targets] = await pool.execute(
-      'SELECT id, role FROM users WHERE id = ? AND school_id = ? LIMIT 1',
+      'SELECT id, role, is_library_member FROM users WHERE id = ? AND school_id = ? LIMIT 1',
       [id, req.school.id]
     );
     if (!targets[0]) return res.status(404).json({ message: 'Akun pengguna tidak ditemukan.' });
     if (targets[0].role === 'admin' || String(req.school.userId) === id) {
       return res.status(409).json({ message: 'Akun Admin sekolah tidak dapat diedit dari menu ini.' });
+    }
+    if (role === 'member' && (targets[0].role !== 'member' || !targets[0].is_library_member)) {
+      return res.status(409).json({ message: 'Siswa harus terdaftar sebagai member sebelum akunnya dapat diatur.' });
     }
 
     const passwordHash = password ? await bcrypt.hash(password, 12) : null;
@@ -413,6 +398,7 @@ router.patch('/users/:id', requireSchoolAdmin, async (req, res, next) => {
       user: {
         id,
         role,
+        is_library_member: role === 'member' && Boolean(targets[0].is_library_member),
         name,
         email: email || null,
         phone: phone || null,
@@ -431,17 +417,73 @@ router.patch('/users/:id', requireSchoolAdmin, async (req, res, next) => {
   }
 });
 
+router.delete('/users/bulk', requireSchoolAdmin, async (req, res, next) => {
+  const rawIds = req.body?.ids;
+  if (!Array.isArray(rawIds) || rawIds.length < 1 || rawIds.length > 500) {
+    return res.status(400).json({ message: 'Pilih 1 sampai 500 akun untuk dihapus.' });
+  }
+  const ids = [...new Set(rawIds.map(String))];
+  if (ids.some((id) => !/^[1-9]\d*$/.test(id))) {
+    return res.status(400).json({ message: 'Daftar ID akun tidak valid.' });
+  }
+
+  let connection;
+  let transactionStarted = false;
+  try {
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    transactionStarted = true;
+    const placeholders = ids.map(() => '?').join(', ');
+    const [targets] = await connection.execute(
+      `SELECT id, role, is_library_member FROM users
+       WHERE school_id = ? AND id IN (${placeholders}) FOR UPDATE`,
+      [req.school.id, ...ids]
+    );
+    if (targets.length !== ids.length) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(404).json({ message: 'Sebagian akun tidak ditemukan di sekolah ini.' });
+    }
+    if (targets.some((user) => user.role === 'admin'
+        || String(user.id) === String(req.school.userId)
+        || (user.role === 'member' && !user.is_library_member))) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(409).json({ message: 'Akun Admin atau siswa yang belum terdaftar sebagai member tidak dapat dihapus dari menu ini.' });
+    }
+    const [result] = await connection.execute(
+      `DELETE FROM users
+       WHERE school_id = ? AND id IN (${placeholders}) AND role <> 'admin' AND id <> ?`,
+      [req.school.id, ...ids, req.school.userId]
+    );
+    await connection.commit();
+    transactionStarted = false;
+    return res.json({ deleted: result.affectedRows, message: `${result.affectedRows} akun berhasil dihapus.` });
+  } catch (error) {
+    if (transactionStarted && connection) await connection.rollback();
+    if (error.errno === 1451 || error.code === 'ER_ROW_IS_REFERENCED_2') {
+      return res.status(409).json({ message: 'Sebagian akun memiliki riwayat transaksi dan tidak dapat dihapus.' });
+    }
+    return next(error);
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
 router.delete('/users/:id', requireSchoolAdmin, async (req, res, next) => {
   const id = String(req.params.id);
   if (!/^[1-9]\d*$/.test(id)) return res.status(400).json({ message: 'ID akun tidak valid.' });
   try {
     const [targets] = await pool.execute(
-      'SELECT id, role FROM users WHERE id = ? AND school_id = ? LIMIT 1',
+      'SELECT id, role, is_library_member FROM users WHERE id = ? AND school_id = ? LIMIT 1',
       [id, req.school.id]
     );
     if (!targets[0]) return res.status(404).json({ message: 'Akun pengguna tidak ditemukan.' });
     if (targets[0].role === 'admin' || String(req.school.userId) === id) {
       return res.status(409).json({ message: 'Akun Admin sekolah tidak dapat dihapus.' });
+    }
+    if (targets[0].role === 'member' && !targets[0].is_library_member) {
+      return res.status(409).json({ message: 'Siswa harus terdaftar sebagai member sebelum akunnya dapat dihapus dari menu ini.' });
     }
     const [result] = await pool.execute(
       'DELETE FROM users WHERE id = ? AND school_id = ? AND role <> \'admin\'',

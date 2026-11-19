@@ -53,6 +53,130 @@ async function lockBookAndCopy(connection, schoolId, bookItemId) {
   return items[0] || null;
 }
 
+async function removeLoanRows(connection, schoolId, ids, finesOnly = false) {
+  const placeholders = ids.map(() => '?').join(', ');
+  const [loanReferences] = await connection.execute(
+    `SELECT id, book_item_id FROM loans WHERE school_id = ? AND id IN (${placeholders})`,
+    [schoolId, ...ids]
+  );
+  if (loanReferences.length !== ids.length) {
+    return { status: 404, message: 'Sebagian transaksi tidak ditemukan di sekolah ini.' };
+  }
+
+  const itemIds = [...new Set(loanReferences.map((loan) => String(loan.book_item_id)))];
+  const itemPlaceholders = itemIds.map(() => '?').join(', ');
+  const [references] = await connection.execute(
+    `SELECT id, book_id FROM book_items
+     WHERE school_id = ? AND id IN (${itemPlaceholders})
+     ORDER BY book_id, id`,
+    [schoolId, ...itemIds]
+  );
+  if (references.length !== itemIds.length) {
+    return { status: 404, message: 'Sebagian eksemplar transaksi tidak ditemukan.' };
+  }
+
+  const bookIds = [...new Set(references.map((item) => String(item.book_id)))].sort();
+  const bookPlaceholders = bookIds.map(() => '?').join(', ');
+  const [books] = await connection.execute(
+    `SELECT id FROM books WHERE school_id = ? AND id IN (${bookPlaceholders}) ORDER BY id FOR UPDATE`,
+    [schoolId, ...bookIds]
+  );
+  if (books.length !== bookIds.length) {
+    return { status: 404, message: 'Sebagian buku transaksi tidak ditemukan.' };
+  }
+  const [items] = await connection.execute(
+    `SELECT id FROM book_items
+     WHERE school_id = ? AND id IN (${itemPlaceholders}) ORDER BY id FOR UPDATE`,
+    [schoolId, ...itemIds]
+  );
+  if (items.length !== itemIds.length) {
+    return { status: 404, message: 'Sebagian eksemplar transaksi tidak ditemukan.' };
+  }
+
+  const [loans] = await connection.execute(
+    `SELECT id, book_item_id, status, fine_amount
+     FROM loans WHERE school_id = ? AND id IN (${placeholders}) FOR UPDATE`,
+    [schoolId, ...ids]
+  );
+  if (loans.length !== ids.length) {
+    return { status: 404, message: 'Sebagian transaksi tidak ditemukan di sekolah ini.' };
+  }
+  if (finesOnly && loans.some((loan) => loan.status !== 'Returned' || Number(loan.fine_amount) <= 0)) {
+    return { status: 409, message: 'Sebagian transaksi bukan denda yang dapat dihapus.' };
+  }
+
+  const [deleted] = await connection.execute(
+    `DELETE FROM loans WHERE school_id = ? AND id IN (${placeholders})`,
+    [schoolId, ...ids]
+  );
+  const borrowedItemIds = [...new Set(loans
+    .filter((loan) => loan.status === 'Borrowed')
+    .map((loan) => String(loan.book_item_id)))];
+  if (borrowedItemIds.length) {
+    await connection.execute(
+      `UPDATE book_items SET status = 'Tersedia'
+       WHERE school_id = ? AND id IN (${borrowedItemIds.map(() => '?').join(', ')})
+         AND status = 'Dipinjam'
+         AND NOT EXISTS (
+           SELECT 1 FROM loans active_loan
+           WHERE active_loan.school_id = book_items.school_id
+             AND active_loan.book_item_id = book_items.id
+             AND active_loan.status IN ('Pending', 'Borrowed')
+         )`,
+      [schoolId, ...borrowedItemIds]
+    );
+  }
+  return { deleted: deleted.affectedRows };
+}
+
+async function deleteLoanBatch(req, res, next, finesOnly = false) {
+  const rawIds = req.body?.ids;
+  if (!Array.isArray(rawIds) || rawIds.length < 1 || rawIds.length > 500) {
+    return res.status(400).json({ message: 'Pilih 1 sampai 500 transaksi untuk dihapus.' });
+  }
+  const ids = [...new Set(rawIds.map(String))];
+  if (ids.some((id) => !validId(id))) {
+    return res.status(400).json({ message: 'Daftar ID transaksi tidak valid.' });
+  }
+  if (!roleCanManageLoans(req)) {
+    return res.status(403).json({ message: 'Anggota tidak dapat menghapus transaksi perpustakaan.' });
+  }
+
+  let connection;
+  let transactionStarted = false;
+  try {
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    transactionStarted = true;
+    const result = await removeLoanRows(connection, req.school.id, ids, finesOnly);
+    if (result.status) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(result.status).json({ message: result.message });
+    }
+    await connection.commit();
+    transactionStarted = false;
+    return res.json({
+      deleted: result.deleted,
+      message: finesOnly
+        ? `${result.deleted} transaksi denda beserta riwayat pembayarannya berhasil dihapus.`
+        : `${result.deleted} transaksi peminjaman berhasil dihapus.`
+    });
+  } catch (error) {
+    if (transactionStarted && connection) {
+      try {
+        await connection.rollback();
+      } catch (rollbackError) {
+        error.rollbackError = rollbackError;
+        return next(error);
+      }
+    }
+    return next(error);
+  } finally {
+    if (connection) connection.release();
+  }
+}
+
 router.get('/members', requireSchoolPermission('circulation.loans', 'view'), async (req, res, next) => {
   const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
   if (search.length > 100) return res.status(400).json({ message: 'Pencarian anggota maksimal 100 karakter.' });
@@ -248,6 +372,10 @@ router.get('/fines', requireSchoolPermission('circulation.fines', 'view'), async
   }
 });
 
+router.delete('/fines/bulk', requireSchoolPermission('circulation.fines', 'delete'), (req, res, next) => (
+  deleteLoanBatch(req, res, next, true)
+));
+
 router.get('/', requireSchoolPermission('circulation.loans', 'view'), async (req, res, next) => {
   const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
   const status = typeof req.query.status === 'string' ? req.query.status : '';
@@ -334,6 +462,10 @@ router.get('/', requireSchoolPermission('circulation.loans', 'view'), async (req
     return next(error);
   }
 });
+
+router.delete('/bulk', requireSchoolPermission('circulation.loans', 'delete'), (req, res, next) => (
+  deleteLoanBatch(req, res, next)
+));
 
 router.post('/', requireSchoolPermission('circulation.loans', 'edit'), async (req, res, next) => {
   const bookItemId = String(req.body?.bookItemId ?? '');

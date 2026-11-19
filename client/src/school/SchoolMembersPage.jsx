@@ -38,12 +38,12 @@ function AddMembersModal({ classes, onClose, onAdd }) {
   const [search, setSearch] = useState('');
   const [rombel, setRombel] = useState('');
   const [students, setStudents] = useState([]);
-  const [selected, setSelected] = useState({});
+  const [selected, setSelected] = useState(() => new Set());
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const selectedCount = Object.keys(selected).length;
-  const allVisibleSelected = students.length > 0 && students.every((student) => Boolean(selected[String(student.id)]));
+  const selectedCount = selected.size;
+  const allVisibleSelected = students.length > 0 && students.every((student) => selected.has(String(student.id)));
 
   useEffect(() => {
     const timer = window.setTimeout(() => setSearch(queryInput.trim()), 250);
@@ -68,7 +68,7 @@ function AddMembersModal({ classes, onClose, onAdd }) {
   }, [search, rombel]);
 
   async function submit() {
-    const studentIds = Object.keys(selected);
+    const studentIds = [...selected];
     if (!studentIds.length) return;
     setSaving(true);
     setError('');
@@ -83,11 +83,11 @@ function AddMembersModal({ classes, onClose, onAdd }) {
 
   function toggleVisibleStudents(checked) {
     setSelected((current) => {
-      const next = { ...current };
+      const next = new Set(current);
       students.forEach((student) => {
         const id = String(student.id);
-        if (checked) next[id] = true;
-        else delete next[id];
+        if (checked) next.add(id);
+        else next.delete(id);
       });
       return next;
     });
@@ -120,12 +120,12 @@ function AddMembersModal({ classes, onClose, onAdd }) {
           : students.length === 0 ? <div className="member-empty-state"><span className="member-empty-icon"><Users size={22} /></span><b>{search || rombel ? 'Siswa tidak ditemukan' : 'Belum ada siswa tersedia'}</b><span>{search || rombel ? 'Coba ubah kata pencarian atau filter kelas.' : 'Tambahkan data siswa terlebih dahulu. Siswa yang sudah menjadi member tidak ditampilkan.'}</span></div>
             : students.map((student) => {
               const id = String(student.id);
-              const isSelected = Boolean(selected[id]);
+              const isSelected = selected.has(id);
               return <label className={`member-candidate-option ${isSelected ? 'is-selected' : ''}`} key={id}>
                 <input type="checkbox" checked={isSelected} disabled={saving} onChange={(event) => setSelected((current) => {
-                  const next = { ...current };
-                  if (event.target.checked) next[id] = true;
-                  else delete next[id];
+                  const next = new Set(current);
+                  if (event.target.checked) next.add(id);
+                  else next.delete(id);
                   return next;
                 })} />
                 {student.photo ? <img className="member-candidate-avatar" src={student.photo} alt="" /> : <span className="member-candidate-avatar member-candidate-avatar-fallback">{student.name?.trim()?.[0]?.toUpperCase() || '?'}</span>}
@@ -138,7 +138,7 @@ function AddMembersModal({ classes, onClose, onAdd }) {
       <div className={`member-selection-summary ${selectedCount ? 'has-selection' : ''}`}>
         <span className="member-selection-icon"><Users size={17} /></span>
         <div><b>{selectedCount} siswa dipilih</b><small>{selectedCount ? 'Semua pilihan akan ditambahkan sekaligus.' : 'Centang beberapa siswa untuk menambahkannya dalam satu proses.'}</small></div>
-        {selectedCount > 0 && <button type="button" onClick={() => setSelected({})} disabled={saving}>Kosongkan</button>}
+        {selectedCount > 0 && <button type="button" onClick={() => setSelected(new Set())} disabled={saving}>Kosongkan</button>}
       </div>
       {error && <div className="library-error" role="alert">{error}</div>}
       <footer className="master-modal-actions">
@@ -213,7 +213,7 @@ export default function SchoolMembersPage({ rights }) {
   const canEdit = Boolean(rights?.edit);
   const canDelete = Boolean(rights?.delete);
   const [members, setMembers] = useState([]);
-  const [selectedMembers, setSelectedMembers] = useState({});
+  const [selectedMembers, setSelectedMembers] = useState(() => new Set());
   const [classes, setClasses] = useState([]);
   const [pagination, setPagination] = useState({ page: 1, total: 0, totalPages: 0 });
   const [page, setPage] = useState(1);
@@ -228,8 +228,8 @@ export default function SchoolMembersPage({ rights }) {
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
-  const selectedIds = Object.keys(selectedMembers);
-  const allVisibleSelected = members.length > 0 && members.every((member) => Boolean(selectedMembers[String(member.id)]));
+  const selectedIds = [...selectedMembers];
+  const allVisibleSelected = members.length > 0 && members.every((member) => selectedMembers.has(String(member.id)));
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -240,7 +240,7 @@ export default function SchoolMembersPage({ rights }) {
   }, [queryInput]);
 
   useEffect(() => {
-    setSelectedMembers({});
+    setSelectedMembers(new Set());
   }, [page, search, refreshKey]);
 
   useEffect(() => {
@@ -290,7 +290,7 @@ export default function SchoolMembersPage({ rights }) {
     try {
       const result = await deleteMembers(deleteTarget);
       setDeleteTarget(null);
-      setSelectedMembers({});
+      setSelectedMembers(new Set());
       setNotice(result.message);
       setRefreshKey((current) => current + 1);
     } catch (removeError) {
@@ -302,11 +302,11 @@ export default function SchoolMembersPage({ rights }) {
 
   function toggleVisibleMembers(checked) {
     setSelectedMembers((current) => {
-      const next = { ...current };
+      const next = new Set(current);
       members.forEach((member) => {
         const id = String(member.id);
-        if (checked) next[id] = true;
-        else delete next[id];
+        if (checked) next.add(id);
+        else next.delete(id);
       });
       return next;
     });
@@ -327,9 +327,9 @@ export default function SchoolMembersPage({ rights }) {
       </section>
       <section className="master-data-panel member-table-panel">
         <div className="school-settings-panel-heading member-table-heading">
-          <div><h2>Daftar Member</h2><p>{pagination.total.toLocaleString('id-ID')} siswa terpilih sebagai member</p></div>
-          {canDelete && <button type="button" className="master-button procurement-delete-selected" disabled={!selectedIds.length || deleting} onClick={() => { setDeleteError(''); setDeleteTarget(selectedIds); }}>
-            <Trash2 size={15} />Hapus Terpilih{selectedIds.length ? ` (${selectedIds.length})` : ''}
+          <div><h2>Daftar Member</h2><p>{pagination.total.toLocaleString('id-ID')} siswa sebagai member · {selectedIds.length.toLocaleString('id-ID')} dipilih</p></div>
+          {canDelete && <button type="button" className="master-button master-button-danger" disabled={!selectedIds.length || deleting} onClick={() => { setDeleteError(''); setDeleteTarget(selectedIds); }}>
+            <Trash2 size={15} />Hapus Terpilih ({selectedIds.length})
           </button>}
         </div>
         <div className="master-table-scroll">
@@ -342,10 +342,10 @@ export default function SchoolMembersPage({ rights }) {
               {loading ? <tr><td className="master-empty-cell" colSpan={8 + (canDelete ? 1 : 0) + (canEdit || canDelete ? 1 : 0)}>Memuat data member...</td></tr>
                 : members.length === 0 ? <tr><td className="master-empty-cell" colSpan={8 + (canDelete ? 1 : 0) + (canEdit || canDelete ? 1 : 0)}>Belum ada siswa yang dipilih sebagai member.</td></tr>
                   : members.map((member, index) => <tr key={member.id}>
-                    {canDelete && <td className="member-table-checkbox"><input type="checkbox" checked={Boolean(selectedMembers[String(member.id)])} onChange={(event) => setSelectedMembers((current) => {
-                      const next = { ...current };
-                      if (event.target.checked) next[String(member.id)] = true;
-                      else delete next[String(member.id)];
+                    {canDelete && <td className="member-table-checkbox"><input type="checkbox" checked={selectedMembers.has(String(member.id))} onChange={(event) => setSelectedMembers((current) => {
+                      const next = new Set(current);
+                      if (event.target.checked) next.add(String(member.id));
+                      else next.delete(String(member.id));
                       return next;
                     })} aria-label={`Pilih ${member.name}`} /></td>}
                     <td>{(page - 1) * pageSize + index + 1}</td>

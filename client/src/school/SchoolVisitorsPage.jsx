@@ -106,6 +106,7 @@ export default function SchoolVisitorsPage({ rights, role, account, schoolName, 
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteVisitTarget, setDeleteVisitTarget] = useState(null);
   const [previewVisit, setPreviewVisit] = useState(null);
   const [printRows, setPrintRows] = useState(null);
   const memberInputRef = useRef(null);
@@ -346,6 +347,28 @@ export default function SchoolVisitorsPage({ rights, role, account, schoolName, 
     }
   }
 
+  async function confirmDeleteVisit() {
+    if (!deleteVisitTarget) return;
+    setDeleting(true);
+    setDeleteError('');
+    setRecordsNotice('');
+    try {
+      const result = await deleteVisitorRecords([String(deleteVisitTarget.id)]);
+      setSelectedVisitIds((current) => {
+        const next = new Set(current);
+        next.delete(String(deleteVisitTarget.id));
+        return next;
+      });
+      setDeleteVisitTarget(null);
+      setRecordsNotice(result.message || 'Data kunjungan berhasil dihapus.');
+      setRefreshKey((current) => current + 1);
+    } catch (error) {
+      setDeleteError(error.message);
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   return (
     <div className="library-module-page visitors-page">
       <header className="library-module-heading">
@@ -505,7 +528,10 @@ export default function SchoolVisitorsPage({ rights, role, account, schoolName, 
                     <td><b className="visitor-record-name">{visit.visitor_name}</b></td>
                     <td><div className="loan-member-cell"><b>{visit.nis_nisn || '—'}</b><small>{visit.rombel || 'Rombel belum diisi'}</small></div></td>
                     <td>{visit.purpose || '—'}</td>
-                    <td><button type="button" className="master-row-icon is-preview" title="Pratinjau" aria-label={`Pratinjau kunjungan ${visit.visitor_name}`} onClick={() => setPreviewVisit(visit)}><Eye size={14} /></button></td>
+                    <td><div className="visitor-row-actions">
+                      <button type="button" className="master-row-icon is-preview" title="Pratinjau" aria-label={`Pratinjau kunjungan ${visit.visitor_name}`} onClick={() => setPreviewVisit(visit)}><Eye size={14} /></button>
+                      {canDeleteRecords && <button type="button" className="master-row-icon is-delete" title="Hapus kunjungan" aria-label={`Hapus kunjungan ${visit.visitor_name}`} disabled={deleting} onClick={() => { setDeleteError(''); setDeleteVisitTarget(visit); }}><Trash2 size={14} /></button>}
+                    </div></td>
                   </tr>
                 )) : (
                   <tr><td className="loan-table-empty" colSpan={recordColumnCount}>{search || date ? 'Tidak ada kunjungan yang sesuai dengan filter.' : 'Belum ada data kunjungan.'}</td></tr>
@@ -532,6 +558,15 @@ export default function SchoolVisitorsPage({ rights, role, account, schoolName, 
         error={deleteError}
         onClose={() => { if (!deleting) { setDeleteConfirmOpen(false); setDeleteError(''); } }}
         onConfirm={confirmDeleteVisits}
+      />}
+      {deleteVisitTarget && <SchoolConfirmDialog
+        title="Hapus data kunjungan?"
+        message="Data kunjungan ini akan dihapus permanen."
+        itemName={deleteVisitTarget.visitor_name}
+        loading={deleting}
+        error={deleteError}
+        onClose={() => { if (!deleting) { setDeleteVisitTarget(null); setDeleteError(''); } }}
+        onConfirm={confirmDeleteVisit}
       />}
       {printRows && <section className="visitor-print-report" aria-hidden="true">
         <SchoolPrintHeader

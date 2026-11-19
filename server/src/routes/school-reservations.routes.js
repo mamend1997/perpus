@@ -220,21 +220,6 @@ router.post('/', requireSchoolPermission('reservations', 'edit'), async (req, re
         message: `Jumlah booking tidak boleh melebihi batas maksimal ${settings.max_loans_per_member} buku per anggota.`
       });
     }
-    const [copies] = await connection.execute(
-      `SELECT bi.id FROM book_items bi
-       WHERE bi.school_id = ? AND bi.book_id = ? AND bi.status = 'Tersedia'
-         AND NOT EXISTS (
-           SELECT 1 FROM loans l WHERE l.school_id = bi.school_id
-             AND l.book_item_id = bi.id AND l.status IN ('Pending', 'Borrowed')
-         )
-       LIMIT ?`,
-      [req.school.id, bookId, quantity]
-    );
-    if (copies.length) {
-      await connection.rollback();
-      transactionStarted = false;
-      return res.status(409).json({ message: 'Buku masih memiliki eksemplar yang tersedia; booking hanya dapat dibuat saat stok tidak tersedia.' });
-    }
     const [existing] = await connection.execute(
       `SELECT id FROM book_reservations
        WHERE school_id = ? AND book_id = ? AND user_id = ? AND status = 'Active'

@@ -3,12 +3,12 @@ import { createPortal } from 'react-dom';
 import ExcelJS from 'exceljs';
 import JsBarcode from 'jsbarcode';
 import {
-  Camera, Download, FileSpreadsheet, LoaderCircle, Pencil, Plus, Printer, Search, Trash2, Upload, Users, X
+  Camera, Check, Download, FileSpreadsheet, LoaderCircle, Pencil, Plus, Printer, Search, Trash2, Upload, Users, X
 } from 'lucide-react';
 import SchoolConfirmDialog from './SchoolConfirmDialog.jsx';
 import SchoolPrintHeader from './SchoolPrintHeader.jsx';
 import {
-  assignClassStudents, createStudent, createStudentClass, deleteStudent, deleteStudentClasses, deleteStudents,
+  activateStudent, assignClassStudents, createStudent, createStudentClass, deleteStudent, deleteStudentClasses, deleteStudents,
   fetchClassStudents, fetchInactiveStudents, fetchStudentClasses, fetchStudents, importStudents,
   updateStudent, updateStudentClass
 } from './schoolStudentApi.js';
@@ -224,6 +224,7 @@ function ClassStudentsModal({ schoolClass, onClose, onSave }) {
   }, [schoolClass.id, page, search]);
 
   function isSelected(student) {
+    if (student.assignedElsewhere) return false;
     const id = String(student.id);
     return Object.prototype.hasOwnProperty.call(selection, id) ? selection[id] : Boolean(student.assigned);
   }
@@ -231,7 +232,9 @@ function ClassStudentsModal({ schoolClass, onClose, onSave }) {
   function togglePage(checked) {
     setSelection((current) => {
       const next = { ...current };
-      students.forEach((student) => { next[String(student.id)] = checked; });
+      students.filter((student) => !student.assignedElsewhere).forEach((student) => {
+        next[String(student.id)] = checked;
+      });
       return next;
     });
   }
@@ -240,7 +243,8 @@ function ClassStudentsModal({ schoolClass, onClose, onSave }) {
     .filter((id) => Object.prototype.hasOwnProperty.call(original, id) && selection[id] !== original[id]);
   const assignIds = changes.filter((id) => selection[id]);
   const unassignIds = changes.filter((id) => !selection[id]);
-  const allPageSelected = students.length > 0 && students.every(isSelected);
+  const selectableStudents = students.filter((student) => !student.assignedElsewhere);
+  const allPageSelected = selectableStudents.length > 0 && selectableStudents.every(isSelected);
 
   async function submit() {
     if (!changes.length || changes.length > 500) return;
@@ -259,22 +263,22 @@ function ClassStudentsModal({ schoolClass, onClose, onSave }) {
     <div className="master-modal-backdrop student-form-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) onClose(); }}>
       <section className="master-modal class-students-modal" role="dialog" aria-modal="true" aria-labelledby="class-students-title">
         <header className="master-modal-heading">
-          <div><span className="library-eyebrow">PENETAPAN SISWA</span><h2 id="class-students-title">{schoolClass.className}</h2><p>Pilih siswa untuk ditambahkan ke kelas atau lepaskan centang untuk mengeluarkannya.</p></div>
+          <div><span className="library-eyebrow">PENETAPAN SISWA</span><h2 id="class-students-title">{schoolClass.className}</h2><p>Siswa yang sudah masuk rombel lain tidak dapat dipilih. Lepaskan penetapan kelas sebelumnya terlebih dahulu.</p></div>
           <button type="button" className="master-icon-button" onClick={onClose} disabled={saving} aria-label="Tutup penetapan siswa">×</button>
         </header>
         {error && <div className="library-error" role="alert">{error}</div>}
         <label className="master-search class-students-search"><Search size={16} /><input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Cari nama atau NIS/NISN..." maxLength={100} /></label>
         <div className="class-students-toolbar">
           <span>{pagination.total.toLocaleString('id-ID')} siswa · halaman ini {students.length}</span>
-          <label><input type="checkbox" checked={allPageSelected} onChange={(event) => togglePage(event.target.checked)} disabled={loading || !students.length} /> Pilih semua di halaman</label>
+          <label><input type="checkbox" checked={allPageSelected} onChange={(event) => togglePage(event.target.checked)} disabled={loading || !selectableStudents.length} /> Pilih semua di halaman</label>
         </div>
         <div className="class-students-list">
           {loading ? <div className="class-students-empty"><LoaderCircle size={18} className="book-stock-spinner" />Memuat data siswa...</div>
             : students.length ? students.map((student) => (
-              <label className={`class-student-option ${isSelected(student) ? 'is-selected' : ''}`} key={student.id}>
-                <input type="checkbox" checked={isSelected(student)} onChange={(event) => setSelection((current) => ({ ...current, [String(student.id)]: event.target.checked }))} />
+              <label className={`class-student-option ${isSelected(student) ? 'is-selected' : ''} ${student.assignedElsewhere ? 'is-disabled' : ''}`} key={student.id}>
+                <input type="checkbox" checked={isSelected(student)} disabled={saving || student.assignedElsewhere} onChange={(event) => setSelection((current) => ({ ...current, [String(student.id)]: event.target.checked }))} />
                 <span><b>{student.name}</b><small>{student.nis_nisn || 'Tanpa NIS/NISN'} <i /> {student.rombel || 'Belum diatur'}</small></span>
-                <span className="class-student-assigned">{isSelected(student) ? 'Dipilih' : 'Tidak dipilih'}</span>
+                <span className="class-student-assigned">{student.assignedElsewhere ? `Sudah di ${student.rombel}` : isSelected(student) ? 'Dipilih' : 'Tidak dipilih'}</span>
               </label>
             )) : <div className="class-students-empty">Tidak ada siswa yang cocok dengan pencarian.</div>}
         </div>
@@ -425,12 +429,13 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
   const [inactiveSearch, setInactiveSearch] = useState('');
   const [inactiveLoading, setInactiveLoading] = useState(false);
   const [inactiveError, setInactiveError] = useState('');
+  const [inactiveSelected, setInactiveSelected] = useState({});
+  const [activatingStudentId, setActivatingStudentId] = useState('');
   const [pagination, setPagination] = useState({ page: 1, total: 0, totalPages: 0 });
   const [page, setPage] = useState(1);
   const [queryInput, setQueryInput] = useState('');
   const [search, setSearch] = useState('');
   const [classFilter, setClassFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -452,9 +457,12 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
   const [memberCards, setMemberCards] = useState(null);
   const selectedIds = Object.keys(selected);
   const allVisibleSelected = students.length > 0 && students.every((student) => Boolean(selected[String(student.id)]));
-  const classStudentCount = classes.reduce((total, item) => total + Number(item.studentCount || 0), 0);
+  const inactiveSelectedIds = Object.keys(inactiveSelected);
+  const allInactiveVisibleSelected = inactiveStudents.length > 0
+    && inactiveStudents.every((student) => Boolean(inactiveSelected[String(student.id)]));
+  const classStudentCount = classes.reduce((total, item) => total + Number(item.activeCount || 0), 0);
   const loadedStudentCount = (page - 1) * studentPageSize + students.length;
-  const studentCountFallback = search || classFilter || statusFilter
+  const studentCountFallback = search || classFilter
     ? loadedStudentCount
     : Math.max(classStudentCount, loadedStudentCount);
   const studentCount = Math.max(pagination.total, studentCountFallback);
@@ -465,6 +473,7 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
     && managedClasses.every((item) => Boolean(selectedClasses[String(item.id)]));
   const classColumnCount = 6 + (canDelete ? 1 : 0);
   const columnCount = 9 + (canDelete ? 1 : 0);
+  const inactiveColumnCount = 6 + (canDelete ? 1 : 0) + (canEdit || canDelete ? 1 : 0);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => { setSearch(queryInput.trim()); setPage(1); }, 250);
@@ -473,7 +482,11 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
 
   useEffect(() => {
     setSelected({});
-  }, [page, search, classFilter, statusFilter]);
+  }, [page, search, classFilter]);
+
+  useEffect(() => {
+    setInactiveSelected({});
+  }, [inactivePage, inactiveSearch, refreshKey]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -522,7 +535,7 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
     const controller = new AbortController();
     setLoading(true);
     setError('');
-    fetchStudents({ page, limit: studentPageSize, search, rombel: classFilter, status: statusFilter, signal: controller.signal })
+    fetchStudents({ page, limit: studentPageSize, search, rombel: classFilter, status: 'active', signal: controller.signal })
       .then((result) => {
         if (controller.signal.aborted) return;
         setStudents(result.students || []);
@@ -533,7 +546,7 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
       .catch((loadError) => { if (!controller.signal.aborted) setError(loadError.message); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [page, search, classFilter, statusFilter, refreshKey]);
+  }, [page, search, classFilter, refreshKey]);
 
   useEffect(() => {
     if (!pdfRows && !memberCards) return undefined;
@@ -565,7 +578,6 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
     setQueryInput('');
     setSearch('');
     setClassFilter('');
-    setStatusFilter('');
     setSelected({});
     setPage(1);
     setRefreshKey((value) => value + 1);
@@ -576,17 +588,37 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
     setDeleting(true);
     setDeleteError('');
     try {
-      const result = deleteTarget === 'selected'
-        ? await deleteStudents(selectedIds)
+      const bulkIds = deleteTarget === 'selected'
+        ? selectedIds
+        : deleteTarget === 'inactive-selected'
+          ? inactiveSelectedIds
+          : null;
+      const result = bulkIds
+        ? await deleteStudents(bulkIds)
         : await deleteStudent(deleteTarget.id);
       setNotice(result.message);
       setDeleteTarget(null);
       setSelected({});
+      setInactiveSelected({});
       setRefreshKey((value) => value + 1);
     } catch (failure) {
       setDeleteError(failure.message);
     } finally {
       setDeleting(false);
+    }
+  }
+
+  async function reactivateStudent(student) {
+    setActivatingStudentId(String(student.id));
+    setInactiveError('');
+    try {
+      const result = await activateStudent(student.id);
+      setNotice(result.message);
+      setRefreshKey((value) => value + 1);
+    } catch (failure) {
+      setInactiveError(failure.message);
+    } finally {
+      setActivatingStudentId('');
     }
   }
 
@@ -647,10 +679,10 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
     setExporting(true);
     setError('');
     try {
-      const first = await fetchStudents({ page: 1, limit: 100, search, rombel: classFilter, status: statusFilter });
+      const first = await fetchStudents({ page: 1, limit: 100, search, rombel: classFilter, status: 'active' });
       const allStudents = [...(first.students || [])];
       for (let currentPage = 2; currentPage <= (first.pagination?.totalPages || 0); currentPage += 1) {
-        const result = await fetchStudents({ page: currentPage, limit: 100, search, rombel: classFilter, status: statusFilter });
+        const result = await fetchStudents({ page: currentPage, limit: 100, search, rombel: classFilter, status: 'active' });
         allStudents.push(...(result.students || []));
       }
       const workbook = new ExcelJS.Workbook();
@@ -678,10 +710,10 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
     setExporting(true);
     setError('');
     try {
-      const first = await fetchStudents({ page: 1, limit: 100, search, rombel: classFilter, status: statusFilter });
+      const first = await fetchStudents({ page: 1, limit: 100, search, rombel: classFilter, status: 'active' });
       const allStudents = [...(first.students || [])];
       for (let currentPage = 2; currentPage <= (first.pagination?.totalPages || 0); currentPage += 1) {
-        const result = await fetchStudents({ page: currentPage, limit: 100, search, rombel: classFilter, status: statusFilter });
+        const result = await fetchStudents({ page: currentPage, limit: 100, search, rombel: classFilter, status: 'active' });
         allStudents.push(...(result.students || []));
       }
       setPdfRows(allStudents);
@@ -704,7 +736,21 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
     });
   }
 
+  function toggleVisibleInactiveStudents(checked) {
+    setInactiveSelected((current) => {
+      const next = { ...current };
+      inactiveStudents.forEach((student) => {
+        const id = String(student.id);
+        if (checked) next[id] = true;
+        else delete next[id];
+      });
+      return next;
+    });
+  }
+
   const selectedClass = useMemo(() => classes.find((item) => item.className === classFilter), [classes, classFilter]);
+  const isBulkDeleteTarget = deleteTarget === 'selected' || deleteTarget === 'inactive-selected';
+  const isInactiveDeleteTarget = deleteTarget === 'inactive-selected' || deleteTarget?.source === 'inactive';
 
   return (
     <div className="library-module-page school-students-page">
@@ -731,15 +777,12 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
                 <option value="">Semua Kelas</option>{classes.map((item) => <option key={item.className} value={item.className}>{item.className}</option>)}
               </select>
             </label>
-            <label>Status
-              <select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setPage(1); }}><option value="">Semua Status</option><option value="active">Aktif</option><option value="inactive">Nonaktif</option></select>
-            </label>
             <div className="student-toolbar-actions">
               <button type="button" className="master-button master-button-light" onClick={exportExcel} disabled={exporting}><Download size={15} />{exporting ? 'Mengekspor...' : 'Export Excel'}</button>
               <button type="button" className="master-button master-button-light" onClick={exportPdf} disabled={exporting}><Printer size={15} />Export PDF</button>
               {canEdit && <button type="button" className="master-button master-button-light" onClick={() => setImportOpen(true)}><FileSpreadsheet size={15} />Import Excel</button>}
               {canEdit && <button type="button" className="master-button master-button-primary" onClick={() => setEditor({ ...emptyStudent })}><Plus size={15} />Tambah Siswa</button>}
-              {canDelete && selectedIds.length > 0 && <button type="button" className="master-button master-button-danger" onClick={() => { setDeleteError(''); setDeleteTarget('selected'); }}><Trash2 size={15} />Hapus Terpilih ({selectedIds.length})</button>}
+              {canDelete && <button type="button" className="master-button master-button-danger" disabled={!selectedIds.length} onClick={() => { setDeleteError(''); setDeleteTarget('selected'); }}><Trash2 size={15} />Hapus Terpilih ({selectedIds.length})</button>}
             </div>
           </section>
           {selectedIds.length > 0 && <div className="student-selection-summary" role="status">{selectedIds.length.toLocaleString('id-ID')} siswa dipilih pada halaman ini.</div>}
@@ -779,7 +822,7 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
           <div className="school-settings-panel-heading school-class-panel-heading">
             <div><h2>Data Rombel / Kelas</h2><p>Atur kelas dan penetapan siswa sesuai jenjang sekolah.</p></div>
             <div className="school-class-toolbar-actions">
-              {canDelete && selectedClassIds.length > 0 && <button type="button" className="master-button procurement-delete-selected" onClick={() => { setClassDeleteError(''); setClassDeleteTarget('selected'); }}><Trash2 size={15} />Hapus Terpilih ({selectedClassIds.length})</button>}
+            {canDelete && <button type="button" className="master-button master-button-danger" disabled={!selectedClassIds.length} onClick={() => { setClassDeleteError(''); setClassDeleteTarget('selected'); }}><Trash2 size={15} />Hapus Terpilih ({selectedClassIds.length})</button>}
               {canEdit && <button type="button" className="master-button master-button-primary" onClick={() => setClassEditor({})} disabled={!gradeLevels.length}><Plus size={15} />Tambah Kelas</button>}
             </div>
           </div>
@@ -817,21 +860,33 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
           {inactiveError && <div className="library-error" role="alert"><span>{inactiveError}</span><button type="button" onClick={() => setRefreshKey((value) => value + 1)}>Coba lagi</button></div>}
           <section className="catalog-toolbar-panel student-toolbar student-inactive-toolbar">
             <label className="master-search student-search"><Search size={16} /><input value={inactiveQueryInput} onChange={(event) => setInactiveQueryInput(event.target.value)} placeholder="Cari nama, NIS/NISN, atau rombel..." maxLength={100} /></label>
+            {canDelete && <button type="button" className="master-button master-button-danger" disabled={!inactiveSelectedIds.length || deleting} onClick={() => { setDeleteError(''); setDeleteTarget('inactive-selected'); }}><Trash2 size={15} />Hapus Terpilih ({inactiveSelectedIds.length})</button>}
           </section>
           <section className="master-data-panel student-table-panel">
-            <div className="school-settings-panel-heading"><div><h2>Daftar Siswa Nonaktif</h2><p>{inactivePagination.total.toLocaleString('id-ID')} siswa lulus atau berstatus nonaktif.</p></div></div>
+            <div className="school-settings-panel-heading"><div><h2>Daftar Siswa Nonaktif</h2><p>{inactivePagination.total.toLocaleString('id-ID')} siswa lulus atau berstatus nonaktif{inactiveSelectedIds.length ? ` · ${inactiveSelectedIds.length} dipilih` : ''}.</p></div></div>
             <div className="master-table-scroll">
               <table className="master-table student-table">
-                <thead><tr><th>No</th><th>NIS / NISN</th><th>Nama Lengkap</th><th>Rombel Terakhir</th><th>Status Akun</th><th>Keterangan</th></tr></thead>
-                <tbody>{inactiveLoading ? <tr><td className="master-empty-cell" colSpan={6}>Memuat siswa nonaktif...</td></tr>
-                  : inactiveStudents.length === 0 ? <tr><td className="master-empty-cell" colSpan={6}>{inactiveSearch ? 'Tidak ada siswa nonaktif yang cocok.' : 'Belum ada siswa lulus atau nonaktif.'}</td></tr>
+                <thead><tr>{canDelete && <th className="student-checkbox"><input type="checkbox" checked={allInactiveVisibleSelected} onChange={(event) => toggleVisibleInactiveStudents(event.target.checked)} aria-label="Pilih semua siswa nonaktif di halaman ini" /></th>}<th>No</th><th>NIS / NISN</th><th>Nama Lengkap</th><th>Rombel Terakhir</th><th>Status Akun</th><th>Keterangan</th>{(canEdit || canDelete) && <th>Aksi</th>}</tr></thead>
+                <tbody>{inactiveLoading ? <tr><td className="master-empty-cell" colSpan={inactiveColumnCount}>Memuat siswa nonaktif...</td></tr>
+                  : inactiveStudents.length === 0 ? <tr><td className="master-empty-cell" colSpan={inactiveColumnCount}>{inactiveSearch ? 'Tidak ada siswa nonaktif yang cocok.' : 'Belum ada siswa lulus atau nonaktif.'}</td></tr>
                     : inactiveStudents.map((student, index) => <tr key={student.id}>
+                      {canDelete && <td className="student-checkbox"><input type="checkbox" checked={Boolean(inactiveSelected[String(student.id)])} onChange={(event) => setInactiveSelected((current) => {
+                        const next = { ...current };
+                        if (event.target.checked) next[String(student.id)] = true;
+                        else delete next[String(student.id)];
+                        return next;
+                      })} aria-label={`Pilih ${student.name}`} /></td>}
                       <td>{(inactivePage - 1) * studentPageSize + index + 1}</td>
                       <td>{student.nis_nisn || '—'}</td>
                       <td><b>{student.name}</b></td>
                       <td>{student.rombel || 'Belum diatur'}</td>
                       <td><span className="master-status is-inactive">{studentStatusLabel(student.status)}</span></td>
                       <td>{student.inactive_reason === 'graduated' ? `Lulus${student.graduation_year ? ` · ${student.graduation_year}` : ''}` : 'Nonaktif'}</td>
+                      {(canEdit || canDelete) && <td><div className="student-row-actions">
+                        {canEdit && <button type="button" className="master-icon-button" title="Edit siswa" aria-label={`Edit ${student.name}`} onClick={() => setEditor(student)}><Pencil size={15} /></button>}
+                        {canEdit && student.status !== 'active' && <button type="button" className="master-icon-button" title="Aktifkan kembali" aria-label={`Aktifkan kembali ${student.name}`} disabled={activatingStudentId === String(student.id)} onClick={() => reactivateStudent(student)}><Check size={15} /></button>}
+                        {canDelete && <button type="button" className="master-icon-button" title="Hapus permanen" aria-label={`Hapus permanen ${student.name}`} onClick={() => { setDeleteError(''); setDeleteTarget({ ...student, source: 'inactive' }); }}><Trash2 size={15} /></button>}
+                      </div></td>}
                     </tr>)}
                 </tbody>
               </table>
@@ -891,9 +946,13 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
       {classEditor && <SchoolClassForm schoolClass={classEditor.id ? classEditor : null} gradeLevels={gradeLevels} onClose={() => setClassEditor(null)} onSave={saveSchoolClass} />}
       {classAssignment && <ClassStudentsModal schoolClass={classAssignment} onClose={() => setClassAssignment(null)} onSave={saveClassAssignments} />}
       {deleteTarget && <SchoolConfirmDialog
-        title={deleteTarget === 'selected' ? 'Hapus siswa terpilih?' : 'Hapus data siswa?'}
-        message={deleteTarget === 'selected' ? `${selectedIds.length} siswa akan dihapus permanen.` : 'Data siswa akan dihapus permanen jika tidak terikat pada riwayat transaksi.'}
-        itemName={deleteTarget === 'selected' ? `${selectedIds.length} siswa terpilih` : deleteTarget.name}
+        title={isBulkDeleteTarget ? (isInactiveDeleteTarget ? 'Hapus siswa nonaktif terpilih?' : 'Hapus siswa terpilih?') : 'Hapus data siswa?'}
+        message={isBulkDeleteTarget
+          ? `${(isInactiveDeleteTarget ? inactiveSelectedIds : selectedIds).length} siswa akan dihapus permanen.`
+          : 'Data siswa akan dihapus permanen jika tidak terikat pada riwayat transaksi.'}
+        itemName={isBulkDeleteTarget
+          ? `${(isInactiveDeleteTarget ? inactiveSelectedIds : selectedIds).length} siswa terpilih`
+          : deleteTarget.name}
         loading={deleting}
         error={deleteError}
         onClose={() => { if (!deleting) { setDeleteTarget(null); setDeleteError(''); } }}
