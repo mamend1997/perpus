@@ -18,6 +18,7 @@ import SchoolReservationsPage from './SchoolReservationsPage.jsx';
 import SchoolReviewsPage from './SchoolReviewsPage.jsx';
 import SchoolPublicPortalPage from './SchoolPublicPortalPage.jsx';
 import SchoolAnnouncementsPage from './SchoolAnnouncementsPage.jsx';
+import SchoolAnnouncementPopup from './SchoolAnnouncementPopup.jsx';
 import SchoolAcademicYearsPage from './SchoolAcademicYearsPage.jsx';
 import { fetchSchoolIdentity, fetchSchoolProfile } from './schoolAccountApi.js';
 import { fetchMobileNavbarSettings, fetchMySchoolPermissions } from './schoolSettingsApi.js';
@@ -254,6 +255,7 @@ export default function SchoolPortal({ account, onLogout, onAccountUpdated }) {
 
   return (
     <div className={`school-app-shell library-app-frame ${collapsed ? 'sidebar-collapsed' : ''} ${active === 'Data Siswa & Rombel' ? 'is-printing-students' : ''} ${active === 'Buku Tamu Digital' ? 'is-printing-visitors' : ''}`}>
+      <SchoolAnnouncementPopup key={`${school.id || school.code}:${account.id}`} />
       {mobileOpen && <button className="school-sidebar-scrim" onClick={() => setMobileOpen(false)} aria-label="Tutup menu sekolah" />}
       <aside
         className={`school-sidebar ${mobileOpen ? 'mobile-open' : ''} ${collapsed ? 'collapsed' : ''} ${collapsed && hoverExpanded ? 'hover-expanded' : ''}`}

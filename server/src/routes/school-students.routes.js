@@ -222,7 +222,15 @@ router.get('/inactive', staffOnly, requireSchoolPermission('master.students', 'v
   if (search.length > 100) return res.status(400).json({ message: 'Pencarian siswa nonaktif maksimal 100 karakter.' });
   if (!page || !limit) return res.status(400).json({ message: 'Nomor halaman atau jumlah data tidak valid.' });
 
-  const conditions = ['u.school_id = ?', "u.role = 'member'", "u.status = 'inactive'"];
+  const conditions = [
+    'u.school_id = ?',
+    "u.role = 'member'",
+    `(u.status IN ('inactive', 'blocked') OR EXISTS (
+      SELECT 1 FROM school_year_student_archives archived
+      WHERE archived.school_id = u.school_id AND archived.student_id = u.id
+        AND archived.promotion_status = 'graduated'
+    ))`
+  ];
   const values = [req.school.id];
   if (search) {
     conditions.push('(u.name LIKE ? OR COALESCE(u.nis_nisn, \'\') LIKE ? OR COALESCE(u.rombel, \'\') LIKE ?)');

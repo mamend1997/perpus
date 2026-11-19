@@ -16,7 +16,7 @@ router.get('/notifications', requireSchoolPermission('reservations', 'view'), as
     const [notifications] = await pool.execute(
       `SELECT id, type, title, message, link, read_at, created_at
        FROM school_notifications
-       WHERE school_id = ? AND user_id = ?
+       WHERE school_id = ? AND user_id = ? AND type <> 'announcement_dismissed'
        ORDER BY created_at DESC, id DESC
        LIMIT 100`,
       [req.school.id, req.school.userId]
@@ -143,6 +143,32 @@ router.get('/', requireSchoolPermission('reservations', 'view'), async (req, res
     return res.json({
       reservations: rows.map((row) => ({ ...row, id: String(row.id), book_id: String(row.book_id), user_id: String(row.user_id) })),
       pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.delete('/bulk', requireSchoolPermission('reservations', 'delete'), async (req, res, next) => {
+  const rawIds = req.body?.ids;
+  if (!Array.isArray(rawIds) || rawIds.length < 1 || rawIds.length > 500) {
+    return res.status(400).json({ message: 'Pilih 1 sampai 500 booking untuk dihapus.' });
+  }
+  if (isMember(req)) return res.status(403).json({ message: 'Hanya petugas yang dapat menghapus booking.' });
+  const ids = [...new Set(rawIds.map(String))];
+  if (ids.some((id) => !validId(id))) {
+    return res.status(400).json({ message: 'Daftar ID booking tidak valid.' });
+  }
+  try {
+    const placeholders = ids.map(() => '?').join(', ');
+    const [result] = await pool.execute(
+      `DELETE FROM book_reservations
+       WHERE school_id = ? AND id IN (${placeholders})`,
+      [req.school.id, ...ids]
+    );
+    return res.json({
+      deleted: result.affectedRows,
+      message: `${result.affectedRows} booking berhasil dihapus.`
     });
   } catch (error) {
     return next(error);

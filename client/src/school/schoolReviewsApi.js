@@ -36,3 +36,7 @@ export function createReview({ bookId, rating, review }) {
 export function deleteReview(id) {
   return requestReviewsApi(`/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
+
+export function deleteReviews(ids) {
+  return requestReviewsApi('/bulk', { method: 'DELETE', body: { ids } });
+}

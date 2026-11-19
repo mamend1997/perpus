@@ -50,3 +50,7 @@ export function notifyReservationReady(id) {
 export function fulfillReservation(id) {
   return requestReservationApi(`/${encodeURIComponent(id)}/fulfill`, { method: 'POST' });
 }
+
+export function deleteReservations(ids) {
+  return requestReservationApi('/bulk', { method: 'DELETE', body: { ids } });
+}

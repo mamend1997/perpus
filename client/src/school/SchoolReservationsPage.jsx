@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import {
-  Bell, Check, ChevronLeft, ChevronRight, Clock3, LoaderCircle, Search, Ticket, X
+  Bell, Check, ChevronLeft, ChevronRight, Clock3, LoaderCircle, Search, Ticket, Trash2, X
 } from 'lucide-react';
 import {
-  cancelReservation, createReservation, fetchReservationNotifications, fetchReservations,
+  cancelReservation, createReservation, deleteReservations, fetchReservationNotifications, fetchReservations,
   fulfillReservation, markReservationNotificationRead, notifyReservationReady, searchReservationBooks
 } from './schoolReservationApi.js';
+import SchoolConfirmDialog from './SchoolConfirmDialog.jsx';
 
 const pageSize = 25;
 
@@ -28,7 +29,9 @@ export default function SchoolReservationsPage({ rights, role, account }) {
   const canEdit = Boolean(rights?.edit);
   const canView = Boolean(rights?.view);
   const canManage = canEdit && !isMember;
+  const canDelete = Boolean(rights?.delete) && !isMember;
   const [reservations, setReservations] = useState([]);
+  const [selectedReservationIds, setSelectedReservationIds] = useState(() => new Set());
   const [pagination, setPagination] = useState({ page: 1, total: 0, totalPages: 0 });
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState('');
@@ -47,6 +50,9 @@ export default function SchoolReservationsPage({ rights, role, account }) {
   const [notice, setNotice] = useState('');
   const [notifications, setNotifications] = useState([]);
   const [actionId, setActionId] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
   const selectedBook = books.find((book) => String(book.id) === String(selectedBookId));
 
   useEffect(() => {
@@ -172,6 +178,54 @@ export default function SchoolReservationsPage({ rights, role, account }) {
     }
   }
 
+  const visibleReservationIds = reservations.map((reservation) => String(reservation.id));
+  const allVisibleReservationsSelected = visibleReservationIds.length > 0
+    && visibleReservationIds.every((id) => selectedReservationIds.has(id));
+  const someVisibleReservationsSelected = visibleReservationIds.some((id) => selectedReservationIds.has(id));
+  const reservationColumnCount = (isMember ? 7 : 8) + Number(canDelete);
+
+  function toggleReservationSelection(id, checked) {
+    setSelectedReservationIds((current) => {
+      const next = new Set(current);
+      if (checked) next.add(String(id));
+      else next.delete(String(id));
+      return next;
+    });
+  }
+
+  function toggleAllVisibleReservations(checked) {
+    setSelectedReservationIds((current) => {
+      const next = new Set(current);
+      visibleReservationIds.forEach((id) => {
+        if (checked) next.add(id);
+        else next.delete(id);
+      });
+      return next;
+    });
+  }
+
+  async function confirmDeleteReservations() {
+    const ids = deleteTarget === 'selected'
+      ? [...selectedReservationIds]
+      : deleteTarget ? [String(deleteTarget.id)] : [];
+    if (!ids.length) return;
+    setDeleting(true);
+    setDeleteError('');
+    setError('');
+    try {
+      const result = await deleteReservations(ids);
+      setSelectedReservationIds(new Set());
+      setDeleteTarget(null);
+      setNotice(result.message || 'Booking terpilih berhasil dihapus.');
+      setPage(1);
+      setRefreshKey((value) => value + 1);
+    } catch (deleteFailure) {
+      setDeleteError(deleteFailure.message);
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   const pageCount = Math.max(1, pagination.totalPages || 1);
 
   return (
@@ -251,33 +305,50 @@ export default function SchoolReservationsPage({ rights, role, account }) {
         <div className="loan-toolbar-top">
           <label className="master-search loan-table-search">
             <Search size={16} />
-            <input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Cari judul, anggota, atau ID booking..." aria-label="Cari booking" />
+            <input value={searchInput} onChange={(event) => {
+              setSearchInput(event.target.value);
+              setSelectedReservationIds(new Set());
+            }} placeholder="Cari judul, anggota, atau ID booking..." aria-label="Cari booking" />
           </label>
           <div className="loan-toolbar-actions">
             <label className="loan-status-filter">Status
-              <select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setPage(1); }}>
+              <select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setPage(1); setSelectedReservationIds(new Set()); }}>
                 <option value="">Semua status</option>
                 <option value="Active">Aktif</option>
                 <option value="Fulfilled">Dipenuhi</option>
                 <option value="Cancelled">Dibatalkan</option>
               </select>
             </label>
+            {canDelete && <button type="button" className="master-button master-button-danger" disabled={!selectedReservationIds.size || loading || deleting} onClick={() => { setDeleteError(''); setDeleteTarget('selected'); }}>
+              <Trash2 size={15} />Hapus Terpilih{selectedReservationIds.size ? ` (${selectedReservationIds.size})` : ''}
+            </button>}
           </div>
         </div>
       </section>
 
       <section className="library-panel loan-table-panel">
         <div className="catalog-table-heading">
-          <div><h2>Daftar Booking</h2><p>{pagination.total} booking tercatat</p></div>
+          <div><h2>Daftar Booking</h2><p>{pagination.total} booking tercatat{selectedReservationIds.size ? ` · ${selectedReservationIds.size} dipilih` : ''}</p></div>
         </div>
         <div className="loan-table-scroll">
           <table className="loan-table">
-            <thead><tr><th>No</th><th>ID Booking</th><th>Buku</th>{!isMember && <th>Anggota</th>}<th>Tanggal Booking</th><th>Status</th><th>Batas Pengambilan</th><th>Aksi</th></tr></thead>
+            <thead><tr>
+              {canDelete && <th className="master-check-cell"><input
+                type="checkbox"
+                checked={allVisibleReservationsSelected}
+                ref={(element) => { if (element) element.indeterminate = someVisibleReservationsSelected && !allVisibleReservationsSelected; }}
+                onChange={(event) => toggleAllVisibleReservations(event.target.checked)}
+                disabled={loading || deleting || !reservations.length}
+                aria-label="Pilih semua booking di halaman ini"
+              /></th>}
+              <th>No</th><th>ID Booking</th><th>Buku</th>{!isMember && <th>Anggota</th>}<th>Tanggal Booking</th><th>Status</th><th>Batas Pengambilan</th><th>Aksi</th>
+            </tr></thead>
             <tbody>
-              {loading ? <tr><td className="loan-table-empty" colSpan={isMember ? 7 : 8}><LoaderCircle size={17} className="book-stock-spinner" />Memuat booking...</td></tr>
-                : reservations.length === 0 ? <tr><td className="loan-table-empty" colSpan={isMember ? 7 : 8}>{search || statusFilter ? 'Tidak ada booking yang sesuai dengan filter.' : 'Belum ada booking buku.'}</td></tr>
+              {loading ? <tr><td className="loan-table-empty" colSpan={reservationColumnCount}><LoaderCircle size={17} className="book-stock-spinner" />Memuat booking...</td></tr>
+                : reservations.length === 0 ? <tr><td className="loan-table-empty" colSpan={reservationColumnCount}>{search || statusFilter ? 'Tidak ada booking yang sesuai dengan filter.' : 'Belum ada booking buku.'}</td></tr>
                   : reservations.map((reservation, index) => (
                     <tr key={reservation.id}>
+                      {canDelete && <td className="master-check-cell"><input type="checkbox" checked={selectedReservationIds.has(String(reservation.id))} disabled={deleting} onChange={(event) => toggleReservationSelection(reservation.id, event.target.checked)} aria-label={`Pilih booking ${reservation.id}`} /></td>}
                       <td>{(page - 1) * pageSize + index + 1}</td>
                       <td>#{reservation.id}</td>
                       <td><b>{reservation.book_title}</b><small>{Number(reservation.quantity || 1)} eksemplar · Booking #{reservation.id}</small>{reservation.notes && <small>{reservation.notes}</small>}</td>
@@ -304,6 +375,7 @@ export default function SchoolReservationsPage({ rights, role, account }) {
                               <Check size={14} />Penuhi
                             </button>
                           )}
+                          {canDelete && <button type="button" className="master-row-icon is-delete" title="Hapus booking" aria-label={`Hapus booking ${reservation.id}`} disabled={deleting} onClick={() => { setDeleteError(''); setDeleteTarget(reservation); }}><Trash2 size={14} /></button>}
                           {reservation.status === 'Active' && !reservation.ready_notified_at && <small><Clock3 size={13} />Menunggu buku tersedia</small>}
                         </div>
                       </td>
@@ -320,6 +392,17 @@ export default function SchoolReservationsPage({ rights, role, account }) {
           </div>
         </footer>
       </section>
+      {deleteTarget && <SchoolConfirmDialog
+        title={deleteTarget === 'selected' ? 'Hapus booking terpilih?' : 'Hapus booking?'}
+        message={deleteTarget === 'selected'
+          ? `${selectedReservationIds.size} booking akan dihapus permanen.`
+          : 'Booking ini akan dihapus permanen dari daftar.'}
+        itemName={deleteTarget === 'selected' ? `${selectedReservationIds.size} booking` : `${deleteTarget.book_title} · #${deleteTarget.id}`}
+        loading={deleting}
+        error={deleteError}
+        onClose={() => { if (!deleting) { setDeleteTarget(null); setDeleteError(''); } }}
+        onConfirm={confirmDeleteReservations}
+      />}
     </div>
   );
 }

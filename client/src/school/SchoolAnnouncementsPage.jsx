@@ -1,23 +1,12 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Bell, Check, Eye, LoaderCircle, Pencil, Plus, Search, Trash2, X
+  Bell, Check, Eye, LoaderCircle, Pencil, Plus, Search, Trash2, Upload, X
 } from 'lucide-react';
 import SchoolConfirmDialog from './SchoolConfirmDialog.jsx';
 import {
   createAnnouncement, deleteAnnouncement, fetchAnnouncements, updateAnnouncement
 } from './schoolAnnouncementApi.js';
-
-const emptyForm = {
-  title: '',
-  content: '',
-  category: 'Informasi',
-  targetAudience: 'all',
-  status: 'Draft',
-  startDate: '',
-  endDate: '',
-  banner: null
-};
 
 function toInputDate(value) {
   if (!value) return '';
@@ -25,6 +14,22 @@ function toInputDate(value) {
   if (Number.isNaN(date.getTime())) return '';
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
   return local.toISOString().slice(0, 16);
+}
+
+function createEmptyForm() {
+  const start = new Date();
+  const end = new Date(start);
+  end.setHours(23, 59, 0, 0);
+  return {
+    title: '',
+    content: '',
+    category: 'Informasi',
+    targetAudience: 'all',
+    status: 'Draft',
+    startDate: toInputDate(start),
+    endDate: toInputDate(end),
+    banner: null
+  };
 }
 
 function formatDate(value) {
@@ -36,7 +41,8 @@ function formatDate(value) {
 }
 
 function AnnouncementEditor({ initial, onClose, onSave }) {
-  const [form, setForm] = useState(initial || emptyForm);
+  const [form, setForm] = useState(initial || createEmptyForm());
+  const [bannerName, setBannerName] = useState(initial?.banner ? 'Banner tersimpan' : '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -44,7 +50,7 @@ function AnnouncementEditor({ initial, onClose, onSave }) {
     setForm((current) => ({ ...current, [event.target.name]: event.target.value }));
   }
 
-  async function selectBanner(event) {
+  function selectBanner(event) {
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file) return;
@@ -53,7 +59,14 @@ function AnnouncementEditor({ initial, onClose, onSave }) {
       return;
     }
     const reader = new FileReader();
-    reader.onload = () => setForm((current) => ({ ...current, banner: reader.result }));
+    reader.onload = () => {
+      if (typeof reader.result !== 'string') {
+        setError('File banner gagal dibaca.');
+        return;
+      }
+      setForm((current) => ({ ...current, banner: reader.result }));
+      setBannerName(file.name);
+    };
     reader.onerror = () => setError('File banner gagal dibaca.');
     reader.readAsDataURL(file);
     setError('');
@@ -108,12 +121,17 @@ function AnnouncementEditor({ initial, onClose, onSave }) {
                 <option value="Draft">Draft</option><option value="Published">Published / Tayang</option>
               </select>
             </label>
-            <label>Lampiran Banner
-              <input type="file" accept="image/jpeg,image/png,image/webp" onChange={selectBanner} />
-              <small>JPG, PNG, atau WebP; maksimal 1,4 MB.</small>
-            </label>
+            <div className="announcement-banner-field">
+              <span className="announcement-banner-field-label">Lampiran Banner</span>
+              <label className="announcement-banner-upload" htmlFor="announcement-banner-file">
+                <input id="announcement-banner-file" className="announcement-banner-input" type="file" accept="image/jpeg,image/png,image/webp" onChange={selectBanner} />
+                <span className="announcement-banner-upload-icon"><Upload size={19} /></span>
+                <span className="announcement-banner-upload-copy"><b>{bannerName || 'Pilih banner pengumuman'}</b><small>JPG, PNG, atau WebP · maksimal 1,4 MB</small></span>
+                <span className="master-button master-button-light announcement-banner-upload-button"><Upload size={14} />Unggah Banner</span>
+              </label>
+            </div>
           </div>
-          {form.banner && <div className="announcement-banner-preview"><img src={form.banner} alt="Pratinjau banner pengumuman" /><button type="button" className="master-button master-button-muted" onClick={() => setForm((current) => ({ ...current, banner: null }))}>Hapus banner</button></div>}
+          {form.banner && <div className="announcement-banner-preview"><img src={form.banner} alt="Pratinjau banner pengumuman" /><button type="button" className="master-button master-button-muted" onClick={() => { setForm((current) => ({ ...current, banner: null })); setBannerName(''); }}>Hapus banner</button></div>}
           <label>Isi Pengumuman
             <textarea name="content" value={form.content} onChange={update} maxLength={20000} rows={8} required />
             <small>{form.content.length}/20.000 karakter. Baris baru akan dipertahankan saat ditampilkan.</small>
@@ -225,7 +243,7 @@ export default function SchoolAnnouncementsPage({ rights, role }) {
           {isStaff && <div className="procurement-toolbar-actions">
             <label className="procurement-filter"><span>Status</span><select value={status} onChange={(event) => setStatus(event.target.value)}><option value="">Semua status</option><option value="Published">Published</option><option value="Draft">Draft</option></select></label>
             <label className="procurement-filter"><span>Kategori</span><select value={category} onChange={(event) => setCategory(event.target.value)}><option value="">Semua kategori</option><option>Informasi</option><option>Aturan Perpustakaan</option><option>Denda / Keterlambatan</option><option>Promosi Buku</option><option>Layanan</option></select></label>
-            {canEdit && <button type="button" className="master-button master-button-primary" onClick={() => setEditor(emptyForm)}><Plus size={15} />Tambah Pengumuman</button>}
+            {canEdit && <button type="button" className="master-button master-button-primary" onClick={() => setEditor(createEmptyForm())}><Plus size={15} />Tambah Pengumuman</button>}
           </div>}
         </div>
       </section>

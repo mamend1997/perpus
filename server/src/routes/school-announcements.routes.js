@@ -138,6 +138,40 @@ router.get('/', requireSchoolPermission('announcements', 'view'), async (req, re
   }
 });
 
+router.get('/active', async (req, res, next) => {
+  const audience = req.school.role === 'member' ? ['all', 'students'] : ['all', 'staff'];
+  try {
+    const [rows] = await pool.execute(
+      `SELECT a.id, a.title, a.content, a.category, a.target_audience,
+              a.start_date, a.end_date, a.banner, a.created_at
+       FROM announcements a
+       WHERE a.school_id = ? AND a.status = 'Published'
+         AND (a.start_date IS NULL OR a.start_date <= NOW())
+         AND (a.end_date IS NULL OR a.end_date >= NOW())
+         AND a.target_audience IN (?, ?)
+         AND NOT EXISTS (
+           SELECT 1 FROM school_notifications n
+           WHERE n.school_id = a.school_id AND n.user_id = ?
+             AND n.type = 'announcement_dismissed'
+             AND n.dedupe_key = CONCAT('announcement-popup:', a.id)
+         )
+       ORDER BY COALESCE(a.start_date, a.created_at) DESC, a.id DESC`,
+      [req.school.id, ...audience, req.school.userId]
+    );
+    return res.json({
+      announcements: rows.map((row) => ({
+        ...row,
+        id: String(row.id),
+        targetAudience: row.target_audience,
+        startDate: row.start_date,
+        endDate: row.end_date
+      }))
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 router.post('/', requireSchoolPermission('announcements', 'edit'), async (req, res, next) => {
   const { value, error } = announcementInput(req.body);
   if (error) return res.status(400).json({ message: error });
@@ -220,6 +254,39 @@ router.patch('/:id', requireSchoolPermission('announcements', 'edit'), async (re
     return next(error);
   } finally {
     if (connection) connection.release();
+  }
+});
+
+router.post('/:id/dismiss', async (req, res, next) => {
+  const id = String(req.params.id);
+  if (!validId(id)) return res.status(400).json({ message: 'ID pengumuman tidak valid.' });
+  const audience = req.school.role === 'member' ? ['all', 'students'] : ['all', 'staff'];
+  try {
+    const [rows] = await pool.execute(
+      `SELECT title, content FROM announcements
+       WHERE id = ? AND school_id = ? AND status = 'Published'
+         AND target_audience IN (?, ?)
+       LIMIT 1`,
+      [id, req.school.id, ...audience]
+    );
+    if (!rows[0]) return res.status(404).json({ message: 'Pengumuman tidak ditemukan untuk akun ini.' });
+    await pool.execute(
+      `INSERT INTO school_notifications
+         (school_id, user_id, type, title, message, link, dedupe_key, read_at)
+       VALUES (?, ?, 'announcement_dismissed', ?, ?, ?, ?, NOW())
+       ON DUPLICATE KEY UPDATE read_at = COALESCE(read_at, NOW())`,
+      [
+        req.school.id,
+        req.school.userId,
+        String(rows[0].title || '').slice(0, 180),
+        String(rows[0].content || '').slice(0, 480),
+        `/announcements/${id}`,
+        `announcement-popup:${id}`
+      ]
+    );
+    return res.json({ message: 'Pengumuman tidak akan ditampilkan lagi untuk akun ini.' });
+  } catch (error) {
+    return next(error);
   }
 });
 

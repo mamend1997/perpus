@@ -23,6 +23,14 @@ export function fetchAnnouncements({ search = '', status = '', category = '', si
   return request(`?${query}`, { signal });
 }
 
+export function fetchActiveAnnouncements(signal) {
+  return request('/active', { signal });
+}
+
+export function dismissAnnouncement(id) {
+  return request(`/${encodeURIComponent(id)}/dismiss`, { method: 'POST' });
+}
+
 export function createAnnouncement(data) {
   return request('', { method: 'POST', body: data });
 }

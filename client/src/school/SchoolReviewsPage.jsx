@@ -3,8 +3,9 @@ import {
   Check, ChevronDown, ChevronLeft, ChevronRight, LoaderCircle, Search, Star, Trash2, X
 } from 'lucide-react';
 import {
-  createReview, deleteReview, fetchEligibleReviewBooks, fetchReviews
+  createReview, deleteReview, deleteReviews, fetchEligibleReviewBooks, fetchReviews
 } from './schoolReviewsApi.js';
+import SchoolConfirmDialog from './SchoolConfirmDialog.jsx';
 
 const pageSize = 25;
 
@@ -34,6 +35,7 @@ export default function SchoolReviewsPage({ rights, role }) {
   const canDelete = Boolean(rights?.delete) && !isMember;
   const canView = Boolean(rights?.view);
   const [reviews, setReviews] = useState([]);
+  const [selectedReviewIds, setSelectedReviewIds] = useState(() => new Set());
   const [pagination, setPagination] = useState({ page: 1, total: 0, totalPages: 0 });
   const [page, setPage] = useState(1);
   const [searchInput, setSearchInput] = useState('');
@@ -54,6 +56,9 @@ export default function SchoolReviewsPage({ rights, role }) {
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkDeleteError, setBulkDeleteError] = useState('');
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -169,12 +174,62 @@ export default function SchoolReviewsPage({ rights, role }) {
     try {
       const result = await deleteReview(deleteTarget.id);
       setNotice(result.message);
+      setSelectedReviewIds((current) => {
+        const next = new Set(current);
+        next.delete(String(deleteTarget.id));
+        return next;
+      });
       setDeleteTarget(null);
       setRefreshKey((value) => value + 1);
     } catch (deleteError) {
       setError(deleteError.message);
     } finally {
       setDeleting(false);
+    }
+  }
+
+  const visibleReviewIds = reviews.map((review) => String(review.id));
+  const allVisibleReviewsSelected = visibleReviewIds.length > 0
+    && visibleReviewIds.every((id) => selectedReviewIds.has(id));
+  const someVisibleReviewsSelected = visibleReviewIds.some((id) => selectedReviewIds.has(id));
+  const reviewColumnCount = 5 + Number(canDelete) * 2;
+
+  function toggleReviewSelection(id, checked) {
+    setSelectedReviewIds((current) => {
+      const next = new Set(current);
+      if (checked) next.add(String(id));
+      else next.delete(String(id));
+      return next;
+    });
+  }
+
+  function toggleAllVisibleReviews(checked) {
+    setSelectedReviewIds((current) => {
+      const next = new Set(current);
+      visibleReviewIds.forEach((id) => {
+        if (checked) next.add(id);
+        else next.delete(id);
+      });
+      return next;
+    });
+  }
+
+  async function confirmBulkDelete() {
+    if (!selectedReviewIds.size) return;
+    setBulkDeleting(true);
+    setBulkDeleteError('');
+    setError('');
+    try {
+      const result = await deleteReviews([...selectedReviewIds]);
+      setSelectedReviewIds(new Set());
+      setBulkDeleteOpen(false);
+      setNotice(result.message || 'Ulasan terpilih berhasil dihapus.');
+      setPage(1);
+      setRefreshKey((value) => value + 1);
+    } catch (deleteError) {
+      setBulkDeleteError(deleteError.message);
+    } finally {
+      setBulkDeleting(false);
     }
   }
 
@@ -280,31 +335,45 @@ export default function SchoolReviewsPage({ rights, role }) {
         <div className="loan-toolbar-top">
           <label className="master-search loan-table-search">
             <Search size={16} />
-            <input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder={isMember ? 'Cari judul buku atau ulasan...' : 'Cari judul, nama anggota, atau ulasan...'} aria-label="Cari ulasan" />
+            <input value={searchInput} onChange={(event) => { setSearchInput(event.target.value); setSelectedReviewIds(new Set()); }} placeholder={isMember ? 'Cari judul buku atau ulasan...' : 'Cari judul, nama anggota, atau ulasan...'} aria-label="Cari ulasan" />
           </label>
           <div className="loan-toolbar-actions">
             <label className="loan-status-filter">Rating
-              <select value={ratingFilter} onChange={(event) => { setRatingFilter(event.target.value); setPage(1); }}>
+              <select value={ratingFilter} onChange={(event) => { setRatingFilter(event.target.value); setPage(1); setSelectedReviewIds(new Set()); }}>
                 <option value="">Semua rating</option>
                 {[5, 4, 3, 2, 1].map((value) => <option key={value} value={value}>{value} bintang</option>)}
               </select>
             </label>
+            {canDelete && <button type="button" className="master-button master-button-danger" disabled={!selectedReviewIds.size || loading || bulkDeleting} onClick={() => { setBulkDeleteError(''); setBulkDeleteOpen(true); }}>
+              <Trash2 size={15} />Hapus Terpilih{selectedReviewIds.size ? ` (${selectedReviewIds.size})` : ''}
+            </button>}
           </div>
         </div>
       </section>
 
       <section className="library-panel loan-table-panel">
         <div className="catalog-table-heading">
-          <div><h2>{isMember ? 'Ulasan Anggota' : 'Moderasi Ulasan'}</h2><p>{pagination.total} ulasan ditemukan</p></div>
+          <div><h2>{isMember ? 'Ulasan Anggota' : 'Moderasi Ulasan'}</h2><p>{pagination.total} ulasan ditemukan{selectedReviewIds.size ? ` · ${selectedReviewIds.size} dipilih` : ''}</p></div>
         </div>
         <div className="loan-table-scroll">
           <table className="loan-table">
-            <thead><tr><th>Buku</th><th>Rating</th><th>Ulasan</th><th>{isMember ? 'Anggota' : 'Penulis'}</th><th>Tanggal</th>{canDelete && <th>Aksi</th>}</tr></thead>
+            <thead><tr>
+              {canDelete && <th className="master-check-cell"><input
+                type="checkbox"
+                checked={allVisibleReviewsSelected}
+                ref={(element) => { if (element) element.indeterminate = someVisibleReviewsSelected && !allVisibleReviewsSelected; }}
+                onChange={(event) => toggleAllVisibleReviews(event.target.checked)}
+                disabled={loading || bulkDeleting || !reviews.length}
+                aria-label="Pilih semua ulasan di halaman ini"
+              /></th>}
+              <th>Buku</th><th>Rating</th><th>Ulasan</th><th>{isMember ? 'Anggota' : 'Penulis'}</th><th>Tanggal</th>{canDelete && <th>Aksi</th>}
+            </tr></thead>
             <tbody>
-              {loading ? <tr><td className="loan-table-empty" colSpan={canDelete ? 6 : 5}><LoaderCircle size={17} className="book-stock-spinner" />Memuat ulasan...</td></tr>
-                : reviews.length === 0 ? <tr><td className="loan-table-empty" colSpan={canDelete ? 6 : 5}>{search || ratingFilter ? 'Tidak ada ulasan yang sesuai dengan pencarian atau filter.' : 'Belum ada ulasan buku.'}</td></tr>
+              {loading ? <tr><td className="loan-table-empty" colSpan={reviewColumnCount}><LoaderCircle size={17} className="book-stock-spinner" />Memuat ulasan...</td></tr>
+                : reviews.length === 0 ? <tr><td className="loan-table-empty" colSpan={reviewColumnCount}>{search || ratingFilter ? 'Tidak ada ulasan yang sesuai dengan pencarian atau filter.' : 'Belum ada ulasan buku.'}</td></tr>
                   : reviews.map((review) => (
                     <tr key={review.id}>
+                      {canDelete && <td className="master-check-cell"><input type="checkbox" checked={selectedReviewIds.has(String(review.id))} disabled={bulkDeleting} onChange={(event) => toggleReviewSelection(review.id, event.target.checked)} aria-label={`Pilih ulasan ${review.book_title} oleh ${review.reviewer_name}`} /></td>}
                       <td><b>{review.book_title}</b></td>
                       <td><RatingStars rating={review.rating} /></td>
                       <td>{review.review || '—'}{review.verified && <small className="review-verified"><Check size={13} />Pernah Meminjam</small>}</td>
@@ -342,6 +411,15 @@ export default function SchoolReviewsPage({ rights, role }) {
           </section>
         </div>
       )}
+      {bulkDeleteOpen && <SchoolConfirmDialog
+        title="Hapus ulasan terpilih?"
+        message={`${selectedReviewIds.size} ulasan akan dihapus permanen.`}
+        itemName={`${selectedReviewIds.size} ulasan`}
+        loading={bulkDeleting}
+        error={bulkDeleteError}
+        onClose={() => { if (!bulkDeleting) { setBulkDeleteOpen(false); setBulkDeleteError(''); } }}
+        onConfirm={confirmBulkDelete}
+      />}
     </div>
   );
 }
