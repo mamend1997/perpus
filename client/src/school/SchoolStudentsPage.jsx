@@ -3,12 +3,12 @@ import { createPortal } from 'react-dom';
 import ExcelJS from 'exceljs';
 import JsBarcode from 'jsbarcode';
 import {
-  Camera, Check, Download, FileSpreadsheet, LoaderCircle, Pencil, Plus, Printer, Search, Trash2, Upload, Users, X
+  Camera, Check, Download, FileSpreadsheet, LoaderCircle, Pencil, Plus, Power, Printer, Search, Trash2, Upload, Users, X
 } from 'lucide-react';
 import SchoolConfirmDialog from './SchoolConfirmDialog.jsx';
 import SchoolPrintHeader from './SchoolPrintHeader.jsx';
 import {
-  activateStudent, assignClassStudents, createStudent, createStudentClass, deleteStudent, deleteStudentClasses, deleteStudents,
+  activateStudent, assignClassStudents, createStudent, createStudentClass, deactivateStudent, deleteStudent, deleteStudentClasses, deleteStudents,
   fetchClassStudents, fetchInactiveStudents, fetchStudentClasses, fetchStudents, importStudents,
   updateStudent, updateStudentClass
 } from './schoolStudentApi.js';
@@ -431,6 +431,8 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
   const [inactiveError, setInactiveError] = useState('');
   const [inactiveSelected, setInactiveSelected] = useState({});
   const [activatingStudentId, setActivatingStudentId] = useState('');
+  const [reactivationTarget, setReactivationTarget] = useState(null);
+  const [reactivationError, setReactivationError] = useState('');
   const [pagination, setPagination] = useState({ page: 1, total: 0, totalPages: 0 });
   const [page, setPage] = useState(1);
   const [queryInput, setQueryInput] = useState('');
@@ -444,6 +446,9 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
   const [editor, setEditor] = useState(null);
   const [importOpen, setImportOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deactivationTarget, setDeactivationTarget] = useState(null);
+  const [deactivationError, setDeactivationError] = useState('');
+  const [deactivating, setDeactivating] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
   const [classEditor, setClassEditor] = useState(null);
@@ -616,17 +621,36 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
     }
   }
 
-  async function reactivateStudent(student) {
-    setActivatingStudentId(String(student.id));
-    setInactiveError('');
+  async function confirmReactivateStudent() {
+    if (!reactivationTarget) return;
+    setActivatingStudentId(String(reactivationTarget.id));
+    setReactivationError('');
     try {
-      const result = await activateStudent(student.id);
+      const result = await activateStudent(reactivationTarget.id);
       setNotice(result.message);
+      setReactivationTarget(null);
       setRefreshKey((value) => value + 1);
     } catch (failure) {
-      setInactiveError(failure.message);
+      setReactivationError(failure.message);
     } finally {
       setActivatingStudentId('');
+    }
+  }
+
+  async function confirmDeactivateStudent() {
+    if (!deactivationTarget) return;
+    setDeactivating(true);
+    setDeactivationError('');
+    try {
+      const result = await deactivateStudent(deactivationTarget.id);
+      setNotice(result.message);
+      setDeactivationTarget(null);
+      setSelected({});
+      setRefreshKey((value) => value + 1);
+    } catch (failure) {
+      setDeactivationError(failure.message);
+    } finally {
+      setDeactivating(false);
     }
   }
 
@@ -814,7 +838,7 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
                         })} aria-label={`Pilih ${student.name}`} /></td>}
                         <td>{(page - 1) * studentPageSize + index + 1}</td><td>{student.photo ? <img className="student-table-photo" src={student.photo} alt={`Foto ${student.name}`} /> : <span className="student-table-photo-empty">—</span>}</td><td>{student.nis_nisn}</td><td><b>{student.name}</b></td><td>{student.rombel || 'Belum diatur'}</td>
                         <td>{genderLabel(student.gender)}</td><td>{student.phone || '—'}</td><td><span className={`master-status ${student.status === 'active' ? 'is-active' : 'is-inactive'}`}>{studentStatusLabel(student.status)}</span></td>
-                        <td><div className="student-row-actions"><button type="button" className="master-icon-button" title="Cetak kartu member" onClick={() => setMemberCards([student])}><Printer size={15} /></button>{canEdit && <button type="button" className="master-icon-button" title="Edit siswa" onClick={() => setEditor(student)}><Pencil size={15} /></button>}{canDelete && <button type="button" className="master-icon-button" title="Hapus siswa" onClick={() => { setDeleteError(''); setDeleteTarget(student); }}><Trash2 size={15} /></button>}</div></td>
+                        <td><div className="student-row-actions"><button type="button" className="master-icon-button" title="Cetak kartu member" onClick={() => setMemberCards([student])}><Printer size={15} /></button>{canEdit && <><button type="button" className="master-icon-button" title="Edit siswa" onClick={() => setEditor(student)}><Pencil size={15} /></button><button type="button" className="master-icon-button" title="Nonaktifkan siswa" aria-label={`Nonaktifkan ${student.name}`} onClick={() => { setDeactivationError(''); setDeactivationTarget(student); }}><Power size={15} /></button></>}{canDelete && <button type="button" className="master-icon-button" title="Hapus siswa" onClick={() => { setDeleteError(''); setDeleteTarget(student); }}><Trash2 size={15} /></button>}</div></td>
                       </tr>)}
                 </tbody>
               </table>
@@ -892,7 +916,7 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
                       <td>{student.inactive_reason === 'graduated' ? `Lulus${student.graduation_year ? ` · ${student.graduation_year}` : ''}` : 'Nonaktif'}</td>
                       {(canEdit || canDelete) && <td><div className="student-row-actions">
                         {canEdit && <button type="button" className="master-icon-button" title="Edit siswa" aria-label={`Edit ${student.name}`} onClick={() => setEditor(student)}><Pencil size={15} /></button>}
-                        {canEdit && student.status !== 'active' && <button type="button" className="master-icon-button" title="Aktifkan kembali" aria-label={`Aktifkan kembali ${student.name}`} disabled={activatingStudentId === String(student.id)} onClick={() => reactivateStudent(student)}><Check size={15} /></button>}
+                        {canEdit && student.status !== 'active' && <button type="button" className="master-icon-button" title="Aktifkan kembali" aria-label={`Aktifkan kembali ${student.name}`} disabled={Boolean(activatingStudentId)} onClick={() => { setReactivationError(''); setReactivationTarget(student); }}><Check size={15} /></button>}
                         {canDelete && <button type="button" className="master-icon-button" title="Hapus permanen" aria-label={`Hapus permanen ${student.name}`} onClick={() => { setDeleteError(''); setDeleteTarget({ ...student, source: 'inactive' }); }}><Trash2 size={15} /></button>}
                       </div></td>}
                     </tr>)}
@@ -965,6 +989,35 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
         error={deleteError}
         onClose={() => { if (!deleting) { setDeleteTarget(null); setDeleteError(''); } }}
         onConfirm={confirmDelete}
+      />}
+      {deactivationTarget && <SchoolConfirmDialog
+        title="Nonaktifkan siswa?"
+        message="Siswa akan dipindahkan ke tab Siswa Nonaktif dan akunnya tidak dapat digunakan sampai diaktifkan kembali."
+        itemName={deactivationTarget.name}
+        confirmLabel="Ya, Nonaktifkan"
+        confirmIcon={<Power size={15} />}
+        warningMessage="Siswa dapat diaktifkan kembali dari tab Siswa Nonaktif."
+        loading={deactivating}
+        error={deactivationError}
+        onClose={() => { if (!deactivating) { setDeactivationTarget(null); setDeactivationError(''); } }}
+        onConfirm={confirmDeactivateStudent}
+      />}
+      {reactivationTarget && <SchoolConfirmDialog
+        title="Aktifkan kembali siswa?"
+        message="Siswa akan dipindahkan ke tab Data Siswa dan akunnya dapat digunakan kembali."
+        itemName={reactivationTarget.name}
+        confirmLabel="Ya, Aktifkan"
+        confirmIcon={<Check size={15} />}
+        warningMessage="Status siswa akan berubah menjadi aktif."
+        loading={activatingStudentId === String(reactivationTarget.id)}
+        error={reactivationError}
+        onClose={() => {
+          if (!activatingStudentId) {
+            setReactivationTarget(null);
+            setReactivationError('');
+          }
+        }}
+        onConfirm={confirmReactivateStudent}
       />}
       {classDeleteTarget && <SchoolConfirmDialog
         title={classDeleteTarget === 'selected' ? 'Hapus kelas terpilih?' : 'Hapus kelas?'}

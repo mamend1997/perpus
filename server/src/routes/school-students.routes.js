@@ -993,6 +993,29 @@ router.patch('/:id/activate', staffOnly, requireSchoolPermission('master.student
   }
 });
 
+router.patch('/:id/deactivate', staffOnly, requireSchoolPermission('master.students', 'edit'), async (req, res, next) => {
+  const id = String(req.params.id);
+  if (!validId(id)) return res.status(400).json({ message: 'ID siswa tidak valid.' });
+  try {
+    const [result] = await pool.execute(
+      `UPDATE users SET status = 'inactive'
+       WHERE id = ? AND school_id = ? AND role = 'member' AND status = 'active'`,
+      [id, req.school.id]
+    );
+    if (!result.affectedRows) {
+      const [[student]] = await pool.execute(
+        'SELECT id FROM users WHERE id = ? AND school_id = ? AND role = ? LIMIT 1',
+        [id, req.school.id, 'member']
+      );
+      if (!student) return res.status(404).json({ message: 'Data siswa tidak ditemukan.' });
+      return res.status(409).json({ message: 'Siswa sudah berstatus nonaktif.' });
+    }
+    return res.json({ message: 'Siswa berhasil dinonaktifkan.' });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 router.delete('/bulk', staffOnly, requireSchoolPermission('master.students', 'delete'), async (req, res, next) => {
   const rawIds = req.body?.ids;
   if (!Array.isArray(rawIds) || rawIds.length < 1 || rawIds.length > 500) {

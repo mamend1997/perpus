@@ -77,6 +77,10 @@ export function activateStudent(id) {
   return request(`/${encodeURIComponent(id)}/activate`, { method: 'PATCH', body: {} });
 }
 
+export function deactivateStudent(id) {
+  return request(`/${encodeURIComponent(id)}/deactivate`, { method: 'PATCH', body: {} });
+}
+
 export function deleteStudent(id) {
   return request(`/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
