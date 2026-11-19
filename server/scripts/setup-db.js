@@ -601,6 +601,53 @@ try {
   await connection.query(
     'ALTER TABLE tenants_schools MODIFY school_code CHAR(4) CHARACTER SET ascii COLLATE ascii_bin NOT NULL'
   );
+  const [schoolSubscriptionColumns] = await connection.execute(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tenants_schools'`
+  );
+  if (!schoolSubscriptionColumns.some((column) => column.COLUMN_NAME === 'subscription_expires_at')) {
+    await connection.query('ALTER TABLE tenants_schools ADD COLUMN subscription_expires_at DATETIME NULL AFTER fine_per_day');
+  }
+  const [invoiceColumns] = await connection.execute(
+    `SELECT COLUMN_NAME, COLUMN_TYPE FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tenant_invoices'`
+  );
+  const invoiceColumnNames = new Set(invoiceColumns.map((column) => column.COLUMN_NAME));
+  const invoiceColumnMigrations = [
+    ['package_type', "ENUM('trial', 'basic', 'premium', 'lifetime') NULL AFTER due_date"],
+    ['billing_period', "ENUM('monthly', 'semester', 'yearly', 'once') NULL AFTER package_type"],
+    ['payment_provider', "ENUM('manual', 'kasera') NOT NULL DEFAULT 'manual' AFTER billing_period"],
+    ['provider_payment_id', 'VARCHAR(80) NULL AFTER payment_provider'],
+    ['checkout_url', 'VARCHAR(2048) NULL AFTER provider_payment_id'],
+    ['expires_at', 'DATETIME NULL AFTER checkout_url'],
+    ['paid_at', 'DATETIME NULL AFTER expires_at']
+  ];
+  for (const [columnName, definition] of invoiceColumnMigrations) {
+    if (!invoiceColumnNames.has(columnName)) {
+      await connection.query(`ALTER TABLE tenant_invoices ADD COLUMN ${columnName} ${definition}`);
+    }
+  }
+  const invoiceStatusType = invoiceColumns.find((column) => column.COLUMN_NAME === 'status')?.COLUMN_TYPE || '';
+  if (!invoiceStatusType.includes("'failed'") || !invoiceStatusType.includes("'expired'")) {
+    await connection.query(
+      "ALTER TABLE tenant_invoices MODIFY status ENUM('unpaid', 'paid', 'pending_verification', 'failed', 'expired') NOT NULL DEFAULT 'unpaid'"
+    );
+  }
+  const [invoicePaymentIndexes] = await connection.execute(
+    `SELECT INDEX_NAME FROM information_schema.STATISTICS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tenant_invoices'
+       AND INDEX_NAME = 'uq_invoices_provider_payment_id'`
+  );
+  if (!invoicePaymentIndexes.length) {
+    await connection.query('ALTER TABLE tenant_invoices ADD UNIQUE KEY uq_invoices_provider_payment_id (provider_payment_id)');
+  }
+  await connection.query(
+    `CREATE TABLE IF NOT EXISTS kasera_webhook_events (
+      event_id VARCHAR(80) NOT NULL,
+      received_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (event_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
+  );
   console.log('Database schema created/updated successfully.');
 } finally {
   await connection.end();

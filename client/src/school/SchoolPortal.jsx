@@ -15,6 +15,7 @@ import SchoolFinesPage from './SchoolFinesPage.jsx';
 import SchoolVisitorsPage from './SchoolVisitorsPage.jsx';
 import SchoolProcurementsPage from './SchoolProcurementsPage.jsx';
 import SchoolProfileEditor from './SchoolProfileEditor.jsx';
+import SchoolSubscriptionPage from './SchoolSubscriptionPage.jsx';
 import SchoolSettingsPage from './SchoolSettingsPage.jsx';
 import SchoolReservationsPage from './SchoolReservationsPage.jsx';
 import SchoolReviewsPage from './SchoolReviewsPage.jsx';
@@ -444,6 +445,10 @@ export default function SchoolPortal({ account, onLogout, onAccountUpdated }) {
               <div className="library-error" role="alert">{permissionsError}</div>
             ) : active === 'Pengaturan' && role === 'admin' ? (
               <SchoolSettingsPage onMobileNavbarSettingsSaved={setMobileNavbarSettings} />
+            ) : active === 'Layanan' && role === 'admin' ? (
+              <SchoolSubscriptionPage mode="services" onNavigate={selectMenu} />
+            ) : active === 'Perpanjangan' && role === 'admin' ? (
+              <SchoolSubscriptionPage mode="renewal" />
             ) : role !== 'admin' && !activeRights?.view ? (
               <div className="library-error" role="alert">Anda tidak memiliki izin untuk membuka halaman ini.</div>
             ) : active === 'Dashboard' ? (

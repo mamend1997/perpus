@@ -18,6 +18,8 @@ npm install --prefix client
 
 Isi konfigurasi database di `.env`. Untuk Railway, salin connection URL MySQL ke `DATABASE_URL`; untuk MySQL lokal, isi `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, dan `DB_PASSWORD`. Buat database lokal `e_perpustakaan` terlebih dahulu. Ganti `SCHOOL_SETTINGS_ENCRYPTION_KEY` dengan secret acak minimal 32 karakter dan pertahankan nilainya; key ini digunakan untuk mengenkripsi token integrasi yang tersimpan.
 
+Untuk mengaktifkan pembayaran langganan Kasera Pay, atur `KASERA_API_KEY` (`kp_test_...` untuk Sandbox atau `kp_live_...` untuk Live), `KASERA_WEBHOOK_SECRET` dari mode yang sama, dan `PUBLIC_API_URL` ke URL publik API. Tambahkan `${PUBLIC_API_URL}/api/payments/kasera/webhook` di Developer → Webhook Kasera dan pilih event `payment.paid`, `payment.expired`, serta `payment.failed`. Setelah itu aktifkan Kasera pada menu Super Admin → QRIS & Harga. Checkout sekolah menggunakan QRIS dengan masa berlaku 60 menit; tarif transaksi mengikuti akun Kasera dan dipotong dari penerimaan merchant. Referensi: [Dokumentasi API Kasera Pay](https://pay.kasera.id/docs/api).
+
 Set `JWT_SECRET` dengan string acak minimal 32 karakter dan isi `SUPER_ADMIN_NAME`, `SUPER_ADMIN_EMAIL`, serta `SUPER_ADMIN_PASSWORD` (minimal 12 karakter). Lalu jalankan:
 
 ```powershell
@@ -39,6 +41,8 @@ Buka `http://localhost:5173` untuk portal sekolah. Perintah seed Master Data men
    - `SCHOOL_SETTINGS_ENCRYPTION_KEY`: secret acak minimal 32 karakter untuk enkripsi token WhatsApp dan integrasi lain; pertahankan nilainya agar token tersimpan tetap dapat dibaca.
    - `SUPER_ADMIN_NAME`, `SUPER_ADMIN_EMAIL`, `SUPER_ADMIN_PASSWORD`: kredensial bootstrap admin; password minimal 12 karakter.
    - `CLIENT_ORIGIN`: URL publik layanan aplikasi, misalnya `https://nama-layanan.up.railway.app`.
+   - `PUBLIC_API_URL`: URL publik API (umumnya sama dengan `CLIENT_ORIGIN` saat frontend dan API satu domain).
+   - `KASERA_API_KEY` dan `KASERA_WEBHOOK_SECRET`: kredensial mode Sandbox/Live yang sama. Jangan masukkan kredensial live ke repo.
 4. Deploy. Skema dan migrasi database dijalankan otomatis sebelum API mulai. Jalankan `npm run seed:admin` sekali dari Railway service shell untuk membuat akun admin.
 5. Generate domain publik Railway, lalu buka domain tersebut. `/api/health` adalah health check deployment.
 
@@ -67,7 +71,7 @@ server/
 
 - API Super Admin dan akun sekolah menggunakan JWT berumur 8 jam; pendaftaran sekolah membuat tenant trial aktif dan administrator pertamanya dalam satu transaksi.
 - Kode sekolah berisi 4 huruf/angka uppercase, dibuat secara acak oleh server, dan dijaga indeks unik di MySQL. Admin sekolah memerlukan kode sekolah, email, serta kata sandi untuk login.
-- Endpoint pemeriksaan billing bersifat **read-only** terhadap invoice dan tenant; setiap pemeriksaan disimpan pada `billing_check_runs` dan dicatat di audit log. Cron H-7, pembuatan invoice otomatis, suspend tenant, dan notifikasi WhatsApp belum aktif.
+- Endpoint pemeriksaan billing bersifat **read-only** terhadap invoice dan tenant; setiap pemeriksaan disimpan pada `billing_check_runs` dan dicatat di audit log. Admin sekolah dapat membuat tagihan perpanjangan Kasera; cron H-7, suspend tenant, dan notifikasi WhatsApp otomatis belum aktif.
 - Dashboard sekolah mengambil statistik pengunjung, eksemplar aktif, peminjaman, pengajuan, pengadaan terbaru, dan ketersediaan koleksi dari API ber-tenant.
 - Skema operasional mencakup katalog, eksemplar, peminjaman, pengadaan, kunjungan, ulasan, reservasi, dan pengumuman. Tabel `tenants_schools` adalah tabel sekolah/tenant kanonis agar kompatibel dengan data SaaS yang sudah ada.
 - Menu operasional lain sudah memiliki navigasi dan kerangka modul; alur CRUD, import/export Excel, cetak barcode, laporan, dan notifikasi WhatsApp masih perlu dihubungkan ke API sebelum digunakan untuk transaksi.

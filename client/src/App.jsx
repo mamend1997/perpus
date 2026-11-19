@@ -723,6 +723,8 @@ function BillingPage({ billing, onBillingCheck }) {
     pending_verification: ['Menunggu Verifikasi', 'pending'],
     paid: ['Disetujui', 'paid'],
     unpaid: ['Belum Dibayar', 'unpaid'],
+    failed: ['Pembayaran Gagal', 'rejected'],
+    expired: ['Kedaluwarsa', 'rejected'],
     rejected: ['Ditolak', 'rejected']
   })[value] || [value, ''];
   const dateLabel = (value) => value
@@ -748,7 +750,7 @@ function BillingPage({ billing, onBillingCheck }) {
           <div><span>TAGIHAN TERBUKA</span><b>{billing ? number(billing.openInvoices) : number(summary.openInvoices)}</b></div>
           <div><span>LEWAT JATUH TEMPO</span><b>{billing ? number(billing.overdueInvoices) : '—'}</b></div>
         </div>
-        <p className="billing-readonly-note">Pemeriksaan ini hanya membaca data. Pembuatan invoice, pengiriman WhatsApp, dan penangguhan otomatis belum diaktifkan.</p>
+        <p className="billing-readonly-note">Pemeriksaan ini hanya membaca data. Invoice perpanjangan dibuat dari akun sekolah melalui Kasera; cron penagihan dan penangguhan otomatis belum diaktifkan.</p>
         {billing?.error && <div className="error-box">{billing.error}</div>}
         {billing?.message && <div className="success-box">{billing.message}</div>}
       </section>
@@ -783,7 +785,7 @@ function BillingPage({ billing, onBillingCheck }) {
 const moduleDescriptions = {
   'Paket Langganan': 'Atur nama, keterangan, ketersediaan, dan harga paket Basic, Premium, serta Lifetime.',
   'Branding Sistem': 'Atur identitas aplikasi, logo, dan teks yang digunakan pada halaman platform.',
-  'QRIS & Harga': 'Atur QRIS manual dan instruksi pembayaran untuk sekolah.',
+  'QRIS & Harga': 'Atur QRIS manual, gateway Kasera, dan instruksi pembayaran sekolah.',
   'Pusat Tiket': 'Kelola tiket bantuan yang dikirim oleh sekolah.',
   'Pengumuman & Maintenance': 'Kelola pengumuman dan informasi pemeliharaan sistem.',
   'Petunjuk Pengguna': 'Lihat dan kelola panduan penggunaan platform.',

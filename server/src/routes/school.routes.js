@@ -16,6 +16,7 @@ import schoolReservationsRoutes from './school-reservations.routes.js';
 import schoolReviewsRoutes from './school-reviews.routes.js';
 import schoolStudentsRoutes from './school-students.routes.js';
 import schoolSupportRoutes from './school-support.routes.js';
+import schoolSubscriptionRoutes from './school-subscription.routes.js';
 import {
   defaultSchoolPermissions, schoolPermissionFeatureKeys, schoolPermissionFeatures,
   schoolPermissionRoles
@@ -63,6 +64,7 @@ router.use('/reservations', schoolReservationsRoutes);
 router.use('/reviews', schoolReviewsRoutes);
 router.use('/students', schoolStudentsRoutes);
 router.use('/support', schoolSupportRoutes);
+router.use('/subscription', schoolSubscriptionRoutes);
 
 router.get('/platform-documents', async (_req, res, next) => {
   try {

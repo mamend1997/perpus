@@ -43,3 +43,14 @@ export async function changeSchoolPassword(passwords) {
     body: JSON.stringify(passwords)
   });
 }
+
+export async function fetchSchoolSubscription() {
+  return schoolRequest('/subscription');
+}
+
+export async function createSchoolRenewal(payload) {
+  return schoolRequest('/subscription/renew', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+}

@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS tenants_schools (
   status ENUM('active', 'suspended', 'pending') NOT NULL DEFAULT 'pending',
   students_count INT UNSIGNED NOT NULL DEFAULT 0,
   fine_per_day INT UNSIGNED NOT NULL DEFAULT 1000,
+  subscription_expires_at DATETIME NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   UNIQUE KEY uq_tenants_schools_school_code (school_code),
@@ -539,14 +540,28 @@ CREATE TABLE IF NOT EXISTS tenant_invoices (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   school_id BIGINT UNSIGNED NOT NULL,
   amount DECIMAL(14,2) NOT NULL,
-  status ENUM('unpaid', 'paid', 'pending_verification') NOT NULL DEFAULT 'unpaid',
+  status ENUM('unpaid', 'paid', 'pending_verification', 'failed', 'expired') NOT NULL DEFAULT 'unpaid',
   due_date DATE NOT NULL,
+  package_type ENUM('trial', 'basic', 'premium', 'lifetime') NULL,
+  billing_period ENUM('monthly', 'semester', 'yearly', 'once') NULL,
+  payment_provider ENUM('manual', 'kasera') NOT NULL DEFAULT 'manual',
+  provider_payment_id VARCHAR(80) NULL,
+  checkout_url VARCHAR(2048) NULL,
+  expires_at DATETIME NULL,
+  paid_at DATETIME NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   KEY idx_invoices_status_due (status, due_date),
   KEY idx_invoices_school_created (school_id, created_at),
+  UNIQUE KEY uq_invoices_provider_payment_id (provider_payment_id),
   CONSTRAINT fk_invoices_school FOREIGN KEY (school_id) REFERENCES tenants_schools (id)
     ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS kasera_webhook_events (
+  event_id VARCHAR(80) NOT NULL,
+  received_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (event_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS billing_check_runs (

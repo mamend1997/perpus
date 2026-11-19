@@ -1,7 +1,7 @@
 import {
   BookOpen, Building2, FileBarChart2, FileText, LayoutDashboard, MessageSquare,
   Activity, CalendarDays, PackagePlus, QrCode, Repeat2, Settings, Star, Tags, Ticket, Palette,
-  Trash2, Users, Wallet, LifeBuoy
+  Trash2, Users, Wallet, LifeBuoy, CreditCard, Receipt
 } from 'lucide-react';
 
 const allRoles = ['admin', 'kepsek', 'kapus', 'member'];
@@ -94,6 +94,8 @@ export const schoolNavigation = [
   {
     section: 'AKUN',
     items: [
+      { label: 'Layanan', icon: Receipt, roles: ['admin'] },
+      { label: 'Perpanjangan', icon: CreditCard, roles: ['admin'] },
       { label: 'Pengaturan', icon: Settings, roles: ['admin'] },
       { label: 'Tema & Branding', icon: Palette, roles: ['admin'] }
     ]

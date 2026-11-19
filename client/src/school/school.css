@@ -899,6 +899,77 @@
 .master-button-muted { border-color: #e4e8f0; background: #f5f6f9; color: #5b667b; }
 .master-file-input { display: none; }
 
+.school-subscription-page { display: grid; gap: 14px; }
+.school-subscription-current { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(180px, auto); align-items: center; gap: 14px; padding: 18px; }
+.school-subscription-current-icon { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 12px; background: #fff7ed; color: #ea6a1e; }
+.school-subscription-current-copy > span { color: #8994a6; font-size: 9px; font-weight: 750; letter-spacing: .5px; }
+.school-subscription-current-copy h2 { margin: 4px 0; color: #35415a; font-size: 17px; }
+.school-subscription-current-copy p { margin: 0; color: #8994a6; font-size: 10px; }
+.school-subscription-expiry { display: grid; justify-items: end; gap: 6px; }
+.school-subscription-expiry > span { display: inline-flex; align-items: center; gap: 5px; color: #8994a6; font-size: 9px; }
+.school-subscription-expiry b { color: #35415a; font-size: 10px; text-align: right; }
+.school-subscription-services { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.school-subscription-info { padding: 17px; }
+.school-subscription-info h3,
+.school-renewal-form-heading h3,
+.school-renewal-history-heading h3 { margin: 0; color: #35415a; font-size: 12px; }
+.school-subscription-info > p { margin: 11px 0; color: #748096; font-size: 10px; }
+.school-subscription-info .primary-button { margin-top: 5px; }
+.school-subscription-plan-row { display: grid; gap: 4px; padding: 10px 0; border-bottom: 1px solid #edf0f5; }
+.school-subscription-plan-row:first-of-type { margin-top: 7px; }
+.school-subscription-plan-row:last-child { padding-bottom: 0; border-bottom: 0; }
+.school-subscription-plan-row b { color: #35415a; font-size: 10px; }
+.school-subscription-plan-row span { color: #8994a6; font-size: 9px; }
+.school-renewal-form { display: grid; gap: 16px; padding: 17px; }
+.school-renewal-form-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.school-renewal-form-heading p { margin: 5px 0 0; color: #8994a6; font-size: 9px; }
+.school-kasera-status { display: inline-flex; align-items: center; gap: 5px; padding: 6px 9px; border-radius: 20px; font-size: 9px; font-weight: 700; white-space: nowrap; }
+.school-kasera-status.ready { background: #ecfdf5; color: #16835d; }
+.school-kasera-status.unavailable { background: #fff7ed; color: #b45309; }
+.school-renewal-package-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
+.school-renewal-package { min-width: 0; display: flex; align-items: flex-start; gap: 8px; padding: 11px; border: 1px solid #e6eaf0; border-radius: 10px; cursor: pointer; }
+.school-renewal-package.selected,
+.school-renewal-price-option.selected { border-color: #f97316; background: #fff7ed; }
+.school-renewal-package input,
+.school-renewal-price-option input { margin: 2px 0 0; accent-color: #f97316; }
+.school-renewal-package span { min-width: 0; display: grid; gap: 4px; }
+.school-renewal-package b { color: #35415a; font-size: 10px; }
+.school-renewal-package small { color: #8994a6; font-size: 8px; line-height: 1.45; }
+.school-renewal-price-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+.school-renewal-price-option { min-width: 142px; display: grid; grid-template-columns: auto 1fr; gap: 5px 7px; padding: 10px; border: 1px solid #e6eaf0; border-radius: 9px; cursor: pointer; }
+.school-renewal-price-option > span { color: #59657b; font-size: 9px; }
+.school-renewal-price-option > b { grid-column: 2; color: #35415a; font-size: 10px; }
+.school-renewal-submit-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 13px; border-top: 1px solid #edf0f5; }
+.school-renewal-submit-row > span { color: #8994a6; font-size: 9px; }
+.school-subscription-empty { color: #8994a6; font-size: 10px; }
+.school-renewal-history { padding: 16px; }
+.school-renewal-history-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.school-renewal-history-heading h3 { display: inline-flex; align-items: center; gap: 7px; }
+.school-renewal-history-heading > span { color: #8994a6; font-size: 9px; }
+.school-renewal-history-list { margin-top: 10px; }
+.school-renewal-history-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 10px 0; border-top: 1px solid #edf0f5; }
+.school-renewal-history-row > div { min-width: 0; display: grid; gap: 4px; }
+.school-renewal-history-row > div b { overflow: hidden; color: #35415a; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.school-renewal-history-row > div span { color: #8994a6; font-size: 8px; }
+.school-invoice-status { padding: 4px 7px; border-radius: 20px; background: #fff7ed; color: #b45309; font-size: 8px; font-weight: 700; white-space: nowrap; }
+.school-invoice-status.paid { background: #ecfdf5; color: #16835d; }
+.school-invoice-status.failed,
+.school-invoice-status.expired { background: #fff1f2; color: #be123c; }
+.school-renewal-checkout-link { display: inline-flex; align-items: center; gap: 4px; color: #c45b1b; font-size: 9px; font-weight: 700; text-decoration: none; white-space: nowrap; }
+.school-renewal-checkout-link:hover { text-decoration: underline; }
+
+@media (max-width: 720px) {
+  .school-subscription-current { grid-template-columns: auto minmax(0, 1fr); }
+  .school-subscription-expiry { grid-column: 2; justify-items: start; }
+  .school-subscription-expiry b { text-align: left; }
+  .school-subscription-services { grid-template-columns: 1fr; }
+  .school-renewal-package-grid { grid-template-columns: 1fr; }
+  .school-renewal-form-heading,
+  .school-renewal-submit-row { align-items: stretch; flex-direction: column; }
+  .school-renewal-history-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .school-renewal-checkout-link { grid-column: 2; justify-self: end; }
+}
+
 .master-message {
   display: flex;
   align-items: flex-start;

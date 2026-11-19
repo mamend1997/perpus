@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { ImagePlus, Save, Trash2 } from 'lucide-react';
+import { CreditCard, ImagePlus, Save, ShieldCheck, Trash2 } from 'lucide-react';
 
 const defaultSettings = {
   qrisEnabled: false,
   merchantName: '',
   instructions: '',
-  qrisImage: ''
+  qrisImage: '',
+  kaseraEnabled: false
 };
 
 async function requestPaymentSettings(path, options = {}) {
@@ -113,6 +114,25 @@ export default function PlatformPaymentSettingsPage() {
                 <small>JPG, PNG, atau WebP; maksimal 1 MB.</small>
               </div>
             </div>
+          </div>
+        </section>
+
+        <section className="panel platform-payment-card platform-kasera-card">
+          <div className="platform-payment-card-heading">
+            <div><h2><CreditCard size={18} />Kasera Pay · QRIS Otomatis</h2><p>Buat checkout QRIS untuk tagihan dan perpanjangan akun sekolah. Konfirmasi pembayaran diproses melalui webhook Kasera.</p></div>
+            <label className="platform-payment-toggle">
+              <input type="checkbox" checked={settings.kaseraEnabled} disabled={!settings.kaseraConfigured} onChange={(event) => setSettings((current) => ({ ...current, kaseraEnabled: event.target.checked }))} />
+              <span>{settings.kaseraEnabled ? 'Aktif' : 'Nonaktif'}</span>
+            </label>
+          </div>
+          <div className="platform-kasera-status">
+            <div className={`platform-kasera-indicator ${settings.kaseraConfigured ? 'ready' : 'missing'}`}>
+              <ShieldCheck size={17} />
+              <span>{settings.kaseraConfigured ? `Kredensial server terpasang · ${settings.kaseraMode === 'sandbox' ? 'Sandbox' : 'Live'}` : 'Kredensial Kasera belum lengkap di server'}</span>
+            </div>
+            <p>API key dan webhook secret hanya dibaca dari environment server; keduanya tidak disimpan di database atau dikirim ke browser. Gunakan key <code>kp_test_</code> untuk uji coba dan <code>kp_live_</code> untuk transaksi sungguhan.</p>
+            {settings.webhookUrl && <label>URL webhook Kasera<input readOnly value={settings.webhookUrl} onFocus={(event) => event.target.select()} /></label>}
+            <small>Tambahkan URL tersebut pada Developer → Webhook di mode Kasera yang sama dengan API key. Tarif/biaya mengikuti pengaturan akun Kasera dan dipotong dari penerimaan merchant; masa berlaku checkout 60 menit.</small>
           </div>
         </section>
 

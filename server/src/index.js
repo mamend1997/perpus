@@ -9,6 +9,7 @@ import authRoutes from './routes/auth.routes.js';
 import schoolRoutes from './routes/school.routes.js';
 import superAdminRoutes from './routes/super-admin.routes.js';
 import publicLibraryRoutes from './routes/public-library.routes.js';
+import kaseraWebhookRoutes from './routes/kasera-webhook.routes.js';
 import { startBackupScheduler } from './utils/telegram-backup.js';
 import { startPlatformWhatsAppScheduler } from './utils/platform-whatsapp.js';
 
@@ -19,6 +20,7 @@ if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
 const app = express();
 app.use(helmet());
 app.use(cors({ origin: process.env.CLIENT_ORIGIN || 'http://localhost:5173' }));
+app.use('/api/payments/kasera', express.raw({ type: 'application/json', limit: '1mb' }), kaseraWebhookRoutes);
 app.use(express.json({ limit: '5mb' }));
 
 app.get('/api/health', async (_req, res, next) => {

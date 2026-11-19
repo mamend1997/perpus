@@ -372,6 +372,16 @@
 .platform-payment-qris-actions small { color: #8994a6; font-size: 9px; }
 .platform-payment-save-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 2px 0 8px; }
 .platform-payment-save-row > span { color: #8994a6; font-size: 9px; }
+.platform-payment-card-heading h2 { display: flex; align-items: center; gap: 7px; }
+.platform-kasera-status { display: grid; gap: 9px; margin-top: 16px; }
+.platform-kasera-indicator { display: flex; align-items: center; gap: 8px; font-size: 10px; font-weight: 700; }
+.platform-kasera-indicator.ready { color: #12805c; }
+.platform-kasera-indicator.missing { color: #b45309; }
+.platform-kasera-status p,
+.platform-kasera-status small { margin: 0; color: #8994a6; font-size: 9px; line-height: 1.6; }
+.platform-kasera-status code { color: #475569; }
+.platform-kasera-status label { display: grid; gap: 6px; color: #59657b; font-size: 10px; font-weight: 700; }
+.platform-kasera-status input { width: 100%; padding: 9px 10px; border: 1px solid #e0e5ed; border-radius: 8px; background: #f9fafc; color: #59657b; font: inherit; font-size: 10px; }
 .platform-package-card-heading { align-items: center; }
 .platform-package-card-heading > div { display: grid; justify-items: start; gap: 7px; }
 .platform-package-badge { padding: 4px 7px; border-radius: 20px; background: #eff6ff; color: #3566a7; font-size: 8px; font-weight: 750; text-transform: uppercase; letter-spacing: .5px; }
@@ -392,6 +402,7 @@
   .platform-payment-qris-preview { min-height: 180px; }
   .platform-package-fields,
   .platform-package-prices { grid-template-columns: 1fr; }
+  .platform-kasera-card .platform-payment-card-heading { flex-direction: column; }
   .platform-payment-save-row { align-items: stretch; flex-direction: column; }
   .platform-payment-save-row .primary-button { justify-content: center; }
 }

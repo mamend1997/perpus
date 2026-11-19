@@ -7,6 +7,7 @@ import createBackupRouter from './backup.routes.js';
 import { encryptSchoolSecret } from '../utils/school-settings.js';
 import { readPlatformWhatsAppSettings, sendPlatformWhatsAppMessage } from '../utils/platform-whatsapp.js';
 import { normalizePlatformBranding, readPlatformBranding } from '../utils/platform-branding.js';
+import { defaultSubscriptionPackages } from '../utils/platform-subscription-packages.js';
 
 const router = Router();
 router.use(requireSuperAdmin);
@@ -331,31 +332,9 @@ const defaultPlatformPaymentSettings = {
   qrisEnabled: false,
   merchantName: '',
   instructions: '',
-  qrisImage: ''
+  qrisImage: '',
+  kaseraEnabled: false
 };
-const defaultSubscriptionPackages = [
-  {
-    id: 'basic',
-    name: 'Basic',
-    description: '',
-    enabled: true,
-    prices: { monthly: 0, semester: 0, yearly: 0 }
-  },
-  {
-    id: 'premium',
-    name: 'Premium',
-    description: '',
-    enabled: true,
-    prices: { monthly: 0, semester: 0, yearly: 0 }
-  },
-  {
-    id: 'lifetime',
-    name: 'Lifetime',
-    description: '',
-    enabled: true,
-    prices: { once: 0 }
-  }
-];
 const platformThemeColors = new Set([
   '#f97316', '#2563eb', '#16a34a', '#7c3aed', '#0f766e', '#dc2626'
 ]);
@@ -442,7 +421,18 @@ router.get('/payment-settings', async (_req, res, next) => {
       ['platform_payment_settings']
     );
     const saved = rows[0] ? JSON.parse(rows[0].value) : {};
-    return res.json({ settings: { ...defaultPlatformPaymentSettings, ...saved } });
+    const apiKey = process.env.KASERA_API_KEY?.trim() || '';
+    return res.json({
+      settings: {
+        ...defaultPlatformPaymentSettings,
+        ...saved,
+        kaseraConfigured: /^(kp_test_|kp_live_)/.test(apiKey) && Boolean(process.env.KASERA_WEBHOOK_SECRET),
+        kaseraMode: apiKey.startsWith('kp_test_') ? 'sandbox' : apiKey.startsWith('kp_live_') ? 'live' : 'unknown',
+        webhookUrl: process.env.PUBLIC_API_URL
+          ? `${process.env.PUBLIC_API_URL.replace(/\/+$/, '')}/api/payments/kasera/webhook`
+          : ''
+      }
+    });
   } catch (error) {
     return next(error);
   }
@@ -450,18 +440,27 @@ router.get('/payment-settings', async (_req, res, next) => {
 
 router.put('/payment-settings', async (req, res, next) => {
   const { qrisEnabled, merchantName, instructions, qrisImage } = req.body || {};
+  const kaseraEnabled = req.body?.kaseraEnabled === true;
   if (typeof qrisEnabled !== 'boolean'
       || typeof merchantName !== 'string' || merchantName.trim().length > 120
       || typeof instructions !== 'string' || instructions.length > 2000
       || !isValidPlatformLogo(qrisImage)
-      || (qrisEnabled && !qrisImage)) {
-    return res.status(400).json({ message: 'Periksa status QRIS, nama merchant, instruksi, dan gambar QRIS.' });
+      || (qrisEnabled && !qrisImage)
+      || (kaseraEnabled && (!/^(kp_test_|kp_live_)/.test(process.env.KASERA_API_KEY || '')
+        || !process.env.KASERA_WEBHOOK_SECRET))) {
+    return res.status(400).json({
+      message: kaseraEnabled && (!/^(kp_test_|kp_live_)/.test(process.env.KASERA_API_KEY || '')
+        || !process.env.KASERA_WEBHOOK_SECRET)
+        ? 'Atur KASERA_API_KEY dan KASERA_WEBHOOK_SECRET di environment server terlebih dahulu.'
+        : 'Periksa status QRIS, nama merchant, instruksi, dan gambar QRIS.'
+    });
   }
   const settings = {
     qrisEnabled,
     merchantName: merchantName.trim(),
     instructions: instructions.trim(),
-    qrisImage
+    qrisImage,
+    kaseraEnabled
   };
   try {
     await pool.execute(
@@ -470,7 +469,18 @@ router.put('/payment-settings', async (req, res, next) => {
        ON DUPLICATE KEY UPDATE value = VALUES(value)`,
       ['platform_payment_settings', JSON.stringify(settings)]
     );
-    return res.json({ settings, message: 'Pengaturan QRIS berhasil disimpan.' });
+    const apiKey = process.env.KASERA_API_KEY?.trim() || '';
+    return res.json({
+      settings: {
+        ...settings,
+        kaseraConfigured: /^(kp_test_|kp_live_)/.test(apiKey) && Boolean(process.env.KASERA_WEBHOOK_SECRET),
+        kaseraMode: apiKey.startsWith('kp_test_') ? 'sandbox' : apiKey.startsWith('kp_live_') ? 'live' : 'unknown',
+        webhookUrl: process.env.PUBLIC_API_URL
+          ? `${process.env.PUBLIC_API_URL.replace(/\/+$/, '')}/api/payments/kasera/webhook`
+          : ''
+      },
+      message: 'Pengaturan pembayaran berhasil disimpan.'
+    });
   } catch (error) {
     return next(error);
   }
