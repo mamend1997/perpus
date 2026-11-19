@@ -3302,6 +3302,43 @@
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
+  body.is-printing-member-cards .member-id-card,
+  body.is-printing-member-cards .member-id-card * {
+    font-family: Arial, sans-serif !important;
+    line-height: 1.2 !important;
+  }
+  body.is-printing-member-cards .member-id-card > header small {
+    font-size: 5pt !important;
+    line-height: 1.1 !important;
+  }
+  body.is-printing-member-cards .member-id-card > header b {
+    font-size: 7pt !important;
+    line-height: 1.1 !important;
+  }
+  body.is-printing-member-cards .member-id-card-mark {
+    font-size: 5pt !important;
+    line-height: 1 !important;
+  }
+  body.is-printing-member-cards .member-id-card-details h2 {
+    font-size: 8pt !important;
+    line-height: 1.1 !important;
+  }
+  body.is-printing-member-cards .member-id-card-details > div,
+  body.is-printing-member-cards .member-id-card-details > div span,
+  body.is-printing-member-cards .member-id-card-details > div b {
+    font-size: 5.5pt !important;
+    line-height: 1.15 !important;
+  }
+  body.is-printing-member-cards .member-id-card-details > div span,
+  body.is-printing-member-cards .member-id-card-details > div b {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  body.is-printing-member-cards .member-id-card > footer b {
+    font-size: 5.5pt !important;
+    line-height: 1 !important;
+  }
   .school-students-page,
   .school-students-page * { visibility: visible !important; }
   .school-students-page > :not(.school-student-print-sheet):not(.school-member-card-print-sheet) { display: none !important; }
