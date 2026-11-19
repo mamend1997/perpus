@@ -8,7 +8,6 @@ import {
 import { deleteBookItem, fetchBookItems, updateBookItem } from './schoolBookApi.js';
 import { downloadBookItemsExcel } from './schoolBookItemsExcel.js';
 import SchoolConfirmDialog from './SchoolConfirmDialog.jsx';
-import SchoolPrintHeader from './SchoolPrintHeader.jsx';
 
 const pageSize = 25;
 
@@ -86,7 +85,7 @@ function itemBarcodeValue(item) {
   return String(item.serial_number || `I${item.id}`).replace(/[^\x20-\x7e]/g, '').trim().slice(0, 80) || `I${item.id}`;
 }
 
-function BookItemBarcodePrint({ items, schoolName, schoolIdentity, onClose }) {
+function BookItemBarcodePrint({ items, schoolName, onClose }) {
   const svgRefs = useRef({});
 
   useEffect(() => {
@@ -108,7 +107,6 @@ function BookItemBarcodePrint({ items, schoolName, schoolIdentity, onClose }) {
   return createPortal(
     <div className="barcode-print-layout">
       <div className="barcode-print-controls"><button type="button" onClick={onClose}>Tutup</button></div>
-      <SchoolPrintHeader identity={schoolIdentity || { name: schoolName }} title="Label Barcode Eksemplar" />
       <div className="barcode-print-grid">
         {items.map((item) => (
           <article className="barcode-print-label" key={item.id}>
@@ -125,7 +123,7 @@ function BookItemBarcodePrint({ items, schoolName, schoolIdentity, onClose }) {
   );
 }
 
-export default function SchoolBookItemsPage({ rights, schoolName, schoolIdentity }) {
+export default function SchoolBookItemsPage({ rights, schoolName }) {
   const [items, setItems] = useState([]);
   const [pagination, setPagination] = useState({ page: 1, total: 0, totalPages: 0 });
   const [page, setPage] = useState(1);
@@ -365,7 +363,7 @@ export default function SchoolBookItemsPage({ rights, schoolName, schoolIdentity
       </section>
 
       {editingItem && <EditBookItemModal item={editingItem} onClose={() => setEditingItem(null)} onSave={saveItem} />}
-      {printItems && <BookItemBarcodePrint items={printItems} schoolName={schoolName || 'Perpustakaan Sekolah'} schoolIdentity={schoolIdentity} onClose={() => setPrintItems(null)} />}
+      {printItems && <BookItemBarcodePrint items={printItems} schoolName={schoolName || 'Perpustakaan Sekolah'} onClose={() => setPrintItems(null)} />}
       {deleteRequest && <SchoolConfirmDialog
         title="Hapus Eksemplar?"
         message="Menghapus eksemplar akan mengurangi jumlah stok buku tersebut satu."

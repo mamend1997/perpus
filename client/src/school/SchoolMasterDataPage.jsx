@@ -76,6 +76,7 @@ function MasterCategoryModal({ type, category, onClose, onSave }) {
   const isAuthor = type === 'pengarang';
   const isAgent = type === 'agen';
   const isCodeLess = type === 'jenis' || type === 'koleksi' || type === 'topik' || type === 'penerbit';
+  const tableColumnCount = (isAgent ? 8 : isAuthor ? 6 : isCodeLess ? 5 : 6) + Number(type === 'rak');
   const [form, setForm] = useState({
     code: isCodeLess ? '' : category?.code || '',
     name: category?.name || '',
@@ -575,6 +576,11 @@ export default function SchoolMasterDataPage({ active, type, rights }) {
                   <th className="master-check-cell"><input type="checkbox" checked={allVisibleSelected} onChange={(event) => toggleAllVisible(event.target.checked)} aria-label="Pilih semua data yang tampil" /></th>
                   <th>No</th><th>Nama / Keterangan</th><th>Status</th><th>Aksi</th>
                 </tr>
+              ) : type === 'rak' ? (
+                <tr>
+                  <th className="master-check-cell"><input type="checkbox" checked={allVisibleSelected} onChange={(event) => toggleAllVisible(event.target.checked)} aria-label="Pilih semua data yang tampil" /></th>
+                  <th>No</th><th>Kode</th><th>Nama / Keterangan</th><th>Kapasitas</th><th>Status</th><th>Aksi</th>
+                </tr>
               ) : (
                 <tr>
                   <th className="master-check-cell"><input type="checkbox" checked={allVisibleSelected} onChange={(event) => toggleAllVisible(event.target.checked)} aria-label="Pilih semua data yang tampil" /></th>
@@ -584,11 +590,11 @@ export default function SchoolMasterDataPage({ active, type, rights }) {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td className="master-empty-cell" colSpan={isAgent ? 8 : isAuthor ? 6 : isCodeLess ? 5 : 6}>Memuat data...</td></tr>
+                <tr><td className="master-empty-cell" colSpan={tableColumnCount}>Memuat data...</td></tr>
               ) : error && categories.length === 0 ? (
-                <tr><td className="master-empty-cell" colSpan={isAgent ? 8 : isAuthor ? 6 : isCodeLess ? 5 : 6}>Data belum dapat dimuat.</td></tr>
+                <tr><td className="master-empty-cell" colSpan={tableColumnCount}>Data belum dapat dimuat.</td></tr>
               ) : filteredCategories.length === 0 ? (
-                <tr><td className="master-empty-cell" colSpan={isAgent ? 8 : isAuthor ? 6 : isCodeLess ? 5 : 6}>{search || statusFilter !== 'all' ? 'Data tidak ditemukan.' : 'Belum ada data. Tambahkan data pertama Anda.'}</td></tr>
+                <tr><td className="master-empty-cell" colSpan={tableColumnCount}>{search || statusFilter !== 'all' ? 'Data tidak ditemukan.' : 'Belum ada data. Tambahkan data pertama Anda.'}</td></tr>
               ) : filteredCategories.map((category, index) => (
                 <tr key={category.id}>
                   {isAgent ? (
@@ -651,7 +657,8 @@ export default function SchoolMasterDataPage({ active, type, rights }) {
                       }} aria-label={`Pilih ${category.name}`} /></td>
                       <td>{index + 1}</td>
                       {!isCodeLess && <td>{category.code || '—'}</td>}
-                      <td><b className="master-primary-text">{category.name}</b>{type === 'rak' && <small className="master-secondary-text">Kapasitas: {category.capacity ? `${Number(category.capacity).toLocaleString('id-ID')} eksemplar` : 'Tidak dibatasi'}</small>}{category.description && <small className="master-secondary-text">{category.description}</small>}</td>
+                      <td><b className="master-primary-text">{category.name}</b>{category.description && <small className="master-secondary-text">{category.description}</small>}</td>
+                      {type === 'rak' && <td>{category.capacity ? `${Number(category.capacity).toLocaleString('id-ID')} eksemplar` : 'Tidak dibatasi'}</td>}
                       <td><span className={`master-status ${category.status === 'active' ? 'is-active' : 'is-inactive'}`}>{displayStatus(category.status)}</span></td>
                       <td>
                         <div className="master-agent-actions">

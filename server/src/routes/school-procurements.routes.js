@@ -41,6 +41,53 @@ function requireProcurementReviewer(req, res, next) {
   return next();
 }
 
+router.get('/books', requireSchoolPermission('procurements', 'edit'), async (req, res, next) => {
+  const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+  if (search.length > 100) return res.status(400).json({ message: 'Kata pencarian maksimal 100 karakter.' });
+  if (search.length < 2) return res.json({ books: [] });
+
+  const likeSearch = `%${search.replace(/[\\%_]/g, '\\$&')}%`;
+  try {
+    const [books] = await pool.execute(
+      `SELECT CAST(b.id AS CHAR) AS id, b.title, b.nomor_induk, b.kode_buku, b.qty
+       FROM books b
+       WHERE b.school_id = ?
+         AND (
+           b.title LIKE ? OR b.nomor_induk LIKE ? OR b.kode_buku LIKE ? OR b.isbn LIKE ?
+           OR CONCAT('B', b.id) = ?
+           OR EXISTS (
+             SELECT 1 FROM book_items bi
+             WHERE bi.school_id = b.school_id AND bi.book_id = b.id AND bi.serial_number = ?
+           )
+         )
+       ORDER BY CASE
+         WHEN b.isbn = ? OR b.nomor_induk = ? OR b.kode_buku = ? OR CONCAT('B', b.id) = ? OR EXISTS (
+           SELECT 1 FROM book_items bi
+           WHERE bi.school_id = b.school_id AND bi.book_id = b.id AND bi.serial_number = ?
+         ) THEN 0 ELSE 1 END,
+         b.title ASC
+       LIMIT 20`,
+      [
+        req.school.id,
+        likeSearch,
+        likeSearch,
+        likeSearch,
+        likeSearch,
+        search,
+        search,
+        search,
+        search,
+        search,
+        search,
+        search
+      ]
+    );
+    return res.json({ books });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 async function findOrCreateCategory(connection, schoolId, type, rawName) {
   const name = typeof rawName === 'string' ? rawName.trim() : '';
   if (!name) return null;
@@ -99,7 +146,7 @@ router.get('/', requireSchoolPermission('procurements', 'view'), async (req, res
     const orderDirection = direction.toUpperCase();
     const [requests] = await pool.execute(
       `SELECT p.id, p.title, p.author, p.publisher, p.\`year\`, p.quantity_needed,
-              p.estimated_price, p.request_date, p.status, p.notes, p.review_notes,
+              p.request_type, p.book_id, p.estimated_price, p.request_date, p.status, p.notes, p.review_notes,
               p.user_id, COALESCE(NULLIF(p.requester_name, ''), u.name) AS requester,
               u.role AS requester_role
        ${from}
@@ -152,9 +199,20 @@ router.post('/', requireSchoolPermission('procurements', 'edit'), async (req, re
     return res.status(400).json({ message: 'Data usulan pengadaan tidak valid.' });
   }
   const {
-    title, author, publisher, year, quantityNeeded, estimatedPrice, requesterName, requestDate, notes
+    title, author, publisher, year, quantityNeeded, estimatedPrice, requesterName, requestDate, notes,
+    requestType = 'new', bookId
   } = req.body;
-  if (typeof title !== 'string' || !title.trim() || title.trim().length > 255) {
+  if (!['existing', 'new'].includes(requestType)) {
+    return res.status(400).json({ message: 'Jenis usulan tidak valid.' });
+  }
+  const normalizedBookId = bookId == null || bookId === '' ? '' : String(bookId);
+  if (requestType === 'existing' && !/^[1-9]\d*$/.test(normalizedBookId)) {
+    return res.status(400).json({ message: 'Pilih buku yang sudah terdaftar di katalog.' });
+  }
+  if (requestType === 'new' && normalizedBookId) {
+    return res.status(400).json({ message: 'Usulan buku baru tidak boleh merujuk ke buku katalog.' });
+  }
+  if (requestType === 'new' && (typeof title !== 'string' || !title.trim() || title.trim().length > 255)) {
     return res.status(400).json({ message: 'Judul buku wajib diisi maksimal 255 karakter.' });
   }
   if ((author != null && typeof author !== 'string') || (publisher != null && typeof publisher !== 'string')) {
@@ -217,16 +275,33 @@ router.post('/', requireSchoolPermission('procurements', 'edit'), async (req, re
     connection = await pool.getConnection();
     await connection.beginTransaction();
     transactionStarted = true;
+    let normalizedTitle = requestType === 'new' ? title.trim() : '';
+    let storedBookId = null;
+    if (requestType === 'existing') {
+      const [books] = await connection.execute(
+        'SELECT id, title FROM books WHERE id = ? AND school_id = ? FOR UPDATE',
+        [normalizedBookId, req.school.id]
+      );
+      if (!books[0]) {
+        await connection.rollback();
+        transactionStarted = false;
+        return res.status(404).json({ message: 'Buku tidak ditemukan di katalog sekolah ini.' });
+      }
+      normalizedTitle = books[0].title;
+      storedBookId = books[0].id;
+    }
     const [result] = await connection.execute(
       `INSERT INTO procurements
-       (school_id, user_id, requester_name, title, author, publisher, \`year\`, quantity_needed,
-        estimated_price, request_date, status, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_DATE()), 'Pending', ?)`,
+       (school_id, user_id, request_type, book_id, requester_name, title, author, publisher, \`year\`,
+        quantity_needed, estimated_price, request_date, status, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_DATE()), 'Pending', ?)`,
       [
         req.school.id,
         req.school.userId,
+        requestType,
+        storedBookId,
         normalizedRequesterName,
-        title.trim(),
+        normalizedTitle,
         normalizedAuthor || null,
         normalizedPublisher || null,
         normalizedYear,
@@ -237,7 +312,7 @@ router.post('/', requireSchoolPermission('procurements', 'edit'), async (req, re
       ]
     );
     const [[request]] = await connection.execute(
-      `SELECT id, requester_name, title, author, publisher, \`year\`, quantity_needed, estimated_price,
+      `SELECT id, requester_name, request_type, book_id, title, author, publisher, \`year\`, quantity_needed, estimated_price,
               request_date, status, notes, review_notes
        FROM procurements WHERE id = ? AND school_id = ?`,
       [result.insertId, req.school.id]
@@ -296,7 +371,7 @@ router.patch('/:id', requireSchoolPermission('procurements', 'edit'), requirePro
     await connection.beginTransaction();
     transactionStarted = true;
     const [rows] = await connection.execute(
-      `SELECT id, title, author, publisher, \`year\`, quantity_needed, estimated_price,
+      `SELECT id, request_type, book_id, title, author, publisher, \`year\`, quantity_needed, estimated_price,
               request_date, status, notes, review_notes
        FROM procurements WHERE id = ? AND school_id = ? FOR UPDATE`,
       [id, req.school.id]
@@ -306,6 +381,11 @@ router.patch('/:id', requireSchoolPermission('procurements', 'edit'), requirePro
       await connection.rollback();
       transactionStarted = false;
       return res.status(404).json({ message: 'Usulan pengadaan tidak ditemukan.' });
+    }
+    if (addToCatalog && request.request_type === 'existing') {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(400).json({ message: 'Buku yang sudah ada tidak dapat ditambahkan ulang ke katalog.' });
     }
 
     let catalogBook = null;
@@ -349,6 +429,8 @@ router.patch('/:id', requireSchoolPermission('procurements', 'edit'), requirePro
     return res.json({
       request: {
         id,
+        request_type: request.request_type,
+        book_id: request.book_id,
         title: request.title,
         author: request.author,
         publisher: request.publisher,

@@ -304,6 +304,8 @@ CREATE TABLE IF NOT EXISTS procurements (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   school_id BIGINT UNSIGNED NOT NULL,
   user_id BIGINT UNSIGNED NOT NULL,
+  request_type ENUM('existing', 'new') NOT NULL DEFAULT 'new',
+  book_id BIGINT UNSIGNED NULL,
   requester_name VARCHAR(180) NULL,
   title VARCHAR(255) NOT NULL,
   author VARCHAR(180) NULL,
@@ -318,9 +320,12 @@ CREATE TABLE IF NOT EXISTS procurements (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   KEY idx_procurements_school_status (school_id, status, created_at),
+  KEY idx_procurements_book (book_id),
   CONSTRAINT fk_procurements_school FOREIGN KEY (school_id) REFERENCES tenants_schools (id)
     ON DELETE CASCADE,
-  CONSTRAINT fk_procurements_user FOREIGN KEY (school_id, user_id) REFERENCES users (school_id, id)
+  CONSTRAINT fk_procurements_user FOREIGN KEY (school_id, user_id) REFERENCES users (school_id, id),
+  CONSTRAINT fk_procurements_book FOREIGN KEY (book_id) REFERENCES books (id)
+    ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS visitors (

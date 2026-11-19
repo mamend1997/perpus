@@ -4,7 +4,8 @@ import {
   Check, ChevronLeft, ChevronRight, ClipboardList, LoaderCircle, Plus, Search, Trash2, X
 } from 'lucide-react';
 import SchoolConfirmDialog from './SchoolConfirmDialog.jsx';
-import { createProcurement, deleteProcurements, fetchProcurements, updateProcurement } from './schoolProcurementApi.js';
+import CameraBarcodeScanner from './CameraBarcodeScanner.jsx';
+import { createProcurement, deleteProcurements, fetchProcurements, searchProcurementBooks, updateProcurement } from './schoolProcurementApi.js';
 
 const pageSize = 10;
 
@@ -31,7 +32,8 @@ function todayDate() {
   return `${date.getFullYear()}-${month}-${day}`;
 }
 
-function RequestFormModal({ requester, onClose, onSave }) {
+function RequestFormModal({ type, requester, onClose, onSave }) {
+  const isExistingBook = type === 'existing';
   const [form, setForm] = useState(() => ({
     title: '',
     author: '',
@@ -43,6 +45,11 @@ function RequestFormModal({ requester, onClose, onSave }) {
     requestDate: todayDate(),
     notes: ''
   }));
+  const [bookSearch, setBookSearch] = useState('');
+  const [bookMatches, setBookMatches] = useState([]);
+  const [selectedBook, setSelectedBook] = useState(null);
+  const [searchingBooks, setSearchingBooks] = useState(false);
+  const [bookSearchError, setBookSearchError] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -53,6 +60,41 @@ function RequestFormModal({ requester, onClose, onSave }) {
     document.addEventListener('keydown', closeOnEscape);
     return () => document.removeEventListener('keydown', closeOnEscape);
   }, [onClose, saving]);
+
+  useEffect(() => {
+    const search = bookSearch.trim();
+    if (!isExistingBook || search.length < 2 || selectedBook?.title === search) {
+      setBookMatches([]);
+      setSearchingBooks(false);
+      setBookSearchError('');
+      return undefined;
+    }
+
+    setBookMatches([]);
+    setSearchingBooks(false);
+    setBookSearchError('');
+    const controller = new AbortController();
+    const timeout = window.setTimeout(async () => {
+      setSearchingBooks(true);
+      setBookSearchError('');
+      try {
+        const result = await searchProcurementBooks(search, controller.signal);
+        if (!controller.signal.aborted) setBookMatches(result.books || []);
+      } catch (searchError) {
+        if (!controller.signal.aborted) {
+          setBookMatches([]);
+          setBookSearchError(searchError.message);
+        }
+      } finally {
+        if (!controller.signal.aborted) setSearchingBooks(false);
+      }
+    }, 250);
+
+    return () => {
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [bookSearch, isExistingBook, selectedBook]);
 
   function update(event) {
     setForm((current) => ({ ...current, [event.target.name]: event.target.value }));
@@ -70,10 +112,18 @@ function RequestFormModal({ requester, onClose, onSave }) {
 
   async function submit(event) {
     event.preventDefault();
+    if (isExistingBook && !selectedBook) {
+      setError('Cari dan pilih buku yang sudah terdaftar di katalog.');
+      return;
+    }
     setSaving(true);
     setError('');
     try {
-      await onSave(form);
+      await onSave({
+        ...form,
+        requestType: type,
+        bookId: isExistingBook ? selectedBook.id : null
+      });
     } catch (saveError) {
       setError(saveError.message);
     } finally {
@@ -87,23 +137,77 @@ function RequestFormModal({ requester, onClose, onSave }) {
     }}>
       <section className="master-modal procurement-modal" role="dialog" aria-modal="true" aria-labelledby="procurement-create-title">
         <header className="master-modal-heading">
-          <div><span className="library-eyebrow">USULAN KOLEKSI</span><h2 id="procurement-create-title">Usulkan Buku</h2></div>
+          <div><span className="library-eyebrow">USULAN KOLEKSI</span><h2 id="procurement-create-title">{isExistingBook ? 'Usulkan Buku' : 'Usulkan Buku Baru'}</h2></div>
           <button type="button" className="master-icon-button" onClick={onClose} disabled={saving} aria-label="Tutup form"><X size={18} /></button>
         </header>
         {error && <div className="library-error" role="alert">{error}</div>}
         <form className="procurement-modal-form" onSubmit={submit}>
-          <label>Judul Buku
-            <input name="title" value={form.title} onChange={update} maxLength={255} required autoFocus placeholder="Masukkan judul buku yang diusulkan" />
-          </label>
-          <label>Pengarang / Penulis
-            <input name="author" value={form.author} onChange={update} maxLength={180} placeholder="Nama pengarang (opsional)" />
-          </label>
-          <label>Penerbit
-            <input name="publisher" value={form.publisher} onChange={update} maxLength={180} placeholder="Nama penerbit (opsional)" />
-          </label>
-          <label>Tahun Terbit
-            <input name="year" type="text" inputMode="numeric" pattern="[0-9]{4}" maxLength={4} value={form.year} onChange={updateYear} placeholder="Contoh: 2026" />
-          </label>
+          {isExistingBook ? (
+            <div className="procurement-book-picker">
+              <label>Cari nama buku atau masukkan barcode
+                <input
+                  type="search"
+                  value={bookSearch}
+                  onChange={(event) => {
+                    setBookSearch(event.target.value);
+                    setSelectedBook(null);
+                  }}
+                  autoComplete="off"
+                  autoFocus
+                  placeholder="Nama buku atau kode barcode"
+                />
+              </label>
+              <CameraBarcodeScanner label="Scan barcode" onScan={(value) => {
+                setBookSearch(value);
+                setSelectedBook(null);
+              }} />
+              {searchingBooks && <small className="procurement-book-search-message">Mencari buku...</small>}
+              {bookSearchError && <small className="procurement-book-search-error" role="alert">{bookSearchError}</small>}
+              {!searchingBooks && !bookSearchError && bookSearch.trim().length >= 2 && !selectedBook && bookMatches.length === 0 && (
+                <small className="procurement-book-search-message">Buku tidak ditemukan.</small>
+              )}
+              {bookMatches.length > 0 && (
+                <div className="procurement-book-search-results" role="listbox" aria-label="Hasil pencarian buku">
+                  {bookMatches.map((book) => (
+                    <button
+                      type="button"
+                      role="option"
+                      key={book.id}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => {
+                        setSelectedBook(book);
+                        setBookSearch(book.title);
+                        setBookMatches([]);
+                        setError('');
+                      }}
+                    >
+                      <b>{book.title}</b>
+                      <small>{book.kode_buku || book.nomor_induk || 'Kode belum tersedia'} · Stok: {Number(book.qty || 0).toLocaleString('id-ID')}</small>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {selectedBook && <div className="procurement-selected-book">
+                <b>{selectedBook.title}</b>
+                <span>Stok saat ini: {Number(selectedBook.qty || 0).toLocaleString('id-ID')} eksemplar</span>
+              </div>}
+            </div>
+          ) : (
+            <>
+              <label>Judul Buku
+                <input name="title" value={form.title} onChange={update} maxLength={255} required autoFocus placeholder="Masukkan judul buku yang diusulkan" />
+              </label>
+              <label>Pengarang / Penulis
+                <input name="author" value={form.author} onChange={update} maxLength={180} placeholder="Nama pengarang (opsional)" />
+              </label>
+              <label>Penerbit
+                <input name="publisher" value={form.publisher} onChange={update} maxLength={180} placeholder="Nama penerbit (opsional)" />
+              </label>
+              <label>Tahun Terbit
+                <input name="year" type="text" inputMode="numeric" pattern="[0-9]{4}" maxLength={4} value={form.year} onChange={updateYear} placeholder="Contoh: 2026" />
+              </label>
+            </>
+          )}
           <label>Jumlah Kebutuhan (Eksemplar)
             <input name="quantityNeeded" type="number" min="1" max="10000" step="1" value={form.quantityNeeded} onChange={update} required />
           </label>
@@ -117,10 +221,9 @@ function RequestFormModal({ requester, onClose, onSave }) {
             <input name="requesterName" value={form.requesterName} onChange={update} maxLength={180} required />
           </label>
           <label>Alasan Pengajuan / Catatan Pengajuan
-            <textarea name="notes" value={form.notes} onChange={update} maxLength={5000} rows={4} placeholder="Jelaskan kebutuhan atau alasan pengajuan (opsional)" />
+            <textarea name="notes" value={form.notes} onChange={update} maxLength={5000} rows={4} placeholder={isExistingBook ? 'Misalnya stok menipis atau kebutuhan tambahan (opsional)' : 'Jelaskan kebutuhan atau alasan pengajuan (opsional)'} />
             <small>{form.notes.length}/5000 karakter</small>
           </label>
-          <p>Usulan akan berstatus Pending sampai ditinjau oleh Admin atau Kepala Perpustakaan.</p>
           <footer className="procurement-modal-actions">
             <button type="button" className="master-button master-button-light" onClick={onClose} disabled={saving}>Batal</button>
             <button type="submit" className="master-button master-button-primary" disabled={saving}>
@@ -192,7 +295,7 @@ function ReviewRequestModal({ request, onClose, onSave }) {
             <textarea value={reviewNotes} onChange={(event) => setReviewNotes(event.target.value)} maxLength={5000} rows={4} placeholder="Tulis catatan keputusan untuk pemohon (opsional)" />
             <small>{reviewNotes.length}/5000 karakter</small>
           </label>
-          {status === 'Diterima' && <label className="procurement-add-catalog">
+          {status === 'Diterima' && request.request_type !== 'existing' && <label className="procurement-add-catalog">
             <input type="checkbox" checked={addToCatalog} onChange={(event) => setAddToCatalog(event.target.checked)} />
             <span><b>Langsung masukkan judul ini ke Daftar Pustaka?</b><small>Data judul, pengarang, penerbit, dan tahun akan disalin ke katalog dengan stok awal 0.</small></span>
           </label>}
@@ -228,7 +331,7 @@ export default function SchoolProcurementsPage({ rights, role, requester }) {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
-  const [createOpen, setCreateOpen] = useState(false);
+  const [createType, setCreateType] = useState('');
   const [reviewing, setReviewing] = useState(null);
   const [selectedRequests, setSelectedRequests] = useState({});
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -281,8 +384,8 @@ export default function SchoolProcurementsPage({ rights, role, requester }) {
 
   async function submitRequest(proposal) {
     await createProcurement(proposal);
-    setCreateOpen(false);
-    setNotice('Usulan buku berhasil dikirim dan berstatus Pending.');
+    setCreateType('');
+    setNotice('Usulan buku berhasil dikirim.');
     setPage(1);
     setRefreshKey((key) => key + 1);
   }
@@ -368,9 +471,14 @@ export default function SchoolProcurementsPage({ rights, role, requester }) {
                 <option value="requester-asc">Nama pemohon A-Z</option>
               </select>
             </label>
-            {canEdit && <button type="button" className="master-button master-button-primary" onClick={() => setCreateOpen(true)}>
-              <Plus size={15} />Usulkan Buku
-            </button>}
+            {canEdit && <>
+              <button type="button" className="master-button master-button-primary" onClick={() => setCreateType('existing')}>
+                <Plus size={15} />Usulan Buku
+              </button>
+              <button type="button" className="master-button master-button-primary" onClick={() => setCreateType('new')}>
+                <Plus size={15} />Usulan Buku Baru
+              </button>
+            </>}
             {canDelete && selectedIds.length > 0 && <button type="button" className="master-button procurement-delete-selected" onClick={() => { setDeleteError(''); setDeleteConfirmOpen(true); }}>
               <Trash2 size={15} />Hapus Terpilih ({selectedIds.length})
             </button>}
@@ -398,19 +506,20 @@ export default function SchoolProcurementsPage({ rights, role, requester }) {
                     });
                   }
                 }} aria-label="Pilih semua usulan di halaman ini" /></th>}
-                <th>No</th><th>Judul Buku</th><th>Pengarang / Penulis</th><th>Penerbit</th><th>Tahun Terbit</th>
+                <th>No</th><th>Judul Buku</th><th>Jenis Usulan</th><th>Pengarang / Penulis</th><th>Penerbit</th><th>Tahun Terbit</th>
                 <th>Kebutuhan</th><th>Estimasi Harga</th><th>Tanggal Pengajuan</th><th>Status</th><th>Alasan Pengajuan</th><th>Pemohon</th>
                 {canReview && <th>Aksi</th>}
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={11 + Number(canReview) + Number(canDelete)} className="procurement-table-empty"><LoaderCircle size={17} className="book-stock-spinner" />Memuat usulan...</td></tr>
+                <tr><td colSpan={12 + Number(canReview) + Number(canDelete)} className="procurement-table-empty"><LoaderCircle size={17} className="book-stock-spinner" />Memuat usulan...</td></tr>
               ) : requests.length ? requests.map((request, index) => (
                 <tr key={request.id}>
                   {canDelete && <td className="procurement-checkbox-cell"><input type="checkbox" checked={Boolean(selectedRequests[String(request.id)])} onChange={(event) => toggleRequestSelection(request, event.target.checked)} aria-label={`Pilih usulan ${request.title}`} /></td>}
                   <td>{(page - 1) * pageSize + index + 1}</td>
                   <td><b className="procurement-book-title">{request.title}</b></td>
+                  <td>{request.request_type === 'existing' ? 'Buku yang Sudah Ada' : 'Buku Baru'}</td>
                   <td>{request.author || '—'}</td>
                   <td>{request.publisher || '—'}</td>
                   <td>{request.year || '—'}</td>
@@ -423,7 +532,7 @@ export default function SchoolProcurementsPage({ rights, role, requester }) {
                   {canReview && <td><button type="button" className="master-button master-button-light procurement-review-button" onClick={() => setReviewing(request)}>Tinjau</button></td>}
                 </tr>
               )) : (
-                <tr><td colSpan={11 + Number(canReview) + Number(canDelete)} className="procurement-table-empty"><ClipboardList size={20} />{search || statusFilter ? 'Tidak ada usulan yang cocok dengan pencarian atau filter.' : 'Belum ada usulan pengadaan buku.'}</td></tr>
+                <tr><td colSpan={12 + Number(canReview) + Number(canDelete)} className="procurement-table-empty"><ClipboardList size={20} />{search || statusFilter ? 'Tidak ada usulan yang cocok dengan pencarian atau filter.' : 'Belum ada usulan pengadaan buku.'}</td></tr>
               )}
             </tbody>
           </table>
@@ -437,7 +546,7 @@ export default function SchoolProcurementsPage({ rights, role, requester }) {
         </footer>
       </section>
 
-      {createOpen && <RequestFormModal requester={requester} onClose={() => setCreateOpen(false)} onSave={submitRequest} />}
+      {createType && <RequestFormModal type={createType} requester={requester} onClose={() => setCreateType('')} onSave={submitRequest} />}
       {reviewing && <ReviewRequestModal request={reviewing} onClose={() => setReviewing(null)} onSave={saveReview} />}
       {deleteConfirmOpen && <SchoolConfirmDialog
         title="Hapus usulan terpilih?"

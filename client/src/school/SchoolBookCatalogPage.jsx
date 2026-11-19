@@ -12,7 +12,6 @@ import {
 import { downloadBookTemplate, parseBookImport } from './bookCatalogExcel.js';
 import SchoolConfirmDialog from './SchoolConfirmDialog.jsx';
 import { createReview, fetchEligibleReviewBooks, fetchReviews } from './schoolReviewsApi.js';
-import SchoolPrintHeader from './SchoolPrintHeader.jsx';
 
 const formFields = [
   'nomor_induk', 'title',
@@ -595,7 +594,7 @@ function BookDetailModal({ bookId, onClose, role }) {
   );
 }
 
-function BookBarcodePrint({ books, schoolName, schoolIdentity, onClose }) {
+function BookBarcodePrint({ books, schoolName, onClose }) {
   const svgRefs = useRef({});
   useEffect(() => {
     document.body.classList.add('is-printing-barcode');
@@ -616,7 +615,6 @@ function BookBarcodePrint({ books, schoolName, schoolIdentity, onClose }) {
   return createPortal(
     <div className="barcode-print-layout">
       <div className="barcode-print-controls"><button type="button" onClick={onClose}>Tutup</button></div>
-      <SchoolPrintHeader identity={schoolIdentity || { name: schoolName }} title="Label Barcode Buku" />
       <div className="barcode-print-grid">
         {books.map((book) => (
           <article className="barcode-print-label" key={book.id}>
@@ -633,7 +631,7 @@ function BookBarcodePrint({ books, schoolName, schoolIdentity, onClose }) {
   );
 }
 
-export default function SchoolBookCatalogPage({ rights, role, schoolIdentity }) {
+export default function SchoolBookCatalogPage({ rights, role }) {
   const canEdit = Boolean(rights?.edit);
   const canDelete = Boolean(rights?.delete);
   const [meta, setMeta] = useState({ school: {}, categories: {} });
@@ -924,7 +922,7 @@ export default function SchoolBookCatalogPage({ rights, role, schoolIdentity }) 
       />}
       {importOpen && <BookImportModal onClose={() => setImportOpen(false)} onImport={handleImport} />}
       {detailBookId && <BookDetailModal bookId={detailBookId} role={role} onClose={() => setDetailBookId(null)} />}
-      {printBooks && <BookBarcodePrint books={printBooks} schoolName={meta.school?.name || 'Perpustakaan Sekolah'} schoolIdentity={schoolIdentity} onClose={() => setPrintBooks(null)} />}
+      {printBooks && <BookBarcodePrint books={printBooks} schoolName={meta.school?.name || 'Perpustakaan Sekolah'} onClose={() => setPrintBooks(null)} />}
       {deleteRequest && <SchoolConfirmDialog
         title={deleteRequest.ids.length === 1 ? 'Hapus Buku?' : 'Hapus Buku Terpilih?'}
         message={deleteRequest.ids.length === 1

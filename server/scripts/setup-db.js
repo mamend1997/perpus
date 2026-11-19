@@ -166,7 +166,9 @@ try {
   const procurementColumnNames = new Set(procurementColumns.map((column) => column.COLUMN_NAME));
   const isMigratingReviewNotes = !procurementColumnNames.has('review_notes');
   const procurementFields = [
-    ['requester_name', 'requester_name VARCHAR(180) NULL AFTER user_id'],
+    ['request_type', "request_type ENUM('existing', 'new') NOT NULL DEFAULT 'new' AFTER user_id"],
+    ['book_id', 'book_id BIGINT UNSIGNED NULL AFTER request_type'],
+    ['requester_name', 'requester_name VARCHAR(180) NULL AFTER book_id'],
     ['year', '`year` SMALLINT UNSIGNED NULL AFTER publisher'],
     ['quantity_needed', 'quantity_needed INT UNSIGNED NOT NULL DEFAULT 1 AFTER `year`'],
     ['estimated_price', 'estimated_price DECIMAL(12,2) NULL AFTER quantity_needed'],
@@ -176,6 +178,24 @@ try {
     if (!procurementColumnNames.has(columnName)) {
       await connection.query(`ALTER TABLE procurements ADD COLUMN ${definition}`);
     }
+  }
+  const [procurementIndexes] = await connection.execute(
+    `SELECT INDEX_NAME FROM information_schema.STATISTICS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'procurements'
+       AND INDEX_NAME = 'idx_procurements_book'`
+  );
+  if (!procurementIndexes.length) {
+    await connection.query('ALTER TABLE procurements ADD KEY idx_procurements_book (book_id)');
+  }
+  const [procurementForeignKeys] = await connection.execute(
+    `SELECT CONSTRAINT_NAME FROM information_schema.REFERENTIAL_CONSTRAINTS
+     WHERE CONSTRAINT_SCHEMA = DATABASE() AND TABLE_NAME = 'procurements'
+       AND CONSTRAINT_NAME = 'fk_procurements_book'`
+  );
+  if (!procurementForeignKeys.length) {
+    await connection.query(
+      'ALTER TABLE procurements ADD CONSTRAINT fk_procurements_book FOREIGN KEY (book_id) REFERENCES books (id) ON DELETE SET NULL'
+    );
   }
   if (isMigratingReviewNotes) {
     await connection.query(

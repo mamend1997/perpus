@@ -29,6 +29,11 @@ export function createProcurement(proposal) {
   return requestProcurementApi('', { method: 'POST', body: proposal });
 }
 
+export function searchProcurementBooks(search, signal) {
+  const query = new URLSearchParams({ search });
+  return requestProcurementApi(`/books?${query}`, { signal });
+}
+
 export function updateProcurement(id, changes) {
   return requestProcurementApi(`/${encodeURIComponent(id)}`, {
     method: 'PATCH',
