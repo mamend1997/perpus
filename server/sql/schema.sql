@@ -619,3 +619,49 @@ CREATE TABLE IF NOT EXISTS platform_settings (
   PRIMARY KEY (id),
   UNIQUE KEY uq_platform_settings_key (key_name)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS school_support_sessions (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  school_id BIGINT UNSIGNED NOT NULL,
+  user_id BIGINT UNSIGNED NOT NULL,
+  created_by_admin_id BIGINT UNSIGNED NULL,
+  code_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  expires_at DATETIME NOT NULL,
+  used_at DATETIME NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_school_support_sessions_code_hash (code_hash),
+  KEY idx_school_support_sessions_expiry (expires_at, used_at),
+  CONSTRAINT fk_school_support_sessions_school FOREIGN KEY (school_id) REFERENCES tenants_schools (id)
+    ON DELETE CASCADE,
+  CONSTRAINT fk_school_support_sessions_user FOREIGN KEY (user_id) REFERENCES users (id)
+    ON DELETE CASCADE,
+  CONSTRAINT fk_school_support_sessions_admin FOREIGN KEY (created_by_admin_id) REFERENCES super_admins (id)
+    ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS school_registration_otps (
+  id CHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  phone VARCHAR(20) NOT NULL,
+  code_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  attempts TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  expires_at DATETIME NOT NULL,
+  used_at DATETIME NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_school_registration_otps_phone_created (phone, created_at),
+  KEY idx_school_registration_otps_expiry (expires_at, used_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS platform_payment_reminder_logs (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  invoice_id BIGINT UNSIGNED NOT NULL,
+  reminder_kind ENUM('before_due', 'overdue') NOT NULL,
+  recipient VARCHAR(20) NOT NULL,
+  sent_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_platform_payment_reminder_invoice_kind (invoice_id, reminder_kind),
+  KEY idx_platform_payment_reminder_sent (sent_at),
+  CONSTRAINT fk_platform_payment_reminder_invoice FOREIGN KEY (invoice_id) REFERENCES tenant_invoices (id)
+    ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

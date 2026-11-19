@@ -4,7 +4,7 @@ import {
   Check, ChevronDown, ChevronRight, CircleHelp, ClipboardList, Copy, Eye, EyeOff,
   CreditCard, Database, FileText, Headphones, LayoutDashboard,
   KeyRound, LogOut, Menu, MessageSquare, MoreHorizontal, PanelLeftClose, PanelLeftOpen, Palette, Plus,
-  Search, Settings2, ShieldCheck, Sparkles, Ticket, Users, X
+  Search, Settings2, ShieldCheck, Sparkles, Ticket, Users, Wrench, X
 } from 'lucide-react';
 import SchoolPortal from './school/SchoolPortal.jsx';
 import PublicLibraryPortal from './school/PublicLibraryPortal.jsx';
@@ -15,6 +15,7 @@ import PlatformUserGuidePage from './PlatformUserGuidePage.jsx';
 import PlatformAppearancePage from './PlatformAppearancePage.jsx';
 import PlatformPaymentSettingsPage from './PlatformPaymentSettingsPage.jsx';
 import PlatformSubscriptionPackagesPage from './PlatformSubscriptionPackagesPage.jsx';
+import PlatformWhatsAppGatewayPage from './PlatformWhatsAppGatewayPage.jsx';
 import './super-admin.css';
 
 const groups = [
@@ -26,7 +27,6 @@ const groups = [
   ] },
   { title: 'AKUN', items: [{ label: 'Pengaturan Profil', icon: Users }] },
   { title: 'KUSTOMISASI', items: [
-    { label: 'Default Menu Sekolah', icon: Settings2 },
     { label: 'Branding Sistem', icon: Sparkles },
     { label: 'Tema', icon: Palette },
     { label: 'QRIS & Harga', icon: CreditCard },
@@ -39,13 +39,10 @@ const groups = [
     { label: 'Log Aktivitas', icon: Activity }
   ] },
   { title: 'INTEGRASI', items: [
-    { label: 'WhatsApp Gateway', icon: MessageSquare },
-    { label: 'AI Tutorial Edupoin', icon: Sparkles }
+    { label: 'WhatsApp Gateway', icon: MessageSquare }
   ] },
   { title: 'SISTEM', items: [
-    { label: 'Backup & Restore', icon: Database },
-    { label: 'Database Manager', icon: Database },
-    { label: 'Buka Panel Sekolah', icon: Building2 }
+    { label: 'Backup & Restore', icon: Database }
   ] }
 ];
 
@@ -138,6 +135,11 @@ function SchoolAuth({ mode, onNavigate, onLogin }) {
   const [busy, setBusy] = useState(false);
   const [registration, setRegistration] = useState(null);
   const [copyStatus, setCopyStatus] = useState('');
+  const [otpRequired, setOtpRequired] = useState(false);
+  const [otpSettingsLoading, setOtpSettingsLoading] = useState(registering);
+  const [otpVerificationId, setOtpVerificationId] = useState('');
+  const [otpCode, setOtpCode] = useState('');
+  const [otpNotice, setOtpNotice] = useState('');
   const passwordRules = [
     { label: 'Minimal 8 karakter', valid: password.length >= 8 },
     { label: 'Minimal 1 huruf besar', valid: /[A-Z]/.test(password) },
@@ -149,6 +151,40 @@ function SchoolAuth({ mode, onNavigate, onLogin }) {
     ? 'Masukkan alamat email dengan format yang benar, misalnya nama@sekolah.sch.id.'
     : registering && email ? 'Pastikan email ini aktif dan dapat menerima notifikasi akun.' : '';
 
+  useEffect(() => {
+    if (!registering) return undefined;
+    let active = true;
+    request('/api/auth/school/registration-settings')
+      .then(({ otpRequired: required }) => { if (active) setOtpRequired(Boolean(required)); })
+      .catch((settingsError) => { if (active) setError(settingsError.message); })
+      .finally(() => { if (active) setOtpSettingsLoading(false); });
+    return () => { active = false; };
+  }, [registering]);
+
+  async function sendRegistrationOtp() {
+    const waNumber = phone.replace(/^0+/, '');
+    if (!/^\d{8,13}$/.test(waNumber)) {
+      setError('Nomor WhatsApp harus berisi 8–13 angka setelah kode +62.');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    setOtpNotice('');
+    try {
+      const result = await request('/api/auth/school/register-otp', {
+        method: 'POST',
+        body: JSON.stringify({ phone: `+62${waNumber}` })
+      });
+      setOtpVerificationId(result.verificationId);
+      setOtpCode('');
+      setOtpNotice(result.message);
+    } catch (otpError) {
+      setError(otpError.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function submit(event) {
     event.preventDefault();
     setError('');
@@ -159,6 +195,11 @@ function SchoolAuth({ mode, onNavigate, onLogin }) {
     }
     if (registering && !/^\d{8,13}$/.test(waNumber)) {
       setError('Nomor WhatsApp harus berisi 8–13 angka setelah kode +62.');
+      return;
+    }
+    if (registering && otpSettingsLoading) return;
+    if (registering && otpRequired && !otpVerificationId) {
+      await sendRegistrationOtp();
       return;
     }
 
@@ -173,7 +214,8 @@ function SchoolAuth({ mode, onNavigate, onLogin }) {
             address,
             email,
             phone: `+62${waNumber}`,
-            password
+            password,
+            ...(otpRequired ? { otpVerificationId, otpCode } : {})
           })
         });
         setRegistration(result);
@@ -270,6 +312,10 @@ function SchoolAuth({ mode, onNavigate, onLogin }) {
             <input autoComplete="tel-national" type="tel" inputMode="numeric" pattern="[0-9]*" required minLength={8} maxLength={13} value={phone} onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))} placeholder="81234567890" />
           </div>
         </label>}
+        {registering && otpVerificationId && <label>Kode OTP WhatsApp
+          <input autoComplete="one-time-code" inputMode="numeric" pattern="[0-9]{6}" minLength={6} maxLength={6} required value={otpCode} onChange={(event) => setOtpCode(event.target.value.replace(/\D/g, ''))} placeholder="Masukkan 6 digit kode" />
+        </label>}
+        {registering && otpNotice && <div className="success-box" role="status">{otpNotice}</div>}
         {registering ? (
           <>
             <label htmlFor="school-register-password">Kata sandi</label>
@@ -293,7 +339,8 @@ function SchoolAuth({ mode, onNavigate, onLogin }) {
           </div>
         </>}
         {error && <div className="error-box">{error}</div>}
-        <button className="primary-button login-submit" disabled={busy}>{busy ? 'Memproses...' : registering ? 'Buat Akun Sekolah' : 'Masuk ke Akun Sekolah'}</button>
+        {registering && otpVerificationId && <button type="button" className="school-otp-resend" onClick={sendRegistrationOtp} disabled={busy}>Kirim ulang kode OTP</button>}
+        <button className="primary-button login-submit" disabled={busy || (registering && otpSettingsLoading)}>{busy ? 'Memproses...' : registering ? otpRequired && !otpVerificationId ? 'Kirim Kode OTP' : otpRequired ? 'Verifikasi & Buat Akun' : 'Buat Akun Sekolah' : 'Masuk ke Akun Sekolah'}</button>
         <div className="login-alternatives">
           {registering ? <><span>Sudah punya akun?</span><button type="button" onClick={() => onNavigate('/school/login')}>Login sekolah</button></> : <><span>Belum punya akun?</span><button type="button" onClick={() => onNavigate('/school/register')}>Daftarkan sekolah</button></>}
         </div>
@@ -315,6 +362,7 @@ function SchoolListPage() {
   const [detailError, setDetailError] = useState('');
   const [schoolCode, setSchoolCode] = useState('');
   const [savingSchoolCode, setSavingSchoolCode] = useState(false);
+  const [openingSupportPanel, setOpeningSupportPanel] = useState(false);
   const [detailNotice, setDetailNotice] = useState('');
   const [resetTarget, setResetTarget] = useState(null);
   const [resettingPassword, setResettingPassword] = useState(false);
@@ -396,6 +444,30 @@ function SchoolListPage() {
       setDetailError(saveError.message);
     } finally {
       setSavingSchoolCode(false);
+    }
+  }
+
+  async function openSupportPanel() {
+    if (!selectedSchool || openingSupportPanel) return;
+    const supportWindow = window.open('about:blank', '_blank');
+    if (!supportWindow) {
+      setDetailError('Izinkan pop-up untuk membuka panel pemeliharaan sekolah.');
+      return;
+    }
+    supportWindow.opener = null;
+    setOpeningSupportPanel(true);
+    setDetailError('');
+    try {
+      const result = await request(
+        `/api/super-admin/schools/${encodeURIComponent(selectedSchool.id)}/support-session`,
+        { method: 'POST' }
+      );
+      supportWindow.location.replace(`/school/dashboard#supportCode=${encodeURIComponent(result.code)}`);
+    } catch (supportError) {
+      supportWindow.close();
+      setDetailError(supportError.message);
+    } finally {
+      setOpeningSupportPanel(false);
     }
   }
 
@@ -497,7 +569,12 @@ function SchoolListPage() {
           <section className="panel school-detail-modal" role="dialog" aria-modal="true" aria-labelledby="school-detail-title" onClick={(event) => event.stopPropagation()}>
             <div className="school-detail-heading">
               <div><h2 id="school-detail-title">Detail Sekolah</h2><p>{schoolDetail?.school.name || selectedSchool.name}</p></div>
-              <button type="button" className="icon-button" onClick={() => { setSelectedSchool(null); setResetResult(null); }} aria-label="Tutup detail"><X size={18} /></button>
+              <div className="school-detail-heading-actions">
+                <button type="button" className="school-open-panel-button" onClick={openSupportPanel} disabled={openingSupportPanel || detailLoading || schoolDetail?.school.status !== 'active'}>
+                  <Wrench size={14} />{openingSupportPanel ? 'Menyiapkan...' : 'Buka Panel Sekolah'}
+                </button>
+                <button type="button" className="icon-button" onClick={() => { setSelectedSchool(null); setResetResult(null); }} aria-label="Tutup detail"><X size={18} /></button>
+              </div>
             </div>
             {detailLoading && <div className="loading-state"><div className="spinner" />Memuat detail sekolah...</div>}
             {detailError && <div className="error-box school-detail-error" role="alert">{detailError}</div>}
@@ -704,18 +781,14 @@ function BillingPage({ billing, onBillingCheck }) {
 
 const moduleDescriptions = {
   'Paket Langganan': 'Atur nama, keterangan, ketersediaan, dan harga paket Basic, Premium, serta Lifetime.',
-  'Default Menu Sekolah': 'Atur nama, urutan, dan visibilitas menu bawaan untuk sekolah.',
   'Branding Sistem': 'Atur identitas aplikasi, logo, dan teks yang digunakan pada halaman platform.',
   'QRIS & Harga': 'Atur QRIS manual dan instruksi pembayaran untuk sekolah.',
   'Pusat Tiket': 'Kelola tiket bantuan yang dikirim oleh sekolah.',
   'Pengumuman & Maintenance': 'Kelola pengumuman dan informasi pemeliharaan sistem.',
   'Petunjuk Pengguna': 'Lihat dan kelola panduan penggunaan platform.',
   'Log Aktivitas': 'Telusuri perubahan data, login, dan halaman yang dibuka pada platform.',
-  'WhatsApp Gateway': 'Atur koneksi WhatsApp untuk notifikasi platform.',
-  'AI Tutorial Edupoin': 'Atur integrasi asisten AI dan tutorial otomatis Edupoin.',
+  'WhatsApp Gateway': 'Atur koneksi Fonnte untuk OTP pendaftaran dan pengingat tagihan sekolah.',
   'Backup & Restore': 'Kelola informasi pencadangan dan pemulihan data platform.',
-  'Database Manager': 'Kelola database platform melalui panel administrasi yang dibatasi.',
-  'Buka Panel Sekolah': 'Pilih tenant untuk meninjau panel sekolah dalam mode dukungan.',
   'Pengaturan Profil': 'Kelola identitas dan keamanan akun Super Admin.',
   'Syarat & SLA': 'Kelola dokumen Syarat & Ketentuan dan Service Level Agreement.'
 };
@@ -1027,11 +1100,13 @@ function ProfilePage({ admin, onUpdate }) {
 export default function App() {
   const [admin, setAdmin] = useState(null);
   const [schoolAccount, setSchoolAccount] = useState(null);
+  const [supportExchangeError, setSupportExchangeError] = useState('');
   const [page, setPage] = useState(currentPage);
   const [adminSessionLoading, setAdminSessionLoading] = useState(() => Boolean(localStorage.getItem('super-admin-token')));
   const [schoolSessionLoading, setSchoolSessionLoading] = useState(() => (
     (window.location.pathname.startsWith('/school/') || window.location.pathname.startsWith('/public/'))
-      && Boolean(localStorage.getItem('school-token'))
+      && (Boolean(localStorage.getItem('school-token'))
+        || Boolean(new URLSearchParams(window.location.hash.slice(1)).get('supportCode')))
   ));
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
@@ -1069,6 +1144,31 @@ export default function App() {
       setSchoolSessionLoading(false);
       return undefined;
     }
+    const supportCode = new URLSearchParams(window.location.hash.slice(1)).get('supportCode');
+    if (supportCode) {
+      window.history.replaceState({}, '', `${window.location.pathname}${window.location.search}`);
+      let active = true;
+      setSchoolSessionLoading(true);
+      setSupportExchangeError('');
+      request('/api/auth/school/support-session/exchange', {
+        method: 'POST',
+        body: JSON.stringify({ code: supportCode })
+      })
+        .then(({ token, account }) => {
+          if (!active) return;
+          sessionStorage.setItem('school-support-original-token', localStorage.getItem('school-token') || '');
+          sessionStorage.setItem('school-support-active', 'true');
+          localStorage.setItem('school-token', token);
+          setSchoolAccount(account);
+        })
+        .catch((exchangeError) => {
+          if (active) setSupportExchangeError(exchangeError.message);
+        })
+        .finally(() => {
+          if (active) setSchoolSessionLoading(false);
+        });
+      return () => { active = false; };
+    }
     const token = localStorage.getItem('school-token');
     if (!token) {
       setSchoolSessionLoading(false);
@@ -1089,7 +1189,15 @@ export default function App() {
       })
       .catch(() => {
         if (!active) return;
-        localStorage.removeItem('school-token');
+        if (sessionStorage.getItem('school-support-active') === 'true') {
+          const previousToken = sessionStorage.getItem('school-support-original-token') || '';
+          if (previousToken) localStorage.setItem('school-token', previousToken);
+          else localStorage.removeItem('school-token');
+          sessionStorage.removeItem('school-support-original-token');
+          sessionStorage.removeItem('school-support-active');
+        } else {
+          localStorage.removeItem('school-token');
+        }
         setSchoolAccount(null);
       })
       .finally(() => {
@@ -1170,7 +1278,15 @@ export default function App() {
   }
 
   function schoolLogout() {
-    localStorage.removeItem('school-token');
+    if (sessionStorage.getItem('school-support-active') === 'true') {
+      const previousToken = sessionStorage.getItem('school-support-original-token') || '';
+      if (previousToken) localStorage.setItem('school-token', previousToken);
+      else localStorage.removeItem('school-token');
+      sessionStorage.removeItem('school-support-original-token');
+      sessionStorage.removeItem('school-support-active');
+    } else {
+      localStorage.removeItem('school-token');
+    }
     setSchoolAccount(null);
     setSchoolSessionLoading(false);
     navigate('/school/login');
@@ -1195,6 +1311,7 @@ export default function App() {
   if (page.startsWith('/school/')) {
     if (schoolAccount) return <SchoolPortal account={schoolAccount} onAccountUpdated={setSchoolAccount} onLogout={schoolLogout} />;
     if (schoolSessionLoading) return <div className="loading-state"><div className="spinner" />Memulihkan sesi sekolah...</div>;
+    if (supportExchangeError) return <div className="support-session-error" role="alert"><b>Panel pemeliharaan tidak dapat dibuka</b><span>{supportExchangeError}</span><button type="button" className="primary-button" onClick={() => { setSupportExchangeError(''); navigate('/school/login'); }}>Kembali ke login</button></div>;
     return <SchoolAuth mode={page === '/school/register' ? 'register' : 'login'} onNavigate={navigate} onLogin={setSchoolAccount} />;
   }
 
@@ -1219,6 +1336,7 @@ export default function App() {
             : active === 'Pembayaran & Penagihan' ? <BillingPage billing={billing} onBillingCheck={runBillingCheck} />
             : active === 'Paket Langganan' ? <PlatformSubscriptionPackagesPage />
             : active === 'QRIS & Harga' ? <PlatformPaymentSettingsPage />
+            : active === 'WhatsApp Gateway' ? <PlatformWhatsAppGatewayPage />
             : active === 'Backup & Restore' ? <BackupRestorePanel scope="platform" />
             : active === 'Pengaturan Profil' ? <ProfilePage admin={admin} onUpdate={setAdmin} />
             : active === 'Syarat & SLA' ? <LegalDocumentsPage />

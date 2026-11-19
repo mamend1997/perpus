@@ -1,9 +1,11 @@
 import { Router } from 'express';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { pool } from '../config/database.js';
 import { requireSuperAdmin } from '../middleware/require-super-admin.js';
 import createBackupRouter from './backup.routes.js';
+import { encryptSchoolSecret } from '../utils/school-settings.js';
+import { readPlatformWhatsAppSettings, sendPlatformWhatsAppMessage } from '../utils/platform-whatsapp.js';
 
 const router = Router();
 router.use(requireSuperAdmin);
@@ -320,6 +322,8 @@ const defaultLegalDocuments = {
 const defaultUserGuide = {
   title: 'Buku Petunjuk Pengguna',
   content: '',
+  pdfUrl: '',
+  videoUrl: '',
   updatedAt: null
 };
 const defaultPlatformBranding = {
@@ -360,6 +364,29 @@ const defaultSubscriptionPackages = [
 const platformThemeColors = new Set([
   '#f97316', '#2563eb', '#16a34a', '#7c3aed', '#0f766e', '#dc2626'
 ]);
+
+function isValidGuideUrl(value, type) {
+  if (value === '') return true;
+  if (typeof value !== 'string' || value.length > 2048) return false;
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== 'https:' || !url.hostname || url.username || url.password) return false;
+  if (type === 'pdf') return true;
+  const hostname = url.hostname.toLowerCase().replace(/^www\./, '');
+  if (hostname === 'youtu.be') return /^[A-Za-z0-9_-]{11}$/.test(url.pathname.split('/').filter(Boolean)[0] || '');
+  if (hostname === 'youtube.com' || hostname === 'youtube-nocookie.com') {
+    const videoId = url.searchParams.get('v') || url.pathname.match(/^\/(?:embed|shorts|live)\/([^/]+)/)?.[1];
+    return /^[A-Za-z0-9_-]{11}$/.test(videoId || '');
+  }
+  if (hostname === 'vimeo.com' || hostname === 'player.vimeo.com') {
+    return url.pathname.split('/').some((part) => /^\d+$/.test(part));
+  }
+  return /\.(mp4|webm|ogg)$/i.test(url.pathname);
+}
 
 function isValidPlatformLogo(logo) {
   if (logo === '') return true;
@@ -517,6 +544,88 @@ router.put('/subscription-packages', async (req, res, next) => {
   }
 });
 
+router.get('/whatsapp-gateway', async (_req, res, next) => {
+  try {
+    const settings = await readPlatformWhatsAppSettings();
+    const { tokenConfigured, enabled, registrationOtpEnabled, paymentRemindersEnabled, reminderDaysBefore, reminderDaysAfter } = settings;
+    return res.json({
+      settings: { tokenConfigured, enabled, registrationOtpEnabled, paymentRemindersEnabled, reminderDaysBefore, reminderDaysAfter }
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.put('/whatsapp-gateway', async (req, res, next) => {
+  const { enabled, registrationOtpEnabled, paymentRemindersEnabled, reminderDaysBefore, reminderDaysAfter } = req.body || {};
+  const token = typeof req.body?.token === 'string' ? req.body.token.trim() : '';
+  const clearToken = req.body?.clearToken === true;
+  if ([enabled, registrationOtpEnabled, paymentRemindersEnabled].some((value) => typeof value !== 'boolean')
+      || !Number.isSafeInteger(reminderDaysBefore) || reminderDaysBefore < 1 || reminderDaysBefore > 30
+      || !Number.isSafeInteger(reminderDaysAfter) || reminderDaysAfter < 1 || reminderDaysAfter > 30
+      || (req.body?.token != null && (typeof req.body.token !== 'string' || req.body.token.length > 500))
+      || (req.body?.clearToken != null && typeof req.body.clearToken !== 'boolean')
+      || (token && clearToken)
+      || (!enabled && (registrationOtpEnabled || paymentRemindersEnabled))) {
+    return res.status(400).json({ message: 'Pengaturan koneksi, OTP, pengingat, atau token Fonnte tidak valid.' });
+  }
+
+  try {
+    const [rows] = await pool.execute(
+      'SELECT value FROM platform_settings WHERE key_name = ? LIMIT 1',
+      ['platform_whatsapp_gateway']
+    );
+    const current = rows[0] ? JSON.parse(rows[0].value) : {};
+    const tokenEncrypted = clearToken ? '' : token ? encryptSchoolSecret(token) : current.tokenEncrypted || '';
+    if ((enabled || registrationOtpEnabled || paymentRemindersEnabled) && !tokenEncrypted) {
+      return res.status(400).json({ message: 'Masukkan token Fonnte sebelum mengaktifkan gateway atau fitur notifikasi.' });
+    }
+    const settings = {
+      enabled,
+      registrationOtpEnabled,
+      paymentRemindersEnabled,
+      reminderDaysBefore,
+      reminderDaysAfter,
+      tokenEncrypted
+    };
+    await pool.execute(
+      `INSERT INTO platform_settings (key_name, value)
+       VALUES (?, ?)
+       ON DUPLICATE KEY UPDATE value = VALUES(value)`,
+      ['platform_whatsapp_gateway', JSON.stringify(settings)]
+    );
+    return res.json({
+      settings: {
+        enabled,
+        registrationOtpEnabled,
+        paymentRemindersEnabled,
+        reminderDaysBefore,
+        reminderDaysAfter,
+        tokenConfigured: Boolean(tokenEncrypted)
+      },
+      message: 'Pengaturan WhatsApp Gateway berhasil disimpan.'
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post('/whatsapp-gateway/test', async (req, res, next) => {
+  const target = typeof req.body?.target === 'string' ? req.body.target.trim() : '';
+  if (!/^\+?[1-9]\d{7,14}$/.test(target)) {
+    return res.status(400).json({ message: 'Masukkan nomor tujuan dengan kode negara, misalnya +6281234567890.' });
+  }
+  try {
+    await sendPlatformWhatsAppMessage(
+      target.replace(/^\+/, ''),
+      `Tes koneksi WhatsApp PerpusKita berhasil. Pesan ini dikirim oleh Super Admin ${req.admin.name}.`
+    );
+    return res.json({ message: 'Pesan tes berhasil dikirim melalui Fonnte.' });
+  } catch (error) {
+    return res.status(502).json({ message: error.message || 'Pesan tes gagal dikirim.' });
+  }
+});
+
 router.get('/user-guide', async (_req, res, next) => {
   try {
     const [rows] = await pool.execute(
@@ -530,12 +639,19 @@ router.get('/user-guide', async (_req, res, next) => {
 });
 
 router.put('/user-guide', async (req, res, next) => {
-  const { title, content } = req.body || {};
+  const { title, content, pdfUrl = '', videoUrl = '' } = req.body || {};
   if (typeof title !== 'string' || title.trim().length < 2 || title.trim().length > 200
-      || typeof content !== 'string' || content.length > 30000) {
-    return res.status(400).json({ message: 'Judul atau isi petunjuk pengguna tidak valid.' });
+      || typeof content !== 'string' || content.length > 30000
+      || !isValidGuideUrl(pdfUrl, 'pdf') || !isValidGuideUrl(videoUrl, 'video')) {
+    return res.status(400).json({ message: 'Judul, isi, atau tautan PDF/video tidak valid. Gunakan URL HTTPS yang didukung.' });
   }
-  const guide = { title: title.trim(), content, updatedAt: new Date().toISOString() };
+  const guide = {
+    title: title.trim(),
+    content,
+    pdfUrl: pdfUrl.trim(),
+    videoUrl: videoUrl.trim(),
+    updatedAt: new Date().toISOString()
+  };
   try {
     await pool.execute(
       `INSERT INTO platform_settings (key_name, value)
@@ -784,6 +900,43 @@ router.get('/schools/:id', async (req, res, next) => {
         pendingProcurements: Number(counts.pending_procurements || 0),
         totalVisitors: Number(counts.total_visitors || 0)
       }
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post('/schools/:id/support-session', async (req, res, next) => {
+  const schoolId = String(req.params.id);
+  if (!/^[1-9]\d*$/.test(schoolId)) return res.status(400).json({ message: 'ID sekolah tidak valid.' });
+  try {
+    const [admins] = await pool.execute(
+      `SELECT s.id AS school_id, s.name AS school_name, u.id AS user_id
+       FROM tenants_schools s
+       JOIN users u ON u.school_id = s.id
+       WHERE s.id = ? AND s.status = 'active' AND u.role = 'admin' AND u.status = 'active'
+       ORDER BY u.id
+       LIMIT 1`,
+      [schoolId]
+    );
+    if (!admins[0]) {
+      return res.status(409).json({ message: 'Sekolah harus aktif dan memiliki akun admin aktif untuk dibuka.' });
+    }
+
+    await pool.execute(
+      'DELETE FROM school_support_sessions WHERE expires_at < NOW() OR used_at < DATE_SUB(NOW(), INTERVAL 1 DAY)'
+    );
+    const code = randomBytes(32).toString('hex');
+    await pool.execute(
+      `INSERT INTO school_support_sessions
+       (school_id, user_id, created_by_admin_id, code_hash, expires_at)
+       VALUES (?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL 2 MINUTE))`,
+      [admins[0].school_id, admins[0].user_id, req.admin.id, createHash('sha256').update(code).digest('hex')]
+    );
+    return res.status(201).json({
+      code,
+      expiresInSeconds: 120,
+      schoolName: admins[0].school_name
     });
   } catch (error) {
     return next(error);

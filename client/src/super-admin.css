@@ -395,6 +395,65 @@
   .platform-payment-save-row { align-items: stretch; flex-direction: column; }
   .platform-payment-save-row .primary-button { justify-content: center; }
 }
+.legal-document-fields input[aria-invalid="true"] { border-color: #e11d48; }
+.legal-document-fields .document-link-error { color: #be123c; }
+.school-detail-heading-actions { display: flex; align-items: center; gap: 7px; }
+.school-open-panel-button { min-height: 32px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 9px; border: 1px solid #fed7aa; border-radius: 8px; background: #fff7ed; color: #bd5a1b; cursor: pointer; font: inherit; font-size: 9px; font-weight: 700; white-space: nowrap; }
+.school-open-panel-button:hover:not(:disabled) { background: #ffedd5; }
+.school-open-panel-button:disabled { cursor: not-allowed; opacity: .55; }
+.support-session-error { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 20px; color: #35415a; text-align: center; }
+.support-session-error span { color: #8994a6; font-size: 12px; }
+.school-otp-resend { justify-self: start; padding: 2px 0; border: 0; background: transparent; color: #16834f; cursor: pointer; font: inherit; font-size: 10px; font-weight: 700; }
+.school-otp-resend:disabled { opacity: .55; cursor: not-allowed; }
+.platform-whatsapp-page { display: grid; gap: 14px; }
+.platform-whatsapp-card,
+.platform-whatsapp-test { display: grid; gap: 15px; padding: 18px; }
+.platform-whatsapp-heading { display: flex; align-items: center; gap: 11px; }
+.platform-whatsapp-heading > span { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 11px; background: #eafaf2; color: #12824f; }
+.platform-whatsapp-heading h2,
+.platform-whatsapp-test h2 { margin: 0; color: #35415a; font-size: 13px; }
+.platform-whatsapp-heading p,
+.platform-whatsapp-test p { margin: 5px 0 0; color: #8994a6; font-size: 10px; line-height: 1.5; }
+.platform-whatsapp-fields { display: grid; gap: 9px; }
+.platform-whatsapp-fields > label:not(.platform-whatsapp-clear-token),
+.platform-whatsapp-test > label,
+.platform-whatsapp-reminder-days > label { display: grid; gap: 6px; color: #59657b; font-size: 10px; font-weight: 700; }
+.platform-whatsapp-fields input[type="password"],
+.platform-whatsapp-test input,
+.platform-whatsapp-reminder-days input { width: 100%; min-height: 37px; box-sizing: border-box; padding: 0 10px; border: 1px solid #e0e5ed; border-radius: 8px; outline: 0; color: #35415a; font: inherit; font-size: 10px; }
+.platform-whatsapp-fields input:focus,
+.platform-whatsapp-test input:focus,
+.platform-whatsapp-reminder-days input:focus { border-color: #25a66a; box-shadow: 0 0 0 3px #25a66a1c; }
+.platform-whatsapp-clear-token { display: flex; align-items: center; gap: 7px; color: #b42318; font-size: 9px; }
+.platform-whatsapp-clear-token input,
+.platform-whatsapp-toggle input { accent-color: #15945c; }
+.platform-whatsapp-toggle { display: flex; align-items: center; gap: 9px; padding: 10px 11px; border: 1px solid #edf0f4; border-radius: 9px; background: #fbfcfd; }
+.platform-whatsapp-toggle input { width: 15px; height: 15px; flex: 0 0 auto; }
+.platform-whatsapp-toggle > span { display: grid; gap: 4px; }
+.platform-whatsapp-toggle b { color: #47546b; font-size: 10px; }
+.platform-whatsapp-toggle small { color: #8994a6; font-size: 9px; font-weight: 400; }
+.platform-whatsapp-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.platform-whatsapp-reminder-days { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.platform-whatsapp-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.platform-whatsapp-footer > span { color: #8994a6; font-size: 9px; }
+.platform-whatsapp-test { grid-template-columns: 1fr minmax(200px, 280px) auto; align-items: end; }
+.platform-whatsapp-test > div { align-self: center; }
+
+@media (max-width: 620px) {
+  .platform-whatsapp-card,
+  .platform-whatsapp-test { padding: 13px; }
+  .platform-whatsapp-options,
+  .platform-whatsapp-reminder-days,
+  .platform-whatsapp-test { grid-template-columns: 1fr; }
+  .platform-whatsapp-footer { align-items: stretch; flex-direction: column; }
+  .platform-whatsapp-footer .primary-button { justify-content: center; }
+  .platform-whatsapp-test .subtle-button { justify-content: center; }
+}
+
+@media (max-width: 620px) {
+  .school-detail-heading-actions { gap: 4px; }
+  .school-open-panel-button { max-width: 155px; white-space: normal; }
+}
 
 .school-password-reset-dialog .error-box {
   width: 100%;

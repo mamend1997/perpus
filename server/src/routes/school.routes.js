@@ -41,7 +41,7 @@ router.use((req, res, next) => {
   res.once('finish', () => {
     if (res.statusCode < 200 || res.statusCode >= 400) return;
     const route = `${req.baseUrl}${req.path}`.slice(0, 255);
-    const activity = `${req.method} ${route}`.slice(0, 500);
+    const activity = `${req.school.supportMode ? '[MODE PEMELIHARAAN SUPER ADMIN] ' : ''}${req.method} ${route}`.slice(0, 500);
     pool.execute(
       `INSERT INTO school_activity_logs (school_id, user_id, event_type, activity, route, ip_address)
        VALUES (?, ?, 'change', ?, ?, ?)`,
@@ -76,7 +76,13 @@ router.get('/platform-documents', async (_req, res, next) => {
         terms: { title: 'Syarat & Ketentuan Layanan', content: '', updatedAt: null },
         sla: { title: 'Service Level Agreement', content: '', updatedAt: null }
       },
-      userGuide: saved.user_guide || { title: 'Buku Petunjuk Pengguna', content: '', updatedAt: null }
+      userGuide: saved.user_guide || {
+        title: 'Buku Petunjuk Pengguna',
+        content: '',
+        pdfUrl: '',
+        videoUrl: '',
+        updatedAt: null
+      }
     });
   } catch (error) {
     return next(error);

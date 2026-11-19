@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { BookOpen, FileText } from 'lucide-react';
+import { getPdfEmbedUrl, getVideoEmbed } from '../documentEmbeds.js';
 
 async function fetchPlatformDocuments(signal) {
   const token = localStorage.getItem('school-token');
@@ -38,6 +39,8 @@ export default function SchoolDocumentsPage({ type = 'guide' }) {
     : documents?.legalDocuments?.[documentType === 'sla' ? 'sla' : 'terms'];
   const Icon = documentType === 'guide' ? BookOpen : FileText;
   const pageTitle = type === 'guide' ? 'Petunjuk Pengguna' : 'Syarat & SLA';
+  const pdfEmbedUrl = documentType === 'guide' ? getPdfEmbedUrl(document?.pdfUrl) : null;
+  const videoEmbed = documentType === 'guide' ? getVideoEmbed(document?.videoUrl) : null;
   const updatedDate = document?.updatedAt
     ? new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium' }).format(new Date(document.updatedAt))
     : null;
@@ -58,7 +61,39 @@ export default function SchoolDocumentsPage({ type = 'guide' }) {
             <div className="school-document-content">
               {document.content.split(/\r?\n/).filter((line) => line.trim()).map((line, index) => <p key={`${index}-${line.slice(0, 20)}`}>{line}</p>)}
             </div>
-          ) : <div className="school-document-empty">Dokumen belum diisi oleh Super Admin.</div>}
+          ) : !pdfEmbedUrl && !videoEmbed ? <div className="school-document-empty">Dokumen belum diisi oleh Super Admin.</div> : null}
+          {pdfEmbedUrl && (
+            <section className="school-document-embed-section">
+              <h3>Panduan PDF</h3>
+              <iframe
+                className="school-document-pdf"
+                src={pdfEmbedUrl}
+                title="Petunjuk pengguna dalam format PDF"
+                loading="lazy"
+                referrerPolicy="strict-origin-when-cross-origin"
+              />
+            </section>
+          )}
+          {videoEmbed && (
+            <section className="school-document-embed-section">
+              <h3>Video Panduan</h3>
+              {videoEmbed.type === 'video' ? (
+                <video className="school-document-video" src={videoEmbed.src} controls preload="metadata">
+                  Browser tidak mendukung pemutaran video.
+                </video>
+              ) : (
+                <iframe
+                  className="school-document-video"
+                  src={videoEmbed.src}
+                  title="Video petunjuk pengguna"
+                  loading="lazy"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  allowFullScreen
+                  referrerPolicy="strict-origin-when-cross-origin"
+                />
+              )}
+            </section>
+          )}
         </article>
         </>
       )}

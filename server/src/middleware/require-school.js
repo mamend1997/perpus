@@ -41,7 +41,8 @@ export async function requireSchool(req, res, next) {
       userId: rows[0].id,
       userName: rows[0].name,
       email: rows[0].email,
-      role: rows[0].role
+      role: rows[0].role,
+      supportMode: claims.supportMode === true
     };
     return next();
   } catch (error) {

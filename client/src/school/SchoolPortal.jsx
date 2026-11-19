@@ -358,6 +358,10 @@ export default function SchoolPortal({ account, onLogout, onAccountUpdated }) {
         </header>
 
         <div className="school-page-content">
+          {account.supportMode && <div className="school-support-mode-banner" role="status">
+            <div><b>Mode pemeliharaan Super Admin</b><span>Perubahan di panel ini dicatat pada log aktivitas.</span></div>
+            <button type="button" onClick={onLogout}>Akhiri Sesi</button>
+          </div>}
           {printIdentityError && <p className="school-print-identity-error" role="alert">Kop sekolah belum dapat dimuat untuk cetak: {printIdentityError}</p>}
           <div className="library-page-transition" key={active}>
             {permissionsLoading ? (
