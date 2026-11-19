@@ -146,6 +146,11 @@ router.post('/school/login', async (req, res, next) => {
     if (account.school_status !== 'active') {
       return res.status(403).json({ message: 'Akun sekolah sedang tidak aktif. Hubungi administrator platform.' });
     }
+    await pool.execute(
+      `INSERT INTO school_activity_logs (school_id, user_id, event_type, activity, route, ip_address)
+       VALUES (?, ?, 'login', 'Login sekolah berhasil', '/api/auth/school/login', ?)`,
+      [account.school_id, account.id, req.ip || null]
+    );
 
     const token = jwt.sign(
       {
@@ -238,6 +243,10 @@ router.post('/login', async (req, res, next) => {
       return res.status(401).json({ message: 'Username/email atau kata sandi salah.' });
     }
     await pool.execute('UPDATE super_admins SET last_login_at = CURRENT_TIMESTAMP WHERE id = ?', [admin.id]);
+    await pool.execute(
+      'INSERT INTO audit_logs (admin_id, activity, ip_address) VALUES (?, ?, ?)',
+      [admin.id, 'Login Super Admin berhasil', req.ip || null]
+    );
 
     const token = jwt.sign(
       {

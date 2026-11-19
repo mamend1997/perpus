@@ -16,7 +16,8 @@ const mobileNavbarOptions = [
   'Kop Sekolah', 'Tahun Pelajaran', 'Data Siswa & Rombel', 'Bahasa', 'Jenis',
   'Koleksi', 'Klasifikasi', 'Topik', 'Rak', 'Pengarang', 'Penerbit', 'Agen',
   'Buku Tamu Digital', 'Booking Buku', 'Ulasan & Rating', 'Portal Publik',
-  'Pengumuman', 'Laporan', 'Pengaturan'
+  'Pengumuman', 'Laporan', 'Pengaturan', 'Bantuan & Tiket Kendala',
+  'Petunjuk Pengguna', 'Syarat & SLA', 'Tema & Branding'
 ];
 const defaultMobileNavbarSettings = {
   items: ['Dashboard', 'Daftar Pustaka', 'Buku Tamu Digital', 'Peminjaman', 'Denda'],
@@ -265,6 +266,53 @@ router.put('/library', canManageSettings, async (req, res, next) => {
     return next(error);
   } finally {
     if (connection) connection.release();
+  }
+});
+
+const defaultAppearance = {
+  primaryColor: '#f97316',
+  title: 'PerpusKita',
+  subtitle: 'PORTAL SEKOLAH'
+};
+const allowedAppearanceColors = new Set([
+  '#f97316', '#2563eb', '#16a34a', '#7c3aed', '#0f766e', '#dc2626'
+]);
+
+router.get('/appearance', canManageSettings, async (req, res, next) => {
+  try {
+    const [rows] = await pool.execute(
+      'SELECT `value` FROM school_settings WHERE school_id = ? AND `key` = ? LIMIT 1',
+      [req.school.id, 'appearance']
+    );
+    const appearance = rows[0] ? JSON.parse(rows[0].value) : defaultAppearance;
+    return res.json({ appearance });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.put('/appearance', canManageSettings, async (req, res, next) => {
+  const { primaryColor, title, subtitle } = req.body || {};
+  if (typeof primaryColor !== 'string' || !allowedAppearanceColors.has(primaryColor.toLowerCase())
+      || typeof title !== 'string' || title.trim().length < 2 || title.trim().length > 60
+      || typeof subtitle !== 'string' || subtitle.trim().length < 2 || subtitle.trim().length > 100) {
+    return res.status(400).json({ message: 'Warna, judul, atau subjudul branding tidak valid.' });
+  }
+  const appearance = {
+    primaryColor: primaryColor.toLowerCase(),
+    title: title.trim(),
+    subtitle: subtitle.trim()
+  };
+  try {
+    await pool.execute(
+      `INSERT INTO school_settings (school_id, \`key\`, \`value\`)
+       VALUES (?, 'appearance', ?)
+       ON DUPLICATE KEY UPDATE \`value\` = VALUES(\`value\`)`,
+      [req.school.id, JSON.stringify(appearance)]
+    );
+    return res.json({ appearance, message: 'Tema dan branding sekolah berhasil disimpan.' });
+  } catch (error) {
+    return next(error);
   }
 });
 

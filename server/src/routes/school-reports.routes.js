@@ -4,7 +4,7 @@ import { requireSchoolPermission } from '../middleware/require-school-permission
 import { parseSchoolLetterhead } from '../utils/school-letterhead.js';
 
 const router = Router();
-const reportTypes = new Set(['loans', 'fines', 'visitors', 'inventory']);
+const reportTypes = new Set(['loans', 'fines', 'visitors', 'inventory', 'stock']);
 const validId = (value) => /^[1-9]\d*$/.test(String(value ?? ''));
 function validDate(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value ?? ''))) return false;
@@ -72,7 +72,7 @@ router.get('/', requireSchoolPermission('reports.monthly', 'view'), async (req, 
 
   try {
     if (periodMonth) {
-      if (!['loans', 'fines', 'visitors'].includes(type)) {
+      if (!['loans', 'fines', 'visitors', 'stock'].includes(type)) {
         return res.status(400).json({ message: 'Filter periode bulan tidak tersedia untuk jenis laporan ini.' });
       }
       const [year, month] = periodMonth.split('-').map(Number);
@@ -192,11 +192,31 @@ router.get('/', requireSchoolPermission('reports.monthly', 'view'), async (req, 
         ['visit_date', 'Waktu Masuk'], ['member_name', 'Nama Pengunjung'], ['nis_nisn', 'NIS/NISN'],
         ['rombel', 'Kelas'], ['purpose', 'Keperluan']
       ];
+    } else if (type === 'stock') {
+      from = `FROM book_stock_movements m
+        JOIN books b ON b.school_id = m.school_id AND b.id = m.book_id
+        LEFT JOIN users u ON u.id = m.actor_id`;
+      conditions = ['m.school_id = ?', 'm.stock_date BETWEEN ? AND ?'];
+      values.push(dateRange.startDate, dateRange.endDate);
+      countSql = `SELECT COUNT(*) AS total ${from} WHERE ${conditions.join(' AND ')}`;
+      rowsSql = `SELECT m.id, m.id AS movement_no,
+          DATE_FORMAT(m.stock_date, '%Y-%m-%d') AS stock_date, b.title AS book_title,
+          m.quantity_added, m.previous_qty, m.resulting_qty, m.note, u.name AS actor_name
+        ${from} WHERE ${conditions.join(' AND ')}
+        ORDER BY m.stock_date DESC, m.id DESC LIMIT ? OFFSET ?`;
+      summarySql = `SELECT COUNT(*) AS total,
+          COALESCE(SUM(m.quantity_added), 0) AS quantity_added
+        ${from} WHERE ${conditions.join(' AND ')}`;
+      columns = [
+        ['movement_no', 'No'], ['stock_date', 'Tanggal'], ['book_title', 'Nama Buku'],
+        ['quantity_added', 'Jumlah Tambahan'], ['previous_qty', 'Stok Sebelumnya'],
+        ['resulting_qty', 'Stok Setelah'], ['note', 'Keterangan'], ['actor_name', 'Petugas']
+      ];
     } else {
       from = `FROM books b
         LEFT JOIN master_categories author ON author.school_id = b.school_id AND author.id = b.author_id
         LEFT JOIN master_categories publisher ON publisher.school_id = b.school_id AND publisher.id = b.publisher_id
-        LEFT JOIN book_items bi ON bi.school_id = b.school_id AND bi.book_id = b.id`;
+        LEFT JOIN book_items bi ON bi.school_id = b.school_id AND bi.book_id = b.id AND bi.destroyed_at IS NULL`;
       conditions = ['b.school_id = ?'];
       countSql = `SELECT COUNT(DISTINCT b.id) AS total ${from} WHERE ${conditions.join(' AND ')}`;
       rowsSql = `SELECT b.id, b.title AS book_title, author.name AS author_name,
@@ -253,7 +273,10 @@ router.get('/', requireSchoolPermission('reports.monthly', 'view'), async (req, 
         borrowed_items: row.borrowed_items == null ? undefined : Number(row.borrowed_items),
         lightly_damaged_items: row.lightly_damaged_items == null ? undefined : Number(row.lightly_damaged_items),
         heavily_damaged_items: row.heavily_damaged_items == null ? undefined : Number(row.heavily_damaged_items),
-        days_late: row.days_late == null ? undefined : Number(row.days_late)
+        days_late: row.days_late == null ? undefined : Number(row.days_late),
+        quantity_added: row.quantity_added == null ? undefined : Number(row.quantity_added),
+        previous_qty: row.previous_qty == null ? undefined : Number(row.previous_qty),
+        resulting_qty: row.resulting_qty == null ? undefined : Number(row.resulting_qty)
       })),
       summary: Object.fromEntries(
         Object.entries(summaryRows[0][0]).map(([key, value]) => [key, Number(value || 0)])

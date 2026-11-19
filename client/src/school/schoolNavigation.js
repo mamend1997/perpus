@@ -1,6 +1,7 @@
 import {
   BookOpen, Building2, FileBarChart2, FileText, LayoutDashboard, MessageSquare,
-  CalendarDays, PackagePlus, QrCode, Repeat2, Settings, Star, Tags, Ticket, Users, Wallet
+  Activity, CalendarDays, PackagePlus, QrCode, Repeat2, Settings, Star, Tags, Ticket, Palette,
+  Trash2, Users, Wallet, LifeBuoy
 } from 'lucide-react';
 
 const allRoles = ['admin', 'kepsek', 'kapus', 'member'];
@@ -33,6 +34,8 @@ export const schoolNavigation = [
           { label: 'Daftar Pustaka', icon: BookOpen, roles: allRoles, permission: 'books.catalog' },
           { label: 'Tambah Stok Buku', icon: PackagePlus, roles: allRoles, permission: 'books.stock' },
           { label: 'Pindah Rak', icon: Repeat2, roles: staffRoles, permission: 'books.stock' },
+          { label: 'Pemusnahan Buku', icon: Trash2, roles: staffRoles, permission: 'books.stock' },
+          { label: 'Log Aktivitas', icon: Activity, roles: staffRoles, permission: 'books.stock' },
           { label: 'Eksemplar', icon: BookOpen, roles: allRoles, permission: 'books.items' },
           { label: 'Pengadaan Buku', icon: PackagePlus, roles: allRoles, permission: 'procurements' }
         ]
@@ -81,8 +84,19 @@ export const schoolNavigation = [
     items: [{ label: 'Laporan', icon: FileBarChart2, roles: allRoles, permission: 'reports.monthly' }]
   },
   {
+    section: 'BANTUAN',
+    items: [
+      { label: 'Bantuan & Tiket Kendala', icon: LifeBuoy, roles: allRoles, permission: 'support' },
+      { label: 'Petunjuk Pengguna', icon: BookOpen, roles: allRoles, permission: 'platform.documents' },
+      { label: 'Syarat & SLA', icon: FileText, roles: allRoles, permission: 'platform.documents' }
+    ]
+  },
+  {
     section: 'AKUN',
-    items: [{ label: 'Pengaturan', icon: Settings, roles: ['admin'] }]
+    items: [
+      { label: 'Pengaturan', icon: Settings, roles: ['admin'] },
+      { label: 'Tema & Branding', icon: Palette, roles: ['admin'] }
+    ]
   }
 ];
 
@@ -139,6 +153,14 @@ export const schoolModuleDetails = {
   'Tambah Stok Buku': {
     description: 'Tambahkan eksemplar pada judul buku yang sudah terdaftar.',
     features: ['Scan atau isi kode barcode', 'Cari nama buku setelah mengetik 3 huruf', 'Tanggal stok otomatis', 'Input jumlah dan keterangan']
+  },
+  'Pemusnahan Buku': {
+    description: 'Catat pemusnahan eksemplar rusak dan kurangi stok buku secara otomatis.',
+    features: ['Pilih buku rusak melalui barcode atau pencarian', 'Validasi jumlah per rak', 'Alasan dan tanggal otomatis', 'Riwayat pemusnahan']
+  },
+  'Log Aktivitas': {
+    description: 'Telusuri perubahan data, login, dan pembukaan halaman sesuai hak akses.',
+    features: ['Aktivitas akun sekolah', 'Log perubahan data', 'Riwayat login dan halaman', 'Filter dan pagination']
   },
   'Pindah Rak': {
     description: 'Pindahkan sejumlah eksemplar antar rak, periksa kapasitas, dan telusuri riwayatnya.',

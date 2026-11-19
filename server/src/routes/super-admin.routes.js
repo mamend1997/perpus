@@ -7,7 +7,212 @@ import createBackupRouter from './backup.routes.js';
 
 const router = Router();
 router.use(requireSuperAdmin);
+router.use((req, res, next) => {
+  if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)
+      || req.path === '/audit-logs/page-view') {
+    return next();
+  }
+  res.once('finish', () => {
+    if (res.statusCode < 200 || res.statusCode >= 400) return;
+    const activity = `${req.method} ${req.baseUrl}${req.path}`.slice(0, 500);
+    pool.execute(
+      'INSERT INTO audit_logs (admin_id, activity, ip_address) VALUES (?, ?, ?)',
+      [req.admin.id, activity, req.ip || null]
+    ).catch((error) => console.error('Gagal mencatat aktivitas Super Admin:', error));
+  });
+  return next();
+});
 router.use('/backups', createBackupRouter('platform'));
+
+router.post('/audit-logs/page-view', async (req, res, next) => {
+  const pageName = typeof req.body?.pageName === 'string' ? req.body.pageName.trim() : '';
+  if (!pageName || pageName.length > 100) return res.status(400).json({ message: 'Nama halaman tidak valid.' });
+  try {
+    await pool.execute(
+      'INSERT INTO audit_logs (admin_id, activity, ip_address) VALUES (?, ?, ?)',
+      [req.admin.id, `Membuka halaman ${pageName}`.slice(0, 500), req.ip || null]
+    );
+    return res.status(201).json({ logged: true });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/audit-logs', async (req, res, next) => {
+  const page = req.query.page == null ? 1 : Number(req.query.page);
+  const limit = req.query.limit == null ? 25 : Number(req.query.limit);
+  if (!Number.isSafeInteger(page) || page < 1 || page > 1000000
+      || !Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
+    return res.status(400).json({ message: 'Nomor halaman atau jumlah log tidak valid.' });
+  }
+  try {
+    const [[count], [logs]] = await Promise.all([
+      pool.execute('SELECT COUNT(*) AS total FROM audit_logs'),
+      pool.execute(
+        `SELECT a.id, a.activity, a.ip_address, a.created_at,
+                COALESCE(sa.name, 'Akun dihapus') AS admin_name
+         FROM audit_logs a
+         LEFT JOIN super_admins sa ON sa.id = a.admin_id
+         ORDER BY a.created_at DESC, a.id DESC
+         LIMIT ? OFFSET ?`,
+        [limit, (page - 1) * limit]
+      )
+    ]);
+    const total = Number(count.total);
+    return res.json({
+      logs: logs.map((log) => ({ ...log, id: String(log.id) })),
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/tickets', async (req, res, next) => {
+  const page = req.query.page == null ? 1 : Number(req.query.page);
+  const limit = req.query.limit == null ? 20 : Number(req.query.limit);
+  const status = typeof req.query.status === 'string' ? req.query.status : 'all';
+  if (!Number.isSafeInteger(page) || page < 1 || page > 1000000
+      || !Number.isSafeInteger(limit) || limit < 1 || limit > 100
+      || !['all', 'open', 'responded', 'closed'].includes(status)) {
+    return res.status(400).json({ message: 'Filter atau pagination tiket tidak valid.' });
+  }
+  const where = status === 'all' ? '' : 'WHERE t.status = ?';
+  const values = status === 'all' ? [] : [status];
+  try {
+    const [[count], [tickets]] = await Promise.all([
+      pool.execute(`SELECT COUNT(*) AS total FROM platform_tickets t ${where}`, values),
+      pool.execute(
+        `SELECT t.id, t.school_id, s.name AS school_name, t.subject, t.status, t.created_at,
+                (SELECT m.message FROM platform_ticket_messages m
+                 WHERE m.ticket_id = t.id ORDER BY m.id DESC LIMIT 1) AS last_message
+         FROM platform_tickets t
+         JOIN tenants_schools s ON s.id = t.school_id
+         ${where}
+         ORDER BY FIELD(t.status, 'open', 'responded', 'closed'), t.created_at DESC, t.id DESC
+         LIMIT ? OFFSET ?`,
+        [...values, limit, (page - 1) * limit]
+      )
+    ]);
+    const total = Number(count.total);
+    return res.json({
+      tickets: tickets.map((ticket) => ({ ...ticket, id: String(ticket.id), school_id: String(ticket.school_id) })),
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/tickets/:id', async (req, res, next) => {
+  if (!/^\d+$/.test(req.params.id) || Number(req.params.id) < 1) {
+    return res.status(400).json({ message: 'ID tiket tidak valid.' });
+  }
+  try {
+    const [[ticket]] = await pool.execute(
+      `SELECT t.id, t.school_id, s.name AS school_name, t.subject, t.status, t.created_at
+       FROM platform_tickets t
+       JOIN tenants_schools s ON s.id = t.school_id
+       WHERE t.id = ? LIMIT 1`,
+      [req.params.id]
+    );
+    if (!ticket) return res.status(404).json({ message: 'Tiket tidak ditemukan.' });
+    const [messages] = await pool.execute(
+      `SELECT m.id, m.sender_type, m.message, m.created_at,
+              CASE WHEN m.sender_type = 'school' THEN COALESCE(u.name, 'Pengguna sekolah')
+                   ELSE COALESCE(sa.name, 'Super Admin') END AS sender_name
+       FROM platform_ticket_messages m
+       LEFT JOIN users u ON u.id = m.user_id
+       LEFT JOIN super_admins sa ON sa.id = m.admin_id
+       WHERE m.ticket_id = ? AND m.school_id = ?
+       ORDER BY m.id ASC`,
+      [ticket.id, ticket.school_id]
+    );
+    return res.json({
+      ticket: { ...ticket, id: String(ticket.id), school_id: String(ticket.school_id) },
+      messages: messages.map((message) => ({ ...message, id: String(message.id) }))
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post('/tickets/:id/messages', async (req, res, next) => {
+  if (!/^\d+$/.test(req.params.id) || Number(req.params.id) < 1) {
+    return res.status(400).json({ message: 'ID tiket tidak valid.' });
+  }
+  const message = typeof req.body?.message === 'string' ? req.body.message.trim() : '';
+  if (message.length < 10 || message.length > 5000) {
+    return res.status(400).json({ message: 'Balasan harus terdiri dari 10 sampai 5.000 karakter.' });
+  }
+  let connection;
+  let transactionStarted = false;
+  try {
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    transactionStarted = true;
+    const [[ticket]] = await connection.execute(
+      'SELECT id, school_id, status FROM platform_tickets WHERE id = ? FOR UPDATE',
+      [req.params.id]
+    );
+    if (!ticket) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(404).json({ message: 'Tiket tidak ditemukan.' });
+    }
+    if (ticket.status === 'closed') {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(409).json({ message: 'Tiket sudah ditutup. Buka kembali sebelum membalas.' });
+    }
+    const [result] = await connection.execute(
+      `INSERT INTO platform_ticket_messages (ticket_id, school_id, sender_type, admin_id, message)
+       VALUES (?, ?, 'admin', ?, ?)`,
+      [ticket.id, ticket.school_id, req.admin.id, message]
+    );
+    await connection.execute(
+      "UPDATE platform_tickets SET status = 'responded' WHERE id = ?",
+      [ticket.id]
+    );
+    await connection.commit();
+    transactionStarted = false;
+    return res.status(201).json({
+      message: { id: String(result.insertId), sender_type: 'admin', message },
+      ticketStatus: 'responded'
+    });
+  } catch (error) {
+    if (transactionStarted && connection) {
+      try {
+        await connection.rollback();
+      } catch (rollbackError) {
+        error.rollbackError = rollbackError;
+      }
+    }
+    return next(error);
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+router.patch('/tickets/:id/status', async (req, res, next) => {
+  if (!/^\d+$/.test(req.params.id) || Number(req.params.id) < 1) {
+    return res.status(400).json({ message: 'ID tiket tidak valid.' });
+  }
+  const status = req.body?.status;
+  if (!['open', 'closed'].includes(status)) {
+    return res.status(400).json({ message: 'Status tiket harus dibuka atau ditutup.' });
+  }
+  try {
+    const [result] = await pool.execute(
+      'UPDATE platform_tickets SET status = ? WHERE id = ?',
+      [status, req.params.id]
+    );
+    if (!result.affectedRows) return res.status(404).json({ message: 'Tiket tidak ditemukan.' });
+    return res.json({ status, message: status === 'closed' ? 'Tiket berhasil ditutup.' : 'Tiket berhasil dibuka kembali.' });
+  } catch (error) {
+    return next(error);
+  }
+});
 
 async function loadAdminProfile(adminId) {
   const [[admin]] = await pool.execute(
@@ -112,6 +317,109 @@ const defaultLegalDocuments = {
     updatedAt: null
   }
 };
+const defaultUserGuide = {
+  title: 'Buku Petunjuk Pengguna',
+  content: '',
+  updatedAt: null
+};
+const defaultPlatformBranding = {
+  title: 'PerpusKita',
+  subtitle: 'PLATFORM ADMIN',
+  primaryColor: '#f97316',
+  logo: ''
+};
+const platformThemeColors = new Set([
+  '#f97316', '#2563eb', '#16a34a', '#7c3aed', '#0f766e', '#dc2626'
+]);
+
+function isValidPlatformLogo(logo) {
+  if (logo === '') return true;
+  if (typeof logo !== 'string' || logo.length > 1400000) return false;
+  const match = /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/]+={0,2})$/.exec(logo);
+  if (!match) return false;
+  const bytes = Buffer.from(match[2], 'base64');
+  if (!bytes.length || bytes.length > 1024 * 1024 || bytes.toString('base64') !== match[2]) return false;
+  if (match[1] === 'png') {
+    return bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+  }
+  if (match[1] === 'jpeg') {
+    return bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  }
+  return bytes.toString('ascii', 0, 4) === 'RIFF'
+    && bytes.toString('ascii', 8, 12) === 'WEBP';
+}
+
+router.get('/branding', async (_req, res, next) => {
+  try {
+    const [rows] = await pool.execute(
+      'SELECT value FROM platform_settings WHERE key_name = ? LIMIT 1',
+      ['platform_branding']
+    );
+    const saved = rows[0] ? JSON.parse(rows[0].value) : {};
+    return res.json({ branding: { ...defaultPlatformBranding, ...saved } });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.put('/branding', async (req, res, next) => {
+  const { title, subtitle, primaryColor, logo } = req.body || {};
+  if (typeof title !== 'string' || title.trim().length < 2 || title.trim().length > 60
+      || typeof subtitle !== 'string' || subtitle.trim().length < 2 || subtitle.trim().length > 100
+      || typeof primaryColor !== 'string' || !platformThemeColors.has(primaryColor.toLowerCase())
+      || !isValidPlatformLogo(logo)) {
+    return res.status(400).json({ message: 'Judul, subjudul, warna, atau logo aplikasi tidak valid.' });
+  }
+  const branding = {
+    title: title.trim(),
+    subtitle: subtitle.trim(),
+    primaryColor: primaryColor.toLowerCase(),
+    logo
+  };
+  try {
+    await pool.execute(
+      `INSERT INTO platform_settings (key_name, value)
+       VALUES (?, ?)
+       ON DUPLICATE KEY UPDATE value = VALUES(value)`,
+      ['platform_branding', JSON.stringify(branding)]
+    );
+    return res.json({ branding, message: 'Tema dan branding platform berhasil disimpan.' });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/user-guide', async (_req, res, next) => {
+  try {
+    const [rows] = await pool.execute(
+      'SELECT value FROM platform_settings WHERE key_name = ? LIMIT 1',
+      ['user_guide']
+    );
+    return res.json({ guide: rows[0] ? JSON.parse(rows[0].value) : defaultUserGuide });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.put('/user-guide', async (req, res, next) => {
+  const { title, content } = req.body || {};
+  if (typeof title !== 'string' || title.trim().length < 2 || title.trim().length > 200
+      || typeof content !== 'string' || content.length > 30000) {
+    return res.status(400).json({ message: 'Judul atau isi petunjuk pengguna tidak valid.' });
+  }
+  const guide = { title: title.trim(), content, updatedAt: new Date().toISOString() };
+  try {
+    await pool.execute(
+      `INSERT INTO platform_settings (key_name, value)
+       VALUES (?, ?)
+       ON DUPLICATE KEY UPDATE value = VALUES(value)`,
+      ['user_guide', JSON.stringify(guide)]
+    );
+    return res.json({ guide, message: 'Buku petunjuk pengguna berhasil disimpan.' });
+  } catch (error) {
+    return next(error);
+  }
+});
 
 router.get('/legal-documents', async (_req, res, next) => {
   try {
@@ -328,7 +636,7 @@ router.get('/schools/:id', async (req, res, next) => {
          (SELECT COUNT(*) FROM users WHERE school_id = ? AND role = 'member' AND is_library_member = 1 AND status = 'active') AS active_members,
          (SELECT COUNT(*) FROM books WHERE school_id = ?) AS book_titles,
          (SELECT COALESCE(SUM(qty), 0) FROM books WHERE school_id = ?) AS book_stock,
-         (SELECT COUNT(*) FROM book_items WHERE school_id = ?) AS book_items,
+         (SELECT COUNT(*) FROM book_items WHERE school_id = ? AND destroyed_at IS NULL) AS book_items,
          (SELECT COUNT(*) FROM loans WHERE school_id = ? AND status = 'Borrowed') AS active_loans,
          (SELECT COUNT(*) FROM procurements WHERE school_id = ? AND status = 'Pending') AS pending_procurements,
          (SELECT COUNT(*) FROM visitors WHERE school_id = ?) AS total_visitors`,
@@ -386,10 +694,6 @@ router.patch('/schools/:id', async (req, res, next) => {
         'UPDATE tenants_schools SET school_code = ? WHERE id = ?',
         [schoolCode, schoolId]
       );
-      await connection.execute(
-        'INSERT INTO audit_logs (admin_id, activity, ip_address) VALUES (?, ?, ?)',
-        [req.admin.id, `Mengubah kode sekolah ${schoolId} dari ${previousCode} menjadi ${schoolCode}`, req.ip]
-      );
     }
     await connection.commit();
     transactionStarted = false;
@@ -446,10 +750,6 @@ router.post('/schools/:schoolId/admins/:adminId/password-reset', async (req, res
     await connection.execute(
       'UPDATE users SET password = ? WHERE id = ? AND school_id = ? AND role = ?',
       [passwordHash, adminId, schoolId, 'admin']
-    );
-    await connection.execute(
-      'INSERT INTO audit_logs (admin_id, activity, ip_address) VALUES (?, ?, ?)',
-      [req.admin.id, `Mereset kata sandi admin sekolah ${schoolId} (akun ${adminId})`, req.ip]
     );
     await connection.commit();
     transactionStarted = false;
@@ -542,10 +842,6 @@ router.post('/billing-check', async (req, res, next) => {
        (admin_id, open_invoice_count, overdue_invoice_count, open_amount, new_invoice_count, suspended_school_count)
        VALUES (?, ?, ?, ?, 0, 0)`,
       [req.admin.id, openInvoices, overdueInvoices, openAmount]
-    );
-    await connection.execute(
-      'INSERT INTO audit_logs (admin_id, activity, ip_address) VALUES (?, ?, ?)',
-      [req.admin.id, 'Menjalankan pemeriksaan tagihan (read-only)', req.ip]
     );
     await connection.commit();
     transactionStarted = false;

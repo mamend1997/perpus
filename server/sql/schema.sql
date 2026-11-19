@@ -203,12 +203,14 @@ CREATE TABLE IF NOT EXISTS book_items (
   rack_id BIGINT UNSIGNED NULL,
   status ENUM('Tersedia', 'Dipinjam', 'Rusak') NOT NULL DEFAULT 'Tersedia',
   `condition` ENUM('Baik', 'Rusak Ringan', 'Rusak Berat') NOT NULL DEFAULT 'Baik',
+  destroyed_at DATETIME NULL,
   PRIMARY KEY (id),
   UNIQUE KEY uq_book_items_serial (book_id, serial_number),
   UNIQUE KEY uq_book_items_school_id_id (school_id, id),
   UNIQUE KEY uq_book_items_school_barcode (school_id, barcode_value),
   KEY idx_book_items_school_status (school_id, status),
   KEY idx_book_items_rack_status (school_id, rack_id, status),
+  KEY idx_book_items_destruction (school_id, book_id, rack_id, destroyed_at, status),
   CONSTRAINT fk_book_items_school FOREIGN KEY (school_id) REFERENCES tenants_schools (id)
     ON DELETE CASCADE,
   CONSTRAINT fk_book_items_book FOREIGN KEY (school_id, book_id) REFERENCES books (school_id, id)
@@ -235,6 +237,47 @@ CREATE TABLE IF NOT EXISTS book_stock_movements (
   CONSTRAINT fk_book_stock_movements_book FOREIGN KEY (school_id, book_id) REFERENCES books (school_id, id)
     ON DELETE CASCADE,
   CONSTRAINT fk_book_stock_movements_actor FOREIGN KEY (actor_id) REFERENCES users (id)
+    ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS book_destructions (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  school_id BIGINT UNSIGNED NOT NULL,
+  book_id BIGINT UNSIGNED NOT NULL,
+  rack_id BIGINT UNSIGNED NULL,
+  actor_id BIGINT UNSIGNED NULL,
+  quantity INT UNSIGNED NOT NULL,
+  destruction_date DATE NOT NULL,
+  reason VARCHAR(1000) NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_book_destructions_school_date (school_id, destruction_date, id),
+  KEY idx_book_destructions_book (school_id, book_id, id),
+  CONSTRAINT fk_book_destructions_school FOREIGN KEY (school_id) REFERENCES tenants_schools (id)
+    ON DELETE CASCADE,
+  CONSTRAINT fk_book_destructions_book FOREIGN KEY (school_id, book_id) REFERENCES books (school_id, id)
+    ON DELETE CASCADE,
+  CONSTRAINT fk_book_destructions_rack FOREIGN KEY (school_id, rack_id) REFERENCES master_categories (school_id, id)
+    ON DELETE RESTRICT,
+  CONSTRAINT fk_book_destructions_actor FOREIGN KEY (actor_id) REFERENCES users (id)
+    ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS school_activity_logs (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  school_id BIGINT UNSIGNED NOT NULL,
+  user_id BIGINT UNSIGNED NULL,
+  event_type ENUM('login', 'page_view', 'change') NOT NULL,
+  activity VARCHAR(500) NOT NULL,
+  route VARCHAR(255) NULL,
+  ip_address VARCHAR(45) NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_school_activity_logs_created (school_id, created_at, id),
+  KEY idx_school_activity_logs_user (school_id, user_id, created_at),
+  CONSTRAINT fk_school_activity_logs_school FOREIGN KEY (school_id) REFERENCES tenants_schools (id)
+    ON DELETE CASCADE,
+  CONSTRAINT fk_school_activity_logs_user FOREIGN KEY (user_id) REFERENCES users (id)
     ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -532,6 +575,28 @@ CREATE TABLE IF NOT EXISTS platform_tickets (
   KEY idx_tickets_school (school_id),
   CONSTRAINT fk_tickets_school FOREIGN KEY (school_id) REFERENCES tenants_schools (id)
     ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS platform_ticket_messages (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  ticket_id BIGINT UNSIGNED NOT NULL,
+  school_id BIGINT UNSIGNED NOT NULL,
+  sender_type ENUM('school', 'admin') NOT NULL,
+  user_id BIGINT UNSIGNED NULL,
+  admin_id BIGINT UNSIGNED NULL,
+  message TEXT NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_ticket_messages_ticket (ticket_id, id),
+  KEY idx_ticket_messages_school (school_id, ticket_id),
+  CONSTRAINT fk_ticket_messages_ticket FOREIGN KEY (ticket_id) REFERENCES platform_tickets (id)
+    ON DELETE CASCADE,
+  CONSTRAINT fk_ticket_messages_school FOREIGN KEY (school_id) REFERENCES tenants_schools (id)
+    ON DELETE CASCADE,
+  CONSTRAINT fk_ticket_messages_user FOREIGN KEY (user_id) REFERENCES users (id)
+    ON DELETE SET NULL,
+  CONSTRAINT fk_ticket_messages_admin FOREIGN KEY (admin_id) REFERENCES super_admins (id)
+    ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS audit_logs (

@@ -15,6 +15,7 @@ import schoolSettingsRoutes from './school-settings.routes.js';
 import schoolReservationsRoutes from './school-reservations.routes.js';
 import schoolReviewsRoutes from './school-reviews.routes.js';
 import schoolStudentsRoutes from './school-students.routes.js';
+import schoolSupportRoutes from './school-support.routes.js';
 import {
   defaultSchoolPermissions, schoolPermissionFeatureKeys, schoolPermissionFeatures,
   schoolPermissionRoles
@@ -31,6 +32,24 @@ const masterCategoryTypes = new Set([
 ]);
 
 router.use(requireSchool);
+router.use((req, res, next) => {
+  const loggedInHistory = ['/books/stock', '/books/rack-transfers', '/books/destructions'].includes(req.path);
+  if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)
+      || req.path === '/books/activity-logs/page-view' || loggedInHistory) {
+    return next();
+  }
+  res.once('finish', () => {
+    if (res.statusCode < 200 || res.statusCode >= 400) return;
+    const route = `${req.baseUrl}${req.path}`.slice(0, 255);
+    const activity = `${req.method} ${route}`.slice(0, 500);
+    pool.execute(
+      `INSERT INTO school_activity_logs (school_id, user_id, event_type, activity, route, ip_address)
+       VALUES (?, ?, 'change', ?, ?, ?)`,
+      [req.school.id, req.school.userId, activity, route, req.ip || null]
+    ).catch((error) => console.error('Gagal mencatat perubahan data sekolah:', error));
+  });
+  return next();
+});
 router.use('/books', schoolBookRoutes);
 router.use('/loans', schoolLoanRoutes);
 router.use('/procurements', schoolProcurementRoutes);
@@ -43,6 +62,26 @@ router.use('/settings', schoolSettingsRoutes);
 router.use('/reservations', schoolReservationsRoutes);
 router.use('/reviews', schoolReviewsRoutes);
 router.use('/students', schoolStudentsRoutes);
+router.use('/support', schoolSupportRoutes);
+
+router.get('/platform-documents', async (_req, res, next) => {
+  try {
+    const [rows] = await pool.execute(
+      `SELECT key_name, value FROM platform_settings
+       WHERE key_name IN ('legal_documents', 'user_guide')`
+    );
+    const saved = Object.fromEntries(rows.map((row) => [row.key_name, JSON.parse(row.value)]));
+    return res.json({
+      legalDocuments: saved.legal_documents || {
+        terms: { title: 'Syarat & Ketentuan Layanan', content: '', updatedAt: null },
+        sla: { title: 'Service Level Agreement', content: '', updatedAt: null }
+      },
+      userGuide: saved.user_guide || { title: 'Buku Petunjuk Pengguna', content: '', updatedAt: null }
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
 
 function requireSchoolAdmin(req, res, next) {
   if (req.school.role !== 'admin') {
@@ -935,7 +974,7 @@ router.get('/dashboard', requireSchoolPermission('dashboard', 'view'), async (re
               SUM(CASE WHEN bi.status = 'Tersedia' THEN 1 ELSE 0 END) AS available_items
        FROM master_categories mc
        LEFT JOIN books b ON b.school_id = mc.school_id AND b.collection_id = mc.id
-       LEFT JOIN book_items bi ON bi.school_id = b.school_id AND bi.book_id = b.id
+       LEFT JOIN book_items bi ON bi.school_id = b.school_id AND bi.book_id = b.id AND bi.destroyed_at IS NULL
        WHERE mc.school_id = ? AND mc.type = 'koleksi' AND mc.status = 'active'
        GROUP BY mc.id, mc.name
        ORDER BY mc.name`,

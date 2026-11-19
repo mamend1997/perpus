@@ -6,6 +6,8 @@ import SchoolMasterDataPage from './SchoolMasterDataPage.jsx';
 import SchoolIdentityPage from './SchoolIdentityPage.jsx';
 import SchoolBookCatalogPage from './SchoolBookCatalogPage.jsx';
 import SchoolBookStockPage from './SchoolBookStockPage.jsx';
+import SchoolBookDestructionPage from './SchoolBookDestructionPage.jsx';
+import SchoolBookActivityPage from './SchoolBookActivityPage.jsx';
 import SchoolRackTransfersPage from './SchoolRackTransfersPage.jsx';
 import SchoolBookItemsPage from './SchoolBookItemsPage.jsx';
 import SchoolLoansPage from './SchoolLoansPage.jsx';
@@ -18,10 +20,14 @@ import SchoolReservationsPage from './SchoolReservationsPage.jsx';
 import SchoolReviewsPage from './SchoolReviewsPage.jsx';
 import SchoolPublicPortalPage from './SchoolPublicPortalPage.jsx';
 import SchoolAnnouncementsPage from './SchoolAnnouncementsPage.jsx';
+import SchoolSupportPage from './SchoolSupportPage.jsx';
+import SchoolDocumentsPage from './SchoolDocumentsPage.jsx';
+import SchoolAppearancePage from './SchoolAppearancePage.jsx';
 import SchoolAnnouncementPopup from './SchoolAnnouncementPopup.jsx';
 import SchoolAcademicYearsPage from './SchoolAcademicYearsPage.jsx';
 import { fetchSchoolIdentity, fetchSchoolProfile } from './schoolAccountApi.js';
-import { fetchMobileNavbarSettings, fetchMySchoolPermissions } from './schoolSettingsApi.js';
+import { fetchMobileNavbarSettings, fetchMySchoolPermissions, fetchSchoolAppearance } from './schoolSettingsApi.js';
+import { logSchoolPageView } from './schoolBookApi.js';
 import { defaultMobileNavbarSettings, masterCategoryTypes, schoolNavigation } from './schoolNavigation.js';
 import { defaultSchoolPermissions, schoolPermissionByLabel } from './schoolPermissions.js';
 import SchoolPrintHeader from './SchoolPrintHeader.jsx';
@@ -73,6 +79,11 @@ export default function SchoolPortal({ account, onLogout, onAccountUpdated }) {
     highlight: defaultMobileNavbarSettings.highlight
   }));
   const [mobileNavbarError, setMobileNavbarError] = useState('');
+  const [appearance, setAppearance] = useState({
+    primaryColor: '#f97316',
+    title: 'PerpusKita',
+    subtitle: 'PORTAL SEKOLAH'
+  });
   const [permissions, setPermissions] = useState(null);
   const [permissionsLoading, setPermissionsLoading] = useState(account.role !== 'admin');
   const [permissionsError, setPermissionsError] = useState('');
@@ -132,6 +143,18 @@ export default function SchoolPortal({ account, onLogout, onAccountUpdated }) {
         }
       })
       .catch((error) => { if (activeRequest) setMobileNavbarError(error.message); });
+    return () => { activeRequest = false; };
+  }, []);
+
+  useEffect(() => {
+    let activeRequest = true;
+    fetchSchoolAppearance()
+      .then(({ appearance: savedAppearance }) => {
+        if (activeRequest) setAppearance((current) => ({ ...current, ...savedAppearance }));
+      })
+      .catch((error) => {
+        if (activeRequest) console.error('Gagal memuat tema sekolah:', error);
+      });
     return () => { activeRequest = false; };
   }, []);
 
@@ -196,6 +219,14 @@ export default function SchoolPortal({ account, onLogout, onAccountUpdated }) {
   useSchoolFavicon(school.logo);
 
   useEffect(() => {
+    let activeRequest = true;
+    logSchoolPageView(active).catch((error) => {
+      if (activeRequest) console.error('Gagal mencatat halaman sekolah:', error);
+    });
+    return () => { activeRequest = false; };
+  }, [active]);
+
+  useEffect(() => {
     if (role !== 'admin' && !permissions?.['master.identity']?.view) {
       setPrintIdentity({
         name: school.name || 'Sekolah',
@@ -254,7 +285,7 @@ export default function SchoolPortal({ account, onLogout, onAccountUpdated }) {
   }
 
   return (
-    <div className={`school-app-shell library-app-frame ${collapsed ? 'sidebar-collapsed' : ''} ${active === 'Data Siswa & Rombel' ? 'is-printing-students' : ''} ${active === 'Buku Tamu Digital' ? 'is-printing-visitors' : ''}`}>
+    <div className={`school-app-shell library-app-frame ${collapsed ? 'sidebar-collapsed' : ''} ${active === 'Data Siswa & Rombel' ? 'is-printing-students' : ''} ${active === 'Buku Tamu Digital' ? 'is-printing-visitors' : ''}`} style={{ '--school-accent': appearance.primaryColor }}>
       <SchoolAnnouncementPopup key={`${school.id || school.code}:${account.id}`} />
       {mobileOpen && <button className="school-sidebar-scrim" onClick={() => setMobileOpen(false)} aria-label="Tutup menu sekolah" />}
       <aside
@@ -267,8 +298,8 @@ export default function SchoolPortal({ account, onLogout, onAccountUpdated }) {
         }}
       >
         <div className="school-sidebar-brand">
-          <div className="brand-mark"><BookOpen size={21} /></div>
-          <div className="school-sidebar-brand-copy"><b>perpuskita<span>.</span></b><small>PORTAL SEKOLAH</small></div>
+          <div className="brand-mark">{school.logo ? <img src={school.logo} alt="" /> : <BookOpen size={21} />}</div>
+          <div className="school-sidebar-brand-copy"><b>{appearance.title}<span>.</span></b><small>{appearance.subtitle}</small></div>
           <button type="button" className="school-sidebar-toggle" onClick={toggleSidebar} aria-label={collapsed ? 'Buka sidebar penuh' : 'Minimalkan sidebar'} aria-expanded={!collapsed}>
             {collapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
           </button>
@@ -345,6 +376,10 @@ export default function SchoolPortal({ account, onLogout, onAccountUpdated }) {
               <SchoolBookStockPage rights={activeRights} />
             ) : active === 'Pindah Rak' ? (
               <SchoolRackTransfersPage rights={activeRights} />
+            ) : active === 'Pemusnahan Buku' ? (
+              <SchoolBookDestructionPage rights={activeRights} />
+            ) : active === 'Log Aktivitas' ? (
+              <SchoolBookActivityPage rights={activeRights} />
             ) : active === 'Eksemplar' ? (
               <SchoolBookItemsPage rights={activeRights} schoolName={schoolName} schoolIdentity={printIdentity} />
             ) : active === 'Pengadaan Buku' ? (
@@ -361,6 +396,18 @@ export default function SchoolPortal({ account, onLogout, onAccountUpdated }) {
               <SchoolReviewsPage rights={activeRights} role={role} />
             ) : active === 'Pengumuman' ? (
               <SchoolAnnouncementsPage rights={activeRights} role={role} />
+            ) : active === 'Bantuan & Tiket Kendala' ? (
+              <SchoolSupportPage rights={activeRights} />
+            ) : active === 'Petunjuk Pengguna' ? (
+              <SchoolDocumentsPage type="guide" />
+            ) : active === 'Syarat & SLA' ? (
+              <SchoolDocumentsPage type="legal" />
+            ) : active === 'Tema & Branding' && role === 'admin' ? (
+              <SchoolAppearancePage
+                schoolLogo={school.logo}
+                onEditIdentity={() => selectMenu('Identitas Sekolah')}
+                onSaved={setAppearance}
+              />
             ) : active === 'Laporan' ? (
               <Suspense fallback={<div className="library-empty-state">Memuat laporan...</div>}>
                 <SchoolReportsPage rights={activeRights} />

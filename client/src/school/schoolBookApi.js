@@ -76,6 +76,37 @@ export async function fetchBookStockHistory({ page = 1, limit = 25, signal } = {
   return requestBookApi(`/stock/history?${new URLSearchParams({ page: String(page), limit: String(limit) })}`, { signal });
 }
 
+export async function searchDestructibleBooks(search, signal) {
+  const query = new URLSearchParams({ search });
+  return requestBookApi(`/destructions/books?${query}`, { signal });
+}
+
+export async function fetchBookDestructionRacks(bookId, signal) {
+  const query = new URLSearchParams({ bookId: String(bookId) });
+  return requestBookApi(`/destructions/racks?${query}`, { signal });
+}
+
+export async function fetchBookDestructionHistory({ page = 1, limit = 25, signal } = {}) {
+  const query = new URLSearchParams({ page: String(page), limit: String(limit) });
+  return requestBookApi(`/destructions/history?${query}`, { signal });
+}
+
+export function createBookDestruction(destruction) {
+  return requestBookApi('/destructions', { method: 'POST', body: destruction });
+}
+
+export async function fetchBookActivityLogs({ page = 1, limit = 25, signal } = {}) {
+  const query = new URLSearchParams({ page: String(page), limit: String(limit) });
+  return requestBookApi(`/activity-logs?${query}`, { signal });
+}
+
+export function logSchoolPageView(pageName) {
+  return requestBookApi('/activity-logs/page-view', {
+    method: 'POST',
+    body: { pageName }
+  });
+}
+
 export function updateBookStockMovement(id, movement) {
   return requestBookApi(`/stock/history/${encodeURIComponent(id)}`, {
     method: 'PATCH',

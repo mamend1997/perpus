@@ -318,7 +318,8 @@ function bookSelectSql() {
                  t.name AS topic_name, c.name AS collection_name, j.name AS type_name,
                  l.name AS language_name, r.name AS rack_name,
                  (SELECT COUNT(*) FROM book_items bi
-                  WHERE bi.school_id = b.school_id AND bi.book_id = b.id AND bi.status = 'Tersedia') AS available_qty
+                  WHERE bi.school_id = b.school_id AND bi.book_id = b.id
+                    AND bi.status = 'Tersedia' AND bi.destroyed_at IS NULL) AS available_qty
           FROM books b
           LEFT JOIN master_categories a ON a.school_id = b.school_id AND a.id = b.author_id
           LEFT JOIN master_categories p ON p.school_id = b.school_id AND p.id = b.publisher_id
@@ -409,7 +410,7 @@ async function lockBookSerialSequence(connection, schoolId) {
 async function synchronizeBookItems(connection, schoolId, bookId, desiredQuantity, defaultRackId = null) {
   const [items] = await connection.execute(
     `SELECT id, serial_number, status FROM book_items
-     WHERE school_id = ? AND book_id = ? ORDER BY id FOR UPDATE`,
+     WHERE school_id = ? AND book_id = ? AND destroyed_at IS NULL ORDER BY id FOR UPDATE`,
     [schoolId, bookId]
   );
   const difference = desiredQuantity - items.length;
@@ -535,7 +536,7 @@ router.get('/rack-transfers/options', requireSchoolPermission('books.stock', 'vi
               bi.rack_id, COALESCE(r.name, 'Belum ditentukan') AS rack_name,
               MIN(bi.serial_number) AS serial_number, COUNT(*) AS available_qty
        FROM books b
-       JOIN book_items bi ON bi.school_id = b.school_id AND bi.book_id = b.id
+       JOIN book_items bi ON bi.school_id = b.school_id AND bi.book_id = b.id AND bi.destroyed_at IS NULL
        LEFT JOIN master_categories r ON r.school_id = bi.school_id AND r.id = bi.rack_id AND r.type = 'rak'
        WHERE b.school_id = ? AND bi.status = 'Tersedia'
          AND NOT EXISTS (
@@ -678,7 +679,7 @@ router.post('/rack-transfers', requireSchoolPermission('books.stock', 'edit'), a
     );
     const [[rackSummary]] = await connection.execute(
       `SELECT COUNT(DISTINCT rack_id) AS rack_count, COUNT(*) - COUNT(rack_id) AS unassigned, MIN(rack_id) AS only_rack
-       FROM book_items WHERE school_id = ? AND book_id = ?`,
+       FROM book_items WHERE school_id = ? AND book_id = ? AND destroyed_at IS NULL`,
       [req.school.id, bookId]
     );
     await connection.execute(
@@ -782,7 +783,7 @@ router.get('/items/books', requireSchoolPermission('books.items', 'view'), async
       `SELECT CAST(b.id AS CHAR) AS id, b.title, b.nomor_induk, b.kode_buku,
               COUNT(bi.id) AS item_count
        FROM books b
-       JOIN book_items bi ON bi.school_id = b.school_id AND bi.book_id = b.id
+       JOIN book_items bi ON bi.school_id = b.school_id AND bi.book_id = b.id AND bi.destroyed_at IS NULL
        WHERE b.school_id = ? AND (
          b.title LIKE ? OR b.nomor_induk LIKE ? OR b.kode_buku LIKE ? OR b.isbn LIKE ?
        )
@@ -815,7 +816,7 @@ router.get('/items', requireSchoolPermission('books.items', 'view'), async (req,
     return res.status(400).json({ message: 'Filter status eksemplar tidak valid.' });
   }
 
-  const conditions = ['bi.school_id = ?'];
+  const conditions = ['bi.school_id = ?', 'bi.destroyed_at IS NULL'];
   const values = [req.school.id];
   if (status) {
     conditions.push('bi.status = ?');
@@ -892,7 +893,7 @@ router.patch('/items/:id', requireSchoolPermission('books.items', 'edit'), async
       `SELECT bi.book_id, b.title AS book_title
        FROM book_items bi
        JOIN books b ON b.school_id = bi.school_id AND b.id = bi.book_id
-       WHERE bi.id = ? AND bi.school_id = ? LIMIT 1`,
+       WHERE bi.id = ? AND bi.school_id = ? AND bi.destroyed_at IS NULL LIMIT 1`,
       [id, req.school.id]
     );
     if (!references[0]) {
@@ -999,15 +1000,16 @@ router.patch('/items/:id/condition', requireSchoolPermission('books.items', 'edi
   }
   try {
     const [result] = await pool.execute(
-      'UPDATE book_items SET `condition` = ? WHERE id = ? AND school_id = ?',
+      'UPDATE book_items SET `condition` = ? WHERE id = ? AND school_id = ? AND destroyed_at IS NULL',
       [condition, id, req.school.id]
     );
     if (!result.affectedRows) {
       const [items] = await pool.execute(
-        'SELECT id FROM book_items WHERE id = ? AND school_id = ? LIMIT 1',
+        'SELECT id, destroyed_at FROM book_items WHERE id = ? AND school_id = ? LIMIT 1',
         [id, req.school.id]
       );
       if (!items.length) return res.status(404).json({ message: 'Eksemplar tidak ditemukan.' });
+      if (items[0].destroyed_at) return res.status(409).json({ message: 'Eksemplar yang sudah dimusnahkan tidak dapat diubah.' });
     }
     return res.json({ item: { id, condition } });
   } catch (error) {
@@ -1026,7 +1028,7 @@ router.delete('/items/:id', requireSchoolPermission('books.items', 'delete'), as
     await connection.beginTransaction();
     transactionStarted = true;
     const [references] = await connection.execute(
-      'SELECT book_id FROM book_items WHERE id = ? AND school_id = ? LIMIT 1',
+      'SELECT book_id FROM book_items WHERE id = ? AND school_id = ? AND destroyed_at IS NULL LIMIT 1',
       [id, req.school.id]
     );
     if (!references[0]) {
@@ -1149,6 +1151,301 @@ router.get('/stock/books', requireSchoolPermission('books.stock', 'view'), async
       [req.school.id, pattern, pattern, pattern, pattern, pattern]
     );
     return res.json({ books });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/destructions/books', requireSchoolPermission('books.stock', 'view'), async (req, res, next) => {
+  const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+  if (search.length > 100) return res.status(400).json({ message: 'Pencarian buku maksimal 100 karakter.' });
+  if (search.length < 2) return res.json({ books: [] });
+
+  try {
+    const pattern = `%${search}%`;
+    const [books] = await pool.execute(
+      `SELECT b.id, b.title, b.kode_buku, b.nomor_induk,
+              COUNT(bi.id) AS damaged_qty
+       FROM books b
+       JOIN book_items bi ON bi.school_id = b.school_id AND bi.book_id = b.id
+       WHERE b.school_id = ? AND bi.destroyed_at IS NULL
+         AND bi.\`condition\` IN ('Rusak Ringan', 'Rusak Berat')
+         AND bi.status <> 'Dipinjam'
+         AND NOT EXISTS (
+           SELECT 1 FROM loans l
+           WHERE l.school_id = bi.school_id AND l.book_item_id = bi.id
+             AND l.status IN ('Pending', 'Borrowed')
+         )
+         AND (b.title LIKE ? OR b.kode_buku LIKE ? OR b.nomor_induk LIKE ?
+              OR bi.serial_number LIKE ? OR bi.barcode_value LIKE ?)
+       GROUP BY b.id, b.title, b.kode_buku, b.nomor_induk
+       ORDER BY b.title ASC
+       LIMIT 20`,
+      [req.school.id, ...Array(5).fill(pattern)]
+    );
+    return res.json({
+      books: books.map((book) => ({
+        ...book,
+        id: String(book.id),
+        damaged_qty: Number(book.damaged_qty)
+      }))
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/destructions/racks', requireSchoolPermission('books.stock', 'view'), async (req, res, next) => {
+  const bookId = String(req.query.bookId ?? '');
+  if (!/^[1-9]\d*$/.test(bookId)) return res.status(400).json({ message: 'Buku yang dipilih tidak valid.' });
+  try {
+    const [racks] = await pool.execute(
+      `SELECT bi.rack_id, COALESCE(r.name, 'Belum ditempatkan') AS rack_name,
+              COUNT(*) AS damaged_qty
+       FROM book_items bi
+       LEFT JOIN master_categories r ON r.school_id = bi.school_id AND r.id = bi.rack_id AND r.type = 'rak'
+       WHERE bi.school_id = ? AND bi.book_id = ? AND bi.destroyed_at IS NULL
+         AND bi.\`condition\` IN ('Rusak Ringan', 'Rusak Berat')
+         AND bi.status <> 'Dipinjam'
+         AND NOT EXISTS (
+           SELECT 1 FROM loans l
+           WHERE l.school_id = bi.school_id AND l.book_item_id = bi.id
+             AND l.status IN ('Pending', 'Borrowed')
+         )
+       GROUP BY bi.rack_id, r.name
+       ORDER BY r.name ASC`,
+      [req.school.id, bookId]
+    );
+    return res.json({
+      racks: racks.map((rack) => ({
+        id: rack.rack_id == null ? 'none' : String(rack.rack_id),
+        name: rack.rack_name,
+        damaged_qty: Number(rack.damaged_qty)
+      }))
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/destructions/history', requireSchoolPermission('books.stock', 'view'), async (req, res, next) => {
+  const page = parsePageValue(req.query.page, 1, 1000000);
+  const limit = parsePageValue(req.query.limit, 25, 100);
+  if (!page || !limit) return res.status(400).json({ message: 'Nomor halaman atau jumlah data pemusnahan tidak valid.' });
+  try {
+    const [[count], [history]] = await Promise.all([
+      pool.execute('SELECT COUNT(*) AS total FROM book_destructions WHERE school_id = ?', [req.school.id]),
+      pool.execute(
+        `SELECT d.id, d.book_id, b.title AS book_title, d.quantity,
+                DATE_FORMAT(d.destruction_date, '%Y-%m-%d') AS destruction_date,
+                COALESCE(r.name, 'Belum ditempatkan') AS rack_name,
+                d.reason, u.name AS actor_name
+         FROM book_destructions d
+         JOIN books b ON b.school_id = d.school_id AND b.id = d.book_id
+         LEFT JOIN master_categories r ON r.school_id = d.school_id AND r.id = d.rack_id
+         LEFT JOIN users u ON u.id = d.actor_id
+         WHERE d.school_id = ?
+         ORDER BY d.destruction_date DESC, d.id DESC
+         LIMIT ? OFFSET ?`,
+        [req.school.id, limit, (page - 1) * limit]
+      )
+    ]);
+    const total = Number(count.total);
+    return res.json({
+      history: history.map((entry) => ({
+        ...entry,
+        id: String(entry.id),
+        book_id: String(entry.book_id),
+        quantity: Number(entry.quantity)
+      })),
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post('/destructions', requireSchoolPermission('books.stock', 'edit'), async (req, res, next) => {
+  if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+    return res.status(400).json({ message: 'Data pemusnahan buku tidak valid.' });
+  }
+  const bookId = String(req.body.bookId ?? '');
+  const rawRackId = String(req.body.rackId ?? '');
+  const rackId = rawRackId === 'none' ? null : rawRackId;
+  const quantity = Number(req.body.quantity);
+  const reason = typeof req.body.reason === 'string' ? req.body.reason.trim() : '';
+  const destructionDateResult = normalizeDate(req.body, 'destructionDate', 'Tanggal pemusnahan');
+  if (destructionDateResult.error) return res.status(400).json({ message: destructionDateResult.error });
+  if (!destructionDateResult.value) return res.status(400).json({ message: 'Tanggal pemusnahan wajib diisi.' });
+  const destructionDate = destructionDateResult.value;
+  if (!/^[1-9]\d*$/.test(bookId) || (rackId != null && !/^[1-9]\d*$/.test(rackId))
+      || !Number.isSafeInteger(quantity) || quantity < 1 || quantity > MAX_BOOK_QUANTITY
+      || !reason || reason.length > 1000) {
+    return res.status(400).json({ message: 'Buku, lokasi rak, jumlah, atau alasan pemusnahan tidak valid.' });
+  }
+
+  let connection;
+  let transactionStarted = false;
+  try {
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    transactionStarted = true;
+    const [books] = await connection.execute(
+      'SELECT id, title, qty FROM books WHERE id = ? AND school_id = ? FOR UPDATE',
+      [bookId, req.school.id]
+    );
+    const book = books[0];
+    if (!book) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(404).json({ message: 'Buku tidak ditemukan pada katalog sekolah ini.' });
+    }
+
+    const rackCondition = rackId == null ? 'bi.rack_id IS NULL' : 'bi.rack_id = ?';
+    const rackValues = rackId == null ? [] : [rackId];
+    const [items] = await connection.execute(
+      `SELECT bi.id FROM book_items bi
+       WHERE bi.school_id = ? AND bi.book_id = ? AND ${rackCondition}
+         AND bi.destroyed_at IS NULL
+         AND bi.\`condition\` IN ('Rusak Ringan', 'Rusak Berat')
+         AND bi.status <> 'Dipinjam'
+         AND NOT EXISTS (
+           SELECT 1 FROM loans l
+           WHERE l.school_id = bi.school_id AND l.book_item_id = bi.id
+             AND l.status IN ('Pending', 'Borrowed')
+         )
+       ORDER BY bi.id ASC LIMIT ? FOR UPDATE`,
+      [req.school.id, bookId, ...rackValues, quantity]
+    );
+    if (items.length < quantity) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(409).json({
+        message: `Jumlah eksemplar rusak yang dapat dimusnahkan pada rak tersebut hanya ${items.length}.`
+      });
+    }
+    if (Number(book.qty) < quantity) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(409).json({ message: 'Stok katalog tidak cukup untuk mengurangi jumlah pemusnahan.' });
+    }
+
+    const itemIds = items.map((item) => String(item.id));
+    await connection.execute(
+      `UPDATE book_items SET destroyed_at = CURRENT_TIMESTAMP, status = 'Rusak'
+       WHERE school_id = ? AND id IN (${itemIds.map(() => '?').join(', ')})`,
+      [req.school.id, ...itemIds]
+    );
+    const resultingQty = Number(book.qty) - quantity;
+    await connection.execute(
+      'UPDATE books SET qty = ? WHERE id = ? AND school_id = ?',
+      [resultingQty, bookId, req.school.id]
+    );
+    const [rackSummaryRows] = await connection.execute(
+      `SELECT COUNT(DISTINCT rack_id) AS rack_count, COUNT(*) - COUNT(rack_id) AS unassigned,
+              MIN(rack_id) AS only_rack
+       FROM book_items WHERE school_id = ? AND book_id = ? AND destroyed_at IS NULL`,
+      [req.school.id, bookId]
+    );
+    const rackSummary = rackSummaryRows[0];
+    await connection.execute(
+      'UPDATE books SET rack_id = ? WHERE id = ? AND school_id = ?',
+      [Number(rackSummary.rack_count) === 1 && Number(rackSummary.unassigned) === 0 ? rackSummary.only_rack : null, bookId, req.school.id]
+    );
+    const [destruction] = await connection.execute(
+      `INSERT INTO book_destructions
+       (school_id, book_id, rack_id, actor_id, quantity, destruction_date, reason)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [req.school.id, bookId, rackId, req.school.userId, quantity, destructionDate, reason]
+    );
+    await connection.commit();
+    transactionStarted = false;
+    return res.status(201).json({
+      destruction: { id: String(destruction.insertId), book_id: bookId, quantity, destruction_date: destructionDate },
+      book: { id: bookId, title: book.title, qty: resultingQty },
+      message: `${quantity} eksemplar buku berhasil dimusnahkan. Stok tersisa ${resultingQty}.`
+    });
+  } catch (error) {
+    if (transactionStarted && connection) {
+      try {
+        await connection.rollback();
+      } catch (rollbackError) {
+        error.rollbackError = rollbackError;
+        return next(error);
+      }
+    }
+    return next(error);
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+router.get('/activity-logs', requireSchoolPermission('books.stock', 'view'), async (req, res, next) => {
+  const page = parsePageValue(req.query.page, 1, 1000000);
+  const limit = parsePageValue(req.query.limit, 25, 100);
+  if (!page || !limit) return res.status(400).json({ message: 'Nomor halaman atau jumlah log aktivitas tidak valid.' });
+  try {
+    const schoolId = req.school.id;
+    const union = `(
+      SELECT CONCAT('activity-', a.id) AS id, a.created_at AS activity_date,
+             a.event_type, a.activity, u.name AS actor_name, a.route, a.ip_address,
+             0 AS date_only,
+             a.id AS sort_id
+      FROM school_activity_logs a
+      LEFT JOIN users u ON u.id = a.user_id
+      WHERE a.school_id = ?
+      UNION ALL
+      SELECT CONCAT('stock-', m.id), m.stock_date, 'change',
+             CONCAT('Penambahan stok ', b.title, ' (+', m.quantity_added, ')'),
+             u.name, '/books/stock', NULL, 1, m.id
+      FROM book_stock_movements m
+      JOIN books b ON b.school_id = m.school_id AND b.id = m.book_id
+      LEFT JOIN users u ON u.id = m.actor_id
+      WHERE m.school_id = ?
+      UNION ALL
+      SELECT CONCAT('rack-', t.id), t.moved_at, 'change',
+             CONCAT('Pemindahan rak ', b.title, ' (', t.quantity, ')'),
+             u.name, '/books/rack-transfers', NULL, 0, t.id
+      FROM book_rack_transfers t
+      JOIN books b ON b.school_id = t.school_id AND b.id = t.book_id
+      LEFT JOIN users u ON u.id = t.moved_by
+      WHERE t.school_id = ?
+      UNION ALL
+      SELECT CONCAT('destroy-', d.id), d.destruction_date, 'change',
+             CONCAT('Pemusnahan buku ', b.title, ' (', d.quantity, ') · ', d.reason),
+             u.name, '/books/destructions', NULL, 1, d.id
+      FROM book_destructions d
+      JOIN books b ON b.school_id = d.school_id AND b.id = d.book_id
+      LEFT JOIN users u ON u.id = d.actor_id
+      WHERE d.school_id = ?
+    ) activity_history`;
+    const [[count], [logs]] = await Promise.all([
+      pool.execute(`SELECT COUNT(*) AS total FROM ${union}`, [schoolId, schoolId, schoolId, schoolId]),
+      pool.execute(
+        `SELECT id, activity_date, event_type, activity, actor_name, route, ip_address, date_only
+         FROM ${union}
+         ORDER BY activity_date DESC, sort_id DESC
+         LIMIT ? OFFSET ?`,
+        [schoolId, schoolId, schoolId, schoolId, limit, (page - 1) * limit]
+      )
+    ]);
+    const total = Number(count.total);
+    return res.json({ logs: logs.map((log) => ({ ...log, id: String(log.id) })), pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post('/activity-logs/page-view', async (req, res, next) => {
+  const pageName = typeof req.body?.pageName === 'string' ? req.body.pageName.trim() : '';
+  if (!pageName || pageName.length > 100) return res.status(400).json({ message: 'Nama halaman tidak valid.' });
+  try {
+    await pool.execute(
+      `INSERT INTO school_activity_logs (school_id, user_id, event_type, activity, route, ip_address)
+       VALUES (?, ?, 'page_view', ?, ?, ?)`,
+      [req.school.id, req.school.userId, `Membuka halaman ${pageName}`, `/school/${pageName}`, req.ip || null]
+    );
+    return res.status(201).json({ logged: true });
   } catch (error) {
     return next(error);
   }

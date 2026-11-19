@@ -3,12 +3,16 @@ import {
   Activity, ArrowDownRight, ArrowUpRight, Bell, BookOpen, Building2,
   Check, ChevronDown, ChevronRight, CircleHelp, ClipboardList, Copy, Eye, EyeOff,
   CreditCard, Database, FileText, Headphones, LayoutDashboard,
-  KeyRound, LogOut, Menu, MessageSquare, MoreHorizontal, PanelLeftClose, PanelLeftOpen, Plus,
+  KeyRound, LogOut, Menu, MessageSquare, MoreHorizontal, PanelLeftClose, PanelLeftOpen, Palette, Plus,
   Search, Settings2, ShieldCheck, Sparkles, Ticket, Users, X
 } from 'lucide-react';
 import SchoolPortal from './school/SchoolPortal.jsx';
 import PublicLibraryPortal from './school/PublicLibraryPortal.jsx';
 import BackupRestorePanel from './school/BackupRestorePanel.jsx';
+import PlatformAuditLogsPage from './PlatformAuditLogsPage.jsx';
+import PlatformTicketsPage from './PlatformTicketsPage.jsx';
+import PlatformUserGuidePage from './PlatformUserGuidePage.jsx';
+import PlatformAppearancePage from './PlatformAppearancePage.jsx';
 import './super-admin.css';
 
 const groups = [
@@ -22,6 +26,7 @@ const groups = [
   { title: 'KUSTOMISASI', items: [
     { label: 'Default Menu Sekolah', icon: Settings2 },
     { label: 'Branding Sistem', icon: Sparkles },
+    { label: 'Tema', icon: Palette },
     { label: 'QRIS & Harga', icon: CreditCard },
     { label: 'Syarat & SLA', icon: FileText }
   ] },
@@ -29,7 +34,7 @@ const groups = [
     { label: 'Pusat Tiket', icon: Ticket, badge: 'newTickets' },
     { label: 'Pengumuman & Maintenance', icon: Bell },
     { label: 'Petunjuk Pengguna', icon: CircleHelp },
-    { label: 'Audit Logs', icon: Activity }
+    { label: 'Log Aktivitas', icon: Activity }
   ] },
   { title: 'INTEGRASI', items: [
     { label: 'WhatsApp Gateway', icon: MessageSquare },
@@ -703,7 +708,7 @@ const moduleDescriptions = {
   'Pusat Tiket': 'Kelola tiket bantuan yang dikirim oleh sekolah.',
   'Pengumuman & Maintenance': 'Kelola pengumuman dan informasi pemeliharaan sistem.',
   'Petunjuk Pengguna': 'Lihat dan kelola panduan penggunaan platform.',
-  'Audit Logs': 'Telusuri aktivitas penting yang tercatat pada platform.',
+  'Log Aktivitas': 'Telusuri perubahan data, login, dan halaman yang dibuka pada platform.',
   'WhatsApp Gateway': 'Atur koneksi WhatsApp untuk notifikasi platform.',
   'AI Tutorial Edupoin': 'Atur integrasi asisten AI dan tutorial otomatis Edupoin.',
   'Backup & Restore': 'Kelola informasi pencadangan dan pemulihan data platform.',
@@ -737,7 +742,7 @@ function StatCard({ title, value, note, icon: Icon, tone, trend }) {
   );
 }
 
-function Dashboard({ data, onBillingCheck, billing, toast, onShowSchools }) {
+function Dashboard({ data, onBillingCheck, billing, toast, onShowSchools, onShowActivityLogs }) {
   const stats = data.stats;
   const lastBillingCheck = billing?.checkedAt ? billing : data.lastBillingCheck;
   const formattedDate = (date) => new Intl.DateTimeFormat('id-ID', {
@@ -791,7 +796,7 @@ function Dashboard({ data, onBillingCheck, billing, toast, onShowSchools }) {
         </article>
       </section>
       <section className="panel activity-panel">
-        <div className="panel-heading"><div><h3>Aktivitas Terakhir Super Admin</h3><p>Jejak audit aktivitas platform</p></div><button className="text-button" onClick={() => toast('Modul Audit Logs siap dikembangkan.')}>Lihat semua <ChevronRight size={16} /></button></div>
+        <div className="panel-heading"><div><h3>Aktivitas Terakhir Super Admin</h3><p>Jejak audit aktivitas platform</p></div><button className="text-button" onClick={onShowActivityLogs}>Lihat semua <ChevronRight size={16} /></button></div>
         {data.activities.length ? <div className="activity-table"><div className="activity-header"><span>AKTIVITAS</span><span>ADMIN</span><span>ALAMAT IP</span><span>WAKTU</span></div>{data.activities.map((item) => <div className="activity-row" key={item.id}><span><span className="activity-dot" />{item.activity}</span><span>{item.admin_name || 'Platform'}</span><span>{item.ip_address || '—'}</span><span>{formattedDate(item.created_at)}</span></div>)}</div> : <EmptyState text="Aktivitas penting akan tercatat dan muncul di sini." />}
       </section>
       <footer className="page-footer"><span>© {new Date().getFullYear()} PerpusKita Platform</span><span><span className="live-dot" />Semua sistem beroperasi</span></footer>
@@ -1034,6 +1039,12 @@ export default function App() {
   const [active, setActive] = useState('Dashboard');
   const [billing, setBilling] = useState(null);
   const [toastText, setToastText] = useState('');
+  const [branding, setBranding] = useState({
+    title: 'PerpusKita',
+    subtitle: 'PLATFORM ADMIN',
+    primaryColor: '#f97316',
+    logo: ''
+  });
 
   useEffect(() => {
     const handlePopState = () => setPage(currentPage());
@@ -1115,6 +1126,31 @@ export default function App() {
       .catch((err) => setError(err.message));
   }, [admin]);
 
+  useEffect(() => {
+    if (!admin) return;
+    let activeRequest = true;
+    request('/api/super-admin/branding')
+      .then(({ branding: savedBranding }) => {
+        if (activeRequest) setBranding((current) => ({ ...current, ...savedBranding }));
+      })
+      .catch((brandingError) => {
+        if (activeRequest) console.error('Gagal memuat branding platform:', brandingError);
+      });
+    return () => { activeRequest = false; };
+  }, [admin]);
+
+  useEffect(() => {
+    document.title = branding.title || 'PerpusKita';
+  }, [branding.title]);
+
+  useEffect(() => {
+    if (!admin) return;
+    request('/api/super-admin/audit-logs/page-view', {
+      method: 'POST',
+      body: JSON.stringify({ pageName: active })
+    }).catch((logError) => console.error('Gagal mencatat halaman Super Admin:', logError));
+  }, [active, admin]);
+
   async function runBillingCheck() {
     setBilling({ loading: true });
     try {
@@ -1166,11 +1202,11 @@ export default function App() {
   }
 
   return (
-    <div className={`app-shell ${collapsed ? 'sidebar-collapsed' : ''}`}>
+    <div className={`app-shell ${collapsed ? 'sidebar-collapsed' : ''}`} style={{ '--platform-accent': branding.primaryColor }}>
       {mobileOpen && <button className="mobile-scrim" onClick={() => setMobileOpen(false)} aria-label="Tutup menu" />}
       <aside className={`sidebar ${mobileOpen ? 'mobile-open' : ''}`}>
-        <div className="sidebar-brand"><div className="brand-mark"><BookOpen size={21} /></div>{!collapsed && <div className="brand-text"><b>perpuskita<span>.</span></b><small>PLATFORM ADMIN</small></div>}<button className="collapse-button" onClick={() => setCollapsed(!collapsed)} aria-label="Ciutkan sidebar">{collapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}</button></div>
-        <div className="workspace-switch"><div className="workspace-logo">P</div>{!collapsed && <><div><b>PerpusKita</b><span>Platform Owner</span></div><ChevronDown size={15} className="workspace-chevron" /></>}</div>
+        <div className="sidebar-brand"><div className="brand-mark">{branding.logo ? <img className="platform-brand-logo" src={branding.logo} alt="" /> : <BookOpen size={21} />}</div>{!collapsed && <div className="brand-text"><b>{branding.title}<span>.</span></b><small>{branding.subtitle}</small></div>}<button className="collapse-button" onClick={() => setCollapsed(!collapsed)} aria-label="Ciutkan sidebar">{collapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}</button></div>
+        <div className="workspace-switch"><div className={`workspace-logo ${branding.logo ? 'has-logo' : ''}`}>{branding.logo ? <img src={branding.logo} alt="" /> : 'P'}</div>{!collapsed && <><div><b>{branding.title}</b><span>Platform Owner</span></div><ChevronDown size={15} className="workspace-chevron" /></>}</div>
         <nav className="side-nav">{groups.map((group) => <div className="nav-group" key={group.title}><div className="nav-group-title">{!collapsed ? group.title : <span className="nav-divider" />}</div>{group.items.map(({ label, icon: Icon, badge }) => <button key={label} title={collapsed ? label : undefined} onClick={() => { setActive(label); setMobileOpen(false); }} className={`nav-item ${active === label ? 'selected' : ''}`}><Icon size={17} /><span className="nav-label">{!collapsed && label}</span>{!collapsed && badge && data && <span className="nav-badge">{number(data.stats[badge])}</span>}</button>)}</div>)}</nav>
         <div className="sidebar-bottom"><button className="profile-card" onClick={logout} aria-label="Keluar dari akun Super Admin"><div className="profile-avatar" aria-hidden="true">{admin.name?.slice(0, 1).toUpperCase() || 'P'}</div><LogOut size={16} className="logout-icon" aria-hidden="true" /></button></div>
       </aside>
@@ -1182,8 +1218,13 @@ export default function App() {
             : active === 'Backup & Restore' ? <BackupRestorePanel scope="platform" />
             : active === 'Pengaturan Profil' ? <ProfilePage admin={admin} onUpdate={setAdmin} />
             : active === 'Syarat & SLA' ? <LegalDocumentsPage />
+            : active === 'Log Aktivitas' ? <PlatformAuditLogsPage />
+            : active === 'Pusat Tiket' ? <PlatformTicketsPage />
+            : active === 'Petunjuk Pengguna' ? <PlatformUserGuidePage />
+            : active === 'Branding Sistem' ? <PlatformAppearancePage mode="branding" onSaved={setBranding} />
+            : active === 'Tema' ? <PlatformAppearancePage mode="theme" onSaved={setBranding} />
             : active === 'Dashboard' ? error ? <div className="error-panel"><ShieldCheck size={20} /><div><b>Dashboard belum dapat dimuat</b><p>{error}. Pastikan database sudah disiapkan dan tersedia datanya.</p></div><button className="subtle-button" onClick={() => { setError(''); request('/api/super-admin/dashboard').then(setData).catch((err) => setError(err.message)); }}>Coba lagi</button></div>
-              : data ? <Dashboard data={{ ...data, adminName: admin.name }} onBillingCheck={runBillingCheck} billing={billing} toast={toast} onShowSchools={() => setActive('Daftar Sekolah')} />
+              : data ? <Dashboard data={{ ...data, adminName: admin.name }} onBillingCheck={runBillingCheck} billing={billing} toast={toast} onShowSchools={() => setActive('Daftar Sekolah')} onShowActivityLogs={() => setActive('Log Aktivitas')} />
                 : <div className="loading-state"><div className="spinner" />Memuat ringkasan platform...</div>
             : <AdminModulePage title={active} />}
         </div>

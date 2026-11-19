@@ -23,7 +23,9 @@ export const schoolPermissionFeatures = [
   { key: 'reservations', label: 'Booking Buku', section: 'Layanan Perpustakaan' },
   { key: 'reviews', label: 'Ulasan & Rating', section: 'Layanan Perpustakaan' },
   { key: 'announcements', label: 'Pengumuman', section: 'Layanan Perpustakaan' },
-  { key: 'reports.monthly', label: 'Laporan', section: 'Analisis' }
+  { key: 'reports.monthly', label: 'Laporan', section: 'Analisis' },
+  { key: 'support', label: 'Bantuan & Tiket Kendala', section: 'Bantuan' },
+  { key: 'platform.documents', label: 'Petunjuk Pengguna', section: 'Bantuan' }
 ];
 
 export const schoolPermissionRoles = [
@@ -36,15 +38,18 @@ export const schoolPermissionByLabel = Object.fromEntries(
   schoolPermissionFeatures.map(({ key, label }) => [label, key])
 );
 schoolPermissionByLabel['Pindah Rak'] = 'books.stock';
+schoolPermissionByLabel['Pemusnahan Buku'] = 'books.stock';
+schoolPermissionByLabel['Log Aktivitas'] = 'books.stock';
 schoolPermissionByLabel['Kop Sekolah'] = 'master.identity';
 schoolPermissionByLabel['Portal Publik'] = 'master.identity';
 schoolPermissionByLabel.Member = 'master.students';
+schoolPermissionByLabel['Syarat & SLA'] = 'platform.documents';
 
 export function defaultSchoolPermissions() {
-  const memberEditable = new Set(['visitors', 'reservations', 'reviews']);
+  const memberEditable = new Set(['visitors', 'reservations', 'reviews', 'support']);
   const viewable = new Set([
     'dashboard', 'visitors', 'reservations', 'reviews', 'announcements',
-    'master.academic-years', 'master.students'
+    'master.academic-years', 'master.students', 'support', 'platform.documents'
   ]);
   return Object.fromEntries(schoolPermissionFeatures.map(({ key }) => [
     key,

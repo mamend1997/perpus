@@ -91,3 +91,14 @@ export async function saveMobileNavbarSettings(settings) {
     body: JSON.stringify(settings)
   });
 }
+
+export async function fetchSchoolAppearance() {
+  return schoolRequest('/settings/appearance');
+}
+
+export async function saveSchoolAppearance(appearance) {
+  return schoolRequest('/settings/appearance', {
+    method: 'PUT',
+    body: JSON.stringify(appearance)
+  });
+}

@@ -8,7 +8,8 @@ const reportTypes = [
   { key: 'loans', label: 'Sirkulasi & Peminjaman' },
   { key: 'fines', label: 'Denda' },
   { key: 'visitors', label: 'Kunjungan' },
-  { key: 'inventory', label: 'Inventaris Buku' }
+  { key: 'inventory', label: 'Inventaris Buku' },
+  { key: 'stock', label: 'Riwayat Stok' }
 ];
 const pageSize = 25;
 
@@ -29,7 +30,17 @@ function monthEnd(value) {
 function formatValue(value, key) {
   if (value == null || value === '') return '—';
   if (key === 'transaction_id') return `TRX-${String(value).padStart(8, '0')}`;
-  if (['borrow_date', 'due_date', 'return_date'].includes(key)) {
+  if (key === 'visit_date') {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime())
+      ? '—'
+      : new Intl.DateTimeFormat('id-ID', {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+        timeZone: 'Asia/Jakarta'
+      }).format(date);
+  }
+  if (['borrow_date', 'due_date', 'return_date', 'stock_date'].includes(key)) {
     const date = new Date(`${String(value).slice(0, 10)}T00:00:00`);
     return Number.isNaN(date.getTime()) ? '—' : new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium' }).format(date);
   }
@@ -58,6 +69,10 @@ function summaryCards(type, summary) {
     ['Total Kunjungan', summary.total],
     ['Pengunjung Unik', summary.unique_visitors]
   ];
+  if (type === 'stock') return [
+    ['Total Transaksi', summary.total],
+    ['Jumlah Tambahan', Number(summary.quantity_added || 0).toLocaleString('id-ID')]
+  ];
   return [
     ['Judul Buku', summary.total_titles],
     ['Total Eksemplar', summary.total_items],
@@ -85,7 +100,7 @@ export default function SchoolReportsPage({ rights }) {
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState('');
-  const monthlyTypes = ['loans', 'fines', 'visitors'];
+  const monthlyTypes = ['loans', 'fines', 'visitors', 'stock'];
   const classAndSearchTypes = ['loans', 'fines'];
   const supportsMonth = monthlyTypes.includes(type);
   const supportsClassAndSearch = classAndSearchTypes.includes(type);
@@ -220,7 +235,7 @@ export default function SchoolReportsPage({ rights }) {
       <header className="library-module-heading">
         <span className="library-eyebrow">ANALISIS PERPUSTAKAAN</span>
         <h1>Laporan Perpustakaan</h1>
-        <p>Pratinjau dan ekspor laporan sirkulasi, denda, kunjungan, serta inventaris.</p>
+        <p>Pratinjau dan ekspor laporan sirkulasi, denda, kunjungan, inventaris, dan riwayat stok.</p>
       </header>
       {error && <div className="library-error" role="alert">{error}</div>}
 

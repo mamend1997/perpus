@@ -98,6 +98,9 @@ try {
       "ALTER TABLE book_items ADD COLUMN `condition` ENUM('Baik', 'Rusak Ringan', 'Rusak Berat') NOT NULL DEFAULT 'Baik' AFTER status"
     );
   }
+  if (!bookItemColumns.some((column) => column.COLUMN_NAME === 'destroyed_at')) {
+    await connection.query('ALTER TABLE book_items ADD COLUMN destroyed_at DATETIME NULL AFTER `condition`');
+  }
   const [bookItemRackIndexes] = await connection.execute(
     `SELECT INDEX_NAME FROM information_schema.STATISTICS
      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'book_items'
@@ -105,6 +108,16 @@ try {
   );
   if (!bookItemRackIndexes.length) {
     await connection.query('ALTER TABLE book_items ADD KEY idx_book_items_rack_status (school_id, rack_id, status)');
+  }
+  const [bookItemDestructionIndexes] = await connection.execute(
+    `SELECT INDEX_NAME FROM information_schema.STATISTICS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'book_items'
+       AND INDEX_NAME = 'idx_book_items_destruction'`
+  );
+  if (!bookItemDestructionIndexes.length) {
+    await connection.query(
+      'ALTER TABLE book_items ADD KEY idx_book_items_destruction (school_id, book_id, rack_id, destroyed_at, status)'
+    );
   }
   const [bookItemRackConstraints] = await connection.execute(
     `SELECT CONSTRAINT_NAME FROM information_schema.REFERENTIAL_CONSTRAINTS
