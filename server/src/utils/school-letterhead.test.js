@@ -7,6 +7,8 @@ import {
 test('accepts a manual letterhead with five formatted lines', () => {
   const letterhead = {
     mode: 'manual',
+    logo: null,
+    signaturePlace: '',
     lines: defaultSchoolLetterhead.lines.map((line, index) => ({
       ...line,
       text: `Baris ${index + 1}`,
@@ -15,6 +17,14 @@ test('accepts a manual letterhead with five formatted lines', () => {
     }))
   };
   assert.deepEqual(validateSchoolLetterhead(letterhead), letterhead);
+});
+
+test('preserves a configured signature place and trims surrounding whitespace', () => {
+  const letterhead = {
+    ...defaultSchoolLetterhead,
+    signaturePlace: '  Cikoneng  '
+  };
+  assert.equal(validateSchoolLetterhead(letterhead).signaturePlace, 'Cikoneng');
 });
 
 test('rejects invalid line count and formatting values', () => {

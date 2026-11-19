@@ -373,10 +373,11 @@ export default function SchoolMasterDataPage({ active, type, rights }) {
     const controller = new AbortController();
     setLoading(true);
     setError('');
+    setCategories([]);
+    setSelectedIds(new Set());
     fetchMasterCategories(type, controller.signal)
       .then((items) => {
         setCategories(items);
-        setSelectedIds(new Set());
       })
       .catch((loadError) => {
         if (loadError.name !== 'AbortError') setError(loadError.message);

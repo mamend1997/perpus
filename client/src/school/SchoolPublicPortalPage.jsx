@@ -14,12 +14,6 @@ const portalOptions = [
     title: 'Booking Buku',
     description: 'Anggota masuk dengan akun member untuk mengajukan booking dan jumlah eksemplar.',
     route: '/booking'
-  },
-  {
-    key: 'rating',
-    title: 'Rating Buku',
-    description: 'Anggota masuk untuk memberi rating bintang dan ulasan buku yang telah dikembalikan.',
-    route: '/rating'
   }
 ];
 
@@ -77,7 +71,7 @@ export default function SchoolPublicPortalPage({ schoolCode }) {
       <header className="library-module-heading">
         <span className="library-eyebrow">LAYANAN PERPUSTAKAAN</span>
         <h1>Portal Publik</h1>
-        <p>Bagikan tautan dan barcode agar pengunjung dapat memeriksa koleksi, membuat booking, atau mengirim ulasan.</p>
+        <p>Bagikan tautan dan barcode agar pengunjung dapat memeriksa koleksi atau membuat booking.</p>
       </header>
       {error && <div className="library-error" role="alert">{error}</div>}
       {!schoolCode && <div className="library-error" role="alert">Kode sekolah belum tersedia. Muat ulang profil sekolah lalu coba kembali.</div>}
@@ -110,7 +104,7 @@ export default function SchoolPublicPortalPage({ schoolCode }) {
           </article>
         ))}
       </div>
-      <p className="public-portal-settings-note">Booking dan rating hanya dapat dikirim setelah anggota masuk dengan akun member sekolah. Pemindaian kamera memerlukan izin kamera dan browser yang mendukungnya.</p>
+      <p className="public-portal-settings-note">Booking hanya dapat dikirim setelah anggota masuk dengan akun member sekolah. Pemindaian kamera memerlukan izin kamera dan browser yang mendukungnya.</p>
     </div>
   );
 }

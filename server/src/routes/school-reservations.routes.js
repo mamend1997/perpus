@@ -55,25 +55,33 @@ router.get('/books', requireSchoolPermission('reservations', 'view'), async (req
   try {
     const [books] = await pool.execute(
       `SELECT b.id, b.title, b.kode_buku, b.cover_image,
+              (SELECT COUNT(*) FROM book_items available
+               WHERE available.school_id = b.school_id AND available.book_id = b.id
+                 AND available.status = 'Tersedia'
+                 AND NOT EXISTS (
+                   SELECT 1 FROM loans l
+                   WHERE l.school_id = available.school_id AND l.book_item_id = available.id
+                     AND l.status IN ('Pending', 'Borrowed')
+                 )) AS available_count,
+              (SELECT COUNT(*) FROM book_items total_items
+               WHERE total_items.school_id = b.school_id AND total_items.book_id = b.id) AS total_count,
               (SELECT COUNT(*) FROM book_reservations br
                WHERE br.school_id = b.school_id AND br.book_id = b.id AND br.status = 'Active') AS active_reservations
        FROM books b
        WHERE b.school_id = ?
          AND (? = '' OR b.title LIKE ? OR b.kode_buku LIKE ? OR b.nomor_induk LIKE ?)
-         AND NOT EXISTS (
-           SELECT 1 FROM book_items bi
-           WHERE bi.school_id = b.school_id AND bi.book_id = b.id AND bi.status = 'Tersedia'
-             AND NOT EXISTS (
-               SELECT 1 FROM loans l
-               WHERE l.school_id = bi.school_id AND l.book_item_id = bi.id
-                 AND l.status IN ('Pending', 'Borrowed')
-             )
-         )
        ORDER BY b.title ASC
        LIMIT 50`,
       [req.school.id, search, `%${search}%`, `%${search}%`, `%${search}%`]
     );
-    return res.json({ books });
+    return res.json({
+      books: books.map((book) => ({
+        ...book,
+        id: String(book.id),
+        available_count: Number(book.available_count),
+        total_count: Number(book.total_count)
+      }))
+    });
   } catch (error) {
     return next(error);
   }

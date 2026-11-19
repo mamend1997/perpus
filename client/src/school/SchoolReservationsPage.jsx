@@ -42,11 +42,12 @@ export default function SchoolReservationsPage({ rights, role, account }) {
   const [selectedBookId, setSelectedBookId] = useState('');
   const [quantity, setQuantity] = useState('1');
   const [bookingNotes, setBookingNotes] = useState('');
-  const [bookLoading, setBookLoading] = useState(false);
+  const [bookLoading, setBookLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState('');
   const [notifications, setNotifications] = useState([]);
   const [actionId, setActionId] = useState('');
+  const selectedBook = books.find((book) => String(book.id) === String(selectedBookId));
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -191,7 +192,7 @@ export default function SchoolReservationsPage({ rights, role, account }) {
           </div>
           <form onSubmit={submitReservation} className="reservation-create-form">
             <label style={{ flex: '1 1 280px' }}>
-              <span className="loan-form-label">Cari buku yang tidak tersedia</span>
+              <span className="loan-form-label">Cari buku</span>
               <span className="master-search" style={{ display: 'flex' }}>
                 <Search size={16} />
                 <input value={bookSearch} onChange={(event) => { setBookSearch(event.target.value); setSelectedBookId(''); }} placeholder="Judul, kode, atau nomor induk" aria-label="Cari buku untuk booking" />
@@ -200,10 +201,16 @@ export default function SchoolReservationsPage({ rights, role, account }) {
               {books.length > 0 && (
                 <select value={selectedBookId} onChange={(event) => setSelectedBookId(event.target.value)} style={{ width: '100%', marginTop: 8 }} required>
                   <option value="">Pilih judul buku</option>
-                  {books.map((book) => <option value={book.id} key={book.id}>{book.title}</option>)}
+                  {books.map((book) => {
+                    const availableCount = Number(book.available_count || 0);
+                    return <option value={book.id} key={book.id} disabled={availableCount > 0}>
+                      {book.title} · {availableCount > 0 ? `${availableCount} tersedia` : 'Tidak tersedia — dapat di-booking'}
+                    </option>;
+                  })}
                 </select>
               )}
-              {!bookLoading && bookSearch && books.length === 0 && <small>Tidak ada buku yang cocok atau semua eksemplar masih tersedia.</small>}
+              {selectedBook && Number(selectedBook.available_count) > 0 && <small>Buku masih tersedia dan belum dapat di-booking.</small>}
+              {!bookLoading && books.length === 0 && <small>{bookSearch ? 'Tidak ada judul buku yang cocok.' : 'Belum ada data buku di katalog sekolah.'}</small>}
             </label>
             <label>
               <span className="loan-form-label">Jumlah eksemplar</span>
@@ -217,7 +224,7 @@ export default function SchoolReservationsPage({ rights, role, account }) {
               <span className="loan-form-label">Nama anggota</span>
               <input value={account?.name || ''} readOnly aria-readonly="true" />
             </label>}
-            <button type="submit" className="master-button master-button-primary" disabled={saving || !selectedBookId}>
+            <button type="submit" className="master-button master-button-primary" disabled={saving || !selectedBookId || Number(selectedBook?.available_count) > 0}>
               {saving ? <><LoaderCircle size={16} className="book-stock-spinner" />Menyimpan...</> : <><Ticket size={16} />Booking buku</>}
             </button>
           </form>

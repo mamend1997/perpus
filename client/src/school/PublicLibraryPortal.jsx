@@ -1,16 +1,58 @@
 import { useEffect, useMemo, useState } from 'react';
-import { BookOpen, Check, LoaderCircle, Search, Star, Ticket } from 'lucide-react';
+import { BookOpen, Check, LoaderCircle, Search, Ticket } from 'lucide-react';
 import CameraBarcodeScanner from './CameraBarcodeScanner.jsx';
 import { createReservation } from './schoolReservationApi.js';
-import { createReview } from './schoolReviewsApi.js';
 import { fetchPublicSchool, loginPublicMember, searchPublicBooks } from './publicLibraryApi.js';
 import useSchoolFavicon from './useSchoolFavicon.js';
 
 const portalSections = [
   { key: 'check', label: 'Cek Buku', suffix: '', icon: BookOpen },
-  { key: 'booking', label: 'Booking Buku', suffix: '/booking', icon: Ticket },
-  { key: 'rating', label: 'Rating Buku', suffix: '/rating', icon: Star }
+  { key: 'booking', label: 'Booking Buku', suffix: '/booking', icon: Ticket }
 ];
+
+function formatPublicDate(value) {
+  if (!value) return '—';
+  const dateValue = value instanceof Date ? value : null;
+  const [year, month, day] = dateValue
+    ? [dateValue.getFullYear(), dateValue.getMonth() + 1, dateValue.getDate()]
+    : String(value).slice(0, 10).split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  return Number.isNaN(date.getTime())
+    ? '—'
+    : new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium' }).format(date);
+}
+
+function formatCurrency(value) {
+  const amount = Number(value);
+  return Number.isFinite(amount)
+    ? new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(amount)
+    : '—';
+}
+
+function bookDetailRows(book) {
+  return [
+    ['Nomor Induk', book.nomor_induk],
+    ['Kode Buku', book.kode_buku],
+    ['Nomor Penerimaan', book.no_terima],
+    ['Tanggal Terima', book.received_date ? formatPublicDate(book.received_date) : ''],
+    ['ISBN', book.isbn],
+    ['Pengarang', book.author_name],
+    ['Penerbit', book.publisher_name],
+    ['Agen', book.agent_name],
+    ['Topik', book.topic_name],
+    ['Koleksi', book.collection_name],
+    ['Jenis', book.type_name],
+    ['Bahasa', book.language_name],
+    ['GMD', book.gmd],
+    ['Tahun Terbit', book.year],
+    ['Kota Terbit', book.city],
+    ['Deskripsi Fisik', book.physical_description],
+    ['Jumlah Halaman', book.pages],
+    ['Jumlah di Daftar Pustaka', book.qty],
+    ['Sumber', book.source],
+    ['Harga', book.price == null ? '' : formatCurrency(book.price)]
+  ].filter(([, value]) => value != null && value !== '');
+}
 
 export default function PublicLibraryPortal({
   schoolCode, section = 'check', account, onAccountUpdated, onLogout, onNavigate
@@ -18,14 +60,11 @@ export default function PublicLibraryPortal({
   const [school, setSchool] = useState(null);
   const [loadingSchool, setLoadingSchool] = useState(true);
   const [query, setQuery] = useState('');
-  const [barcode, setBarcode] = useState('');
   const [books, setBooks] = useState([]);
   const [selectedBook, setSelectedBook] = useState(null);
   const [searching, setSearching] = useState(false);
   const [quantity, setQuantity] = useState('1');
   const [notes, setNotes] = useState('');
-  const [rating, setRating] = useState(0);
-  const [review, setReview] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -37,15 +76,11 @@ export default function PublicLibraryPortal({
   const normalizedCode = schoolCode.toUpperCase();
   const accountMatchesSchool = String(account?.school?.code || '').toUpperCase() === normalizedCode;
   const isMember = account?.role === 'member' && accountMatchesSchool;
-  const activeSection = portalSections.find((item) => item.key === section) ? section : 'check';
-  const title = activeSection === 'booking' ? 'Booking Buku'
-    : activeSection === 'rating' ? 'Rating Buku'
-      : 'Cek Buku';
+  const activeSection = section === 'booking' ? 'booking' : 'check';
+  const title = activeSection === 'booking' ? 'Booking Buku' : 'Cek Buku';
   const description = activeSection === 'booking'
     ? 'Ajukan booking buku yang sedang tidak tersedia. Nama anggota diisi dari akun Anda.'
-    : activeSection === 'rating'
-      ? 'Pindai barcode atau cari judul buku untuk memberi rating dan ulasan.'
-      : 'Pindai barcode atau masukkan nama buku untuk melihat ketersediaan koleksi.';
+    : 'Cari judul, kode, nomor induk, atau scan barcode untuk melihat detail dan ketersediaan koleksi.';
 
   const appLinks = useMemo(() => portalSections.map((item) => ({
     ...item,
@@ -97,15 +132,17 @@ export default function PublicLibraryPortal({
     };
   }, [normalizedCode, query]);
 
-  async function lookupBarcode(value = barcode) {
+  async function lookupBarcode(value) {
     const code = String(value || '').trim();
     if (!code) {
-      setError('Masukkan atau pindai barcode buku terlebih dahulu.');
+      setError('Pindai barcode buku terlebih dahulu.');
       return;
     }
     setError('');
     setNotice('');
-    setBarcode(code);
+    setQuery('');
+    setBooks([]);
+    setSelectedBook(null);
     setSearching(true);
     try {
       const { books: results } = await searchPublicBooks(normalizedCode, { barcode: code });
@@ -158,12 +195,6 @@ export default function PublicLibraryPortal({
         setNotice(result.message || 'Booking buku berhasil dikirim.');
         setQuantity('1');
         setNotes('');
-      } else {
-        if (!rating) throw new Error('Pilih rating bintang terlebih dahulu.');
-        const result = await createReview({ bookId: selectedBook.id, rating, review });
-        setNotice(result.message || 'Ulasan berhasil dikirim.');
-        setRating(0);
-        setReview('');
       }
     } catch (submitError) {
       setError(submitError.message);
@@ -228,34 +259,50 @@ export default function PublicLibraryPortal({
 
         <section className="public-library-card">
           <div className="public-book-search-tools">
-            <label className="public-barcode-input">Barcode Buku
-              <span><input value={barcode} onChange={(event) => setBarcode(event.target.value)} onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  event.preventDefault();
-                  void lookupBarcode();
-                }
-              }} placeholder="Pindai atau ketik kode barcode" />
-                <button type="button" className="master-button master-button-primary" onClick={() => void lookupBarcode()} disabled={searching}><Search size={15} />Cek</button>
-              </span>
-            </label>
-            <CameraBarcodeScanner label="Buka kamera barcode" onScan={(value) => { void lookupBarcode(value); }} />
-            <label className="public-book-name-search">Nama buku
-              <span className="master-search"><Search size={15} /><input value={query} onChange={(event) => {
-                setQuery(event.target.value);
-                setSelectedBook(null);
-                setError('');
-              }} placeholder="Ketik judul buku..." /></span>
-            </label>
+            <div className="public-book-search-field">
+              <label htmlFor="public-book-search">Cari nama, kode, nomor induk, atau scan barcode</label>
+              <CameraBarcodeScanner label="Scan barcode" onScan={(value) => { void lookupBarcode(value); }} />
+              <div className={`master-search public-book-search ${query ? 'is-open' : ''}`}>
+                <Search size={16} aria-hidden="true" />
+                <input
+                  id="public-book-search"
+                  type="search"
+                  role="combobox"
+                  aria-autocomplete="list"
+                  aria-expanded={Boolean(query && books.length)}
+                  aria-controls="public-book-results"
+                  value={query}
+                  onChange={(event) => {
+                    setQuery(event.target.value);
+                    setBooks([]);
+                    setSelectedBook(null);
+                    setError('');
+                    setNotice('');
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' && books.length === 1) {
+                      event.preventDefault();
+                      chooseBook(books[0]);
+                    }
+                  }}
+                  placeholder="Nama buku, kode, nomor induk, atau barcode"
+                  autoComplete="off"
+                  maxLength={100}
+                />
+                {searching && <LoaderCircle size={15} className="book-stock-spinner" />}
+              </div>
+              <small>Gunakan tombol scan atau cari berdasarkan nama, kode, nomor induk, maupun barcode.</small>
+            </div>
           </div>
 
           {searching && <p className="public-library-searching"><LoaderCircle size={15} className="book-stock-spinner" />Mencari buku...</p>}
           {books.length > 0 && (
-            <div className="public-book-results" aria-label="Hasil pencarian buku">
+            <div className="public-book-results" id="public-book-results" role="listbox" aria-label="Hasil pencarian buku">
               {books.map((book) => (
-                <button type="button" key={book.id} className={`public-book-result ${selectedBook?.id === book.id ? 'selected' : ''}`} onClick={() => chooseBook(book)}>
-                  <span><b>{book.title}</b><small>{book.kode_buku || book.nomor_induk || `Kode ${book.id}`}</small></span>
+                <button type="button" role="option" aria-selected={selectedBook?.id === book.id} key={book.id} className={`public-book-result ${selectedBook?.id === book.id ? 'selected' : ''}`} onClick={() => chooseBook(book)}>
+                  <span><b>{book.title}</b><small>{[book.author_name, book.kode_buku || book.nomor_induk].filter(Boolean).join(' · ') || `Kode ${book.id}`}</small></span>
                   <span className={`public-book-availability ${Number(book.available_count) > 0 ? 'available' : 'unavailable'}`}>
-                    {Number(book.available_count) > 0 ? `${book.available_count} tersedia` : 'Tidak tersedia'}
+                    {Number(book.available_count) > 0 ? `${book.available_count} bisa dipinjam` : 'Tidak tersedia'}
                   </span>
                 </button>
               ))}
@@ -264,12 +311,37 @@ export default function PublicLibraryPortal({
 
           {selectedBook && (
             <article className="public-book-selected">
-              <div><span>BUKU DIPILIH</span><h3>{selectedBook.title}</h3><p>{selectedBook.total_count} eksemplar tercatat · {selectedBook.available_count} tersedia</p></div>
+              <div className="public-book-detail-heading">
+                <div><span>DETAIL DAFTAR PUSTAKA</span><h3>{selectedBook.title}</h3></div>
+                <div className="public-book-count-summary">
+                  <div><small>Total eksemplar</small><b>{Number(selectedBook.total_count).toLocaleString('id-ID')}</b></div>
+                  <div><small>Bisa dipinjam</small><b>{Number(selectedBook.available_count).toLocaleString('id-ID')}</b></div>
+                </div>
+              </div>
+              <dl className="public-book-detail-grid">
+                {bookDetailRows(selectedBook).map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}
+              </dl>
+              {selectedBook.description && <div className="public-book-long-description"><b>Deskripsi</b><p>{selectedBook.description}</p></div>}
+              {selectedBook.synopsis && <div className="public-book-long-description"><b>Sinopsis</b><p>{selectedBook.synopsis}</p></div>}
+              <section className="public-book-rack-info">
+                <div><b>Jumlah dan ketersediaan per rak</b><span>Eksemplar tersedia dapat dipinjam.</span></div>
+                {selectedBook.rack_distribution?.length ? (
+                  <div className="public-book-rack-list">
+                    {selectedBook.rack_distribution.map((rack, index) => (
+                      <article key={`${rack.rack_id || rack.rack_name}-${index}`}>
+                        <b>{rack.rack_code ? `${rack.rack_code} · ` : ''}{rack.rack_name}</b>
+                        <span>{Number(rack.total_count).toLocaleString('id-ID')} eksemplar</span>
+                        <small>{Number(rack.available_count).toLocaleString('id-ID')} bisa dipinjam · {Number(rack.borrowed_count).toLocaleString('id-ID')} dipinjam · {Number(rack.damaged_count).toLocaleString('id-ID')} rusak</small>
+                      </article>
+                    ))}
+                  </div>
+                ) : <p className="public-book-rack-empty">Belum ada data eksemplar fisik pada rak.</p>}
+              </section>
             </article>
           )}
 
-          {activeSection === 'check' && query && !searching && !books.length && !error && (
-            <p className="public-library-empty">Judul tersebut belum ditemukan di katalog sekolah.</p>
+          {query && !searching && !books.length && !error && (
+            <p className="public-library-empty">Buku tidak ditemukan. Periksa nama, kode, nomor induk, atau barcode.</p>
           )}
         </section>
 
@@ -302,32 +374,17 @@ export default function PublicLibraryPortal({
 
             {isMember && (
               <form className="public-library-card public-request-form" onSubmit={submit}>
-                {activeSection === 'booking' ? (
-                  <>
-                    <div className="public-member-card-heading"><h3>Detail Booking</h3><p>Booking hanya diproses ketika tidak ada eksemplar yang tersedia.</p></div>
-                    <label>Jumlah eksemplar
-                      <input type="number" min="1" max="100" step="1" value={quantity} onChange={(event) => setQuantity(event.target.value)} required />
-                    </label>
-                    <label>Keterangan (opsional)
-                      <textarea rows="3" maxLength="1000" value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Catatan untuk petugas perpustakaan" />
-                      <small>{notes.length}/1.000 karakter</small>
-                    </label>
-                    {selectedBook && Number(selectedBook.available_count) > 0 && <p className="public-library-message is-error">Buku masih tersedia dan belum dapat di-booking.</p>}
-                  </>
-                ) : (
-                  <>
-                    <div className="public-member-card-heading"><h3>Ulasan Buku</h3><p>Ulasan hanya dapat dikirim setelah buku dipinjam dan dikembalikan.</p></div>
-                    <div className="public-rating-input"><span>Rating</span><div role="group" aria-label="Pilih rating bintang">
-                      {[1, 2, 3, 4, 5].map((value) => <button type="button" key={value} aria-label={`${value} bintang`} aria-pressed={rating === value} onClick={() => setRating(value)}><Star size={25} fill={value <= rating ? 'currentColor' : 'none'} /></button>)}
-                    </div></div>
-                    <label>Ulasan
-                      <textarea rows="4" maxLength="2000" value={review} onChange={(event) => setReview(event.target.value)} placeholder="Ceritakan kesan Anda tentang buku ini..." />
-                      <small>{review.length}/2.000 karakter</small>
-                    </label>
-                  </>
-                )}
-                <button type="submit" className="master-button master-button-primary" disabled={saving || !selectedBook || (activeSection === 'booking' && Number(selectedBook.available_count) > 0) || (activeSection === 'rating' && !rating)}>
-                  {saving ? <><LoaderCircle size={15} className="book-stock-spinner" />Mengirim...</> : activeSection === 'booking' ? <><Ticket size={15} />Kirim booking</> : <><Star size={15} />Kirim rating</>}
+                <div className="public-member-card-heading"><h3>Detail Booking</h3><p>Booking hanya diproses ketika tidak ada eksemplar yang tersedia.</p></div>
+                <label>Jumlah eksemplar
+                  <input type="number" min="1" max="100" step="1" value={quantity} onChange={(event) => setQuantity(event.target.value)} required />
+                </label>
+                <label>Keterangan (opsional)
+                  <textarea rows="3" maxLength="1000" value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Catatan untuk petugas perpustakaan" />
+                  <small>{notes.length}/1.000 karakter</small>
+                </label>
+                {selectedBook && Number(selectedBook.available_count) > 0 && <p className="public-library-message is-error">Buku masih tersedia dan belum dapat di-booking.</p>}
+                <button type="submit" className="master-button master-button-primary" disabled={saving || !selectedBook || Number(selectedBook.available_count) > 0}>
+                  {saving ? <><LoaderCircle size={15} className="book-stock-spinner" />Mengirim...</> : <><Ticket size={15} />Kirim booking</>}
                 </button>
               </form>
             )}

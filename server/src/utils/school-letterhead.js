@@ -1,6 +1,7 @@
 export const defaultSchoolLetterhead = {
   mode: 'identity',
   logo: null,
+  signaturePlace: '',
   lines: Array.from({ length: 5 }, () => ({
     text: '',
     fontSize: 14,
@@ -19,11 +20,12 @@ export function validateSchoolLetterhead(value) {
     return null;
   }
   const logo = value.logo == null || value.logo === '' ? null : value.logo;
+  const signaturePlace = value.signaturePlace == null ? '' : value.signaturePlace;
   const validLogo = logo === null || (typeof logo === 'string'
     && logo.length <= 700000
     && (/^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(logo)
       || /^https?:\/\/\S+$/i.test(logo)));
-  if (!validLogo) return null;
+  if (!validLogo || typeof signaturePlace !== 'string' || signaturePlace.length > 120) return null;
   const lines = value.lines.map((line) => {
     if (!line || typeof line !== 'object' || Array.isArray(line)
       || typeof line.text !== 'string' || line.text.length > 180
@@ -41,7 +43,7 @@ export function validateSchoolLetterhead(value) {
     };
   });
   if (lines.some((line) => !line)) return null;
-  return { mode: value.mode, logo, lines };
+  return { mode: value.mode, logo, signaturePlace: signaturePlace.trim(), lines };
 }
 
 export function parseSchoolLetterhead(value) {

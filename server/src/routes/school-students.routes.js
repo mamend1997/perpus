@@ -215,6 +215,55 @@ router.get('/archives', staffOnly, requireSchoolPermission('master.students', 'v
   }
 });
 
+router.get('/inactive', staffOnly, requireSchoolPermission('master.students', 'view'), async (req, res, next) => {
+  const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+  const page = parsePage(req.query.page, 1, 1000000);
+  const limit = parsePage(req.query.limit, 25, 100);
+  if (search.length > 100) return res.status(400).json({ message: 'Pencarian siswa nonaktif maksimal 100 karakter.' });
+  if (!page || !limit) return res.status(400).json({ message: 'Nomor halaman atau jumlah data tidak valid.' });
+
+  const conditions = ['u.school_id = ?', "u.role = 'member'", "u.status = 'inactive'"];
+  const values = [req.school.id];
+  if (search) {
+    conditions.push('(u.name LIKE ? OR COALESCE(u.nis_nisn, \'\') LIKE ? OR COALESCE(u.rombel, \'\') LIKE ?)');
+    values.push(...Array(3).fill(`%${search}%`));
+  }
+  const where = conditions.join(' AND ');
+
+  try {
+    const [[count], [students]] = await Promise.all([
+      pool.execute(`SELECT COUNT(*) AS total FROM users u WHERE ${where}`, values),
+      pool.execute(
+        `SELECT u.id, u.nis_nisn, u.name, u.rombel, u.status,
+                CASE WHEN EXISTS (
+                  SELECT 1 FROM school_year_student_archives a
+                  WHERE a.school_id = u.school_id AND a.student_id = u.id
+                    AND a.promotion_status = 'graduated'
+                ) THEN 'graduated' ELSE 'inactive' END AS inactive_reason,
+                (SELECT y.label
+                 FROM school_year_student_archives a
+                 JOIN school_years y ON y.school_id = a.school_id AND y.id = a.school_year_id
+                 WHERE a.school_id = u.school_id AND a.student_id = u.id
+                   AND a.promotion_status = 'graduated'
+                 ORDER BY a.archived_at DESC, a.id DESC
+                 LIMIT 1) AS graduation_year
+         FROM users u
+         WHERE ${where}
+         ORDER BY u.name ASC, u.id ASC
+         LIMIT ? OFFSET ?`,
+        [...values, limit, (page - 1) * limit]
+      )
+    ]);
+    const total = Number(count.total);
+    return res.json({
+      students: students.map((student) => ({ ...student, id: String(student.id) })),
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 router.get('/classes', staffOnly, requireSchoolPermission('master.students', 'view'), async (req, res, next) => {
   try {
     const [[classes], [unassignedRows], [schools]] = await Promise.all([

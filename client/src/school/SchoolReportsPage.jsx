@@ -256,7 +256,7 @@ export default function SchoolReportsPage({ rights }) {
         </footer>
         <div className="school-report-signatures">
           <div><span>Mengetahui,</span><b>Kepala Sekolah</b><strong>{report?.school?.principal_name || '________________________'}</strong><small>NIP. {report?.school?.principal_nip || '________________'}</small></div>
-          <div><span>{new Intl.DateTimeFormat('id-ID', { dateStyle: 'long' }).format(new Date())}</span><b>Kepala Perpustakaan</b><strong>{report?.school?.librarian_name || '________________________'}</strong><small>NIP. {report?.school?.librarian_nip || '________________'}</small></div>
+          <div><span>{[report?.school?.letterhead?.signaturePlace, new Intl.DateTimeFormat('id-ID', { dateStyle: 'long' }).format(new Date())].filter(Boolean).join(', ')}</span><b>Kepala Perpustakaan</b><strong>{report?.school?.librarian_name || '________________________'}</strong><small>NIP. {report?.school?.librarian_nip || '________________'}</small></div>
         </div>
       </section>
     </div>

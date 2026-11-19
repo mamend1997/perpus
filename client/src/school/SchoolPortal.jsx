@@ -388,7 +388,9 @@ export default function SchoolPortal({ account, onLogout, onAccountUpdated }) {
             ) : active === 'Portal Publik' ? (
               <SchoolPublicPortalPage schoolCode={school.code} />
             ) : activeMasterType ? (
-              <SchoolMasterDataPage active={active} type={activeMasterType} rights={activeRights} />
+              <SchoolPageErrorBoundary key={active} pageLabel={`Master Data ${active}`}>
+                <SchoolMasterDataPage active={active} type={activeMasterType} rights={activeRights} />
+              </SchoolPageErrorBoundary>
             ) : (
               <SchoolModulePage active={active} />
             )}

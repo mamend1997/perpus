@@ -24,6 +24,7 @@ const identityTextFields = Object.keys(emptyIdentity).filter((field) => field !=
 const defaultLetterhead = {
   mode: 'identity',
   logo: null,
+  signaturePlace: '',
   lines: Array.from({ length: 5 }, () => ({
     text: '',
     fontSize: 14,
@@ -41,6 +42,7 @@ function normalizeLetterhead(value) {
   return {
     mode: value.mode,
     logo: typeof value.logo === 'string' ? value.logo : null,
+    signaturePlace: typeof value.signaturePlace === 'string' ? value.signaturePlace : '',
     lines: value.lines.map((line) => ({
       text: typeof line.text === 'string' ? line.text : '',
       fontSize: letterheadFontSizes.includes(Number(line.fontSize)) ? Number(line.fontSize) : 14,
@@ -184,6 +186,16 @@ export default function SchoolIdentityPage({ rights, onSaved, mode = 'identity' 
             <option value="manual">Isi kop secara manual</option>
           </select>
         </label>}
+        {isLetterhead && <label className="school-letterhead-signature-place">Tempat pada tanda tangan laporan
+          <input
+            value={letterhead.signaturePlace}
+            onChange={(event) => setLetterhead((current) => ({ ...current, signaturePlace: event.target.value }))}
+            maxLength={120}
+            placeholder="Contoh: Cikoneng"
+            disabled={!canEdit || saving || loading || !loaded}
+          />
+          <small>Dicetak otomatis bersama tanggal, bulan, dan tahun pada tanda tangan kepala perpustakaan.</small>
+        </label>}
         {!isLetterhead && <>
         <div className="school-identity-section-heading">
           <span className="school-identity-section-icon"><Building2 size={18} /></span>
@@ -321,6 +333,9 @@ export default function SchoolIdentityPage({ rights, onSaved, mode = 'identity' 
             <span>{[identity.phone, identity.email, identity.website].filter(Boolean).join(' · ') || 'Telepon · Email · Website'}</span>
           </div>}
         </section>}
+        {isLetterhead && <p className="school-letterhead-signature-preview">
+          Pratinjau tanggal laporan: {[letterhead.signaturePlace.trim(), new Intl.DateTimeFormat('id-ID', { dateStyle: 'long' }).format(new Date())].filter(Boolean).join(', ')}
+        </p>}
 
         {!isLetterhead && <section className="school-identity-logo-section">
           <div className="school-identity-section-heading">

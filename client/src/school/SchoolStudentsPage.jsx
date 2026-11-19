@@ -9,12 +9,11 @@ import SchoolConfirmDialog from './SchoolConfirmDialog.jsx';
 import SchoolPrintHeader from './SchoolPrintHeader.jsx';
 import {
   assignClassStudents, createStudent, createStudentClass, deleteStudent, deleteStudentClasses, deleteStudents,
-  fetchClassStudents, fetchStudentAcademicYears, fetchStudentArchives, fetchStudentClasses, fetchStudents,
-  importStudents, updateStudent, updateStudentClass
+  fetchClassStudents, fetchInactiveStudents, fetchStudentClasses, fetchStudents, importStudents,
+  updateStudent, updateStudentClass
 } from './schoolStudentApi.js';
 import { resizeSchoolImage } from './schoolImageUtils.js';
 
-const pageSize = 25;
 const studentPageSize = 100;
 const templateHeaders = ['NIS/NISN', 'Nama Lengkap', 'Kelas/Rombel', 'Jenis Kelamin', 'No. WhatsApp', 'Status'];
 const emptyStudent = { nis_nisn: '', name: '', rombel: '', gender: '', phone: '', status: 'active', photo: null };
@@ -419,16 +418,13 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
   const [classesLoading, setClassesLoading] = useState(true);
   const [gradeLevels, setGradeLevels] = useState([]);
   const [classesError, setClassesError] = useState('');
-  const [academicYears, setAcademicYears] = useState([]);
-  const [academicYearsLoading, setAcademicYearsLoading] = useState(false);
-  const [academicYearsError, setAcademicYearsError] = useState('');
-  const [archiveYearId, setArchiveYearId] = useState('');
-  const [archives, setArchives] = useState([]);
-  const [archivePagination, setArchivePagination] = useState({ page: 1, total: 0, totalPages: 0 });
-  const [archivePage, setArchivePage] = useState(1);
-  const [archiveQueryInput, setArchiveQueryInput] = useState('');
-  const [archiveSearch, setArchiveSearch] = useState('');
-  const [archiveLoading, setArchiveLoading] = useState(false);
+  const [inactiveStudents, setInactiveStudents] = useState([]);
+  const [inactivePagination, setInactivePagination] = useState({ page: 1, total: 0, totalPages: 0 });
+  const [inactivePage, setInactivePage] = useState(1);
+  const [inactiveQueryInput, setInactiveQueryInput] = useState('');
+  const [inactiveSearch, setInactiveSearch] = useState('');
+  const [inactiveLoading, setInactiveLoading] = useState(false);
+  const [inactiveError, setInactiveError] = useState('');
   const [pagination, setPagination] = useState({ page: 1, total: 0, totalPages: 0 });
   const [page, setPage] = useState(1);
   const [queryInput, setQueryInput] = useState('');
@@ -495,56 +491,32 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
   }, [refreshKey]);
 
   useEffect(() => {
-    if (tab !== 'archives') return undefined;
-    const controller = new AbortController();
-    setAcademicYearsLoading(true);
-    setAcademicYearsError('');
-    fetchStudentAcademicYears(controller.signal)
-      .then(({ years: result }) => {
-        if (controller.signal.aborted) return;
-        const nextYears = result || [];
-        setAcademicYears(nextYears);
-        setArchiveYearId((current) => current && nextYears.some((year) => year.id === current && year.hasArchive)
-          ? current
-          : nextYears.find((year) => year.hasArchive)?.id || '');
-      })
-      .catch((loadError) => { if (!controller.signal.aborted) setAcademicYearsError(loadError.message); })
-      .finally(() => { if (!controller.signal.aborted) setAcademicYearsLoading(false); });
-    return () => controller.abort();
-  }, [tab, refreshKey]);
-
-  useEffect(() => {
     const timeout = window.setTimeout(() => {
-      setArchiveSearch(archiveQueryInput.trim());
-      setArchivePage(1);
+      setInactiveSearch(inactiveQueryInput.trim());
+      setInactivePage(1);
     }, 250);
     return () => window.clearTimeout(timeout);
-  }, [archiveQueryInput]);
+  }, [inactiveQueryInput]);
 
   useEffect(() => {
-    if (tab !== 'archives' || !archiveYearId) {
-      setArchives([]);
-      setArchivePagination({ page: 1, total: 0, totalPages: 0 });
-      return undefined;
-    }
     const controller = new AbortController();
-    setArchiveLoading(true);
-    fetchStudentArchives({
-      schoolYearId: archiveYearId,
-      page: archivePage,
-      limit: pageSize,
-      search: archiveSearch,
+    setInactiveLoading(true);
+    setInactiveError('');
+    fetchInactiveStudents({
+      page: inactivePage,
+      limit: studentPageSize,
+      search: inactiveSearch,
       signal: controller.signal
     })
       .then((result) => {
         if (controller.signal.aborted) return;
-        setArchives(result.students || []);
-        setArchivePagination(normalizePagination(result.pagination));
+        setInactiveStudents(result.students || []);
+        setInactivePagination(normalizePagination(result.pagination));
       })
-      .catch((loadError) => { if (!controller.signal.aborted) setError(loadError.message); })
-      .finally(() => { if (!controller.signal.aborted) setArchiveLoading(false); });
+      .catch((loadError) => { if (!controller.signal.aborted) setInactiveError(loadError.message); })
+      .finally(() => { if (!controller.signal.aborted) setInactiveLoading(false); });
     return () => controller.abort();
-  }, [tab, archiveYearId, archivePage, archiveSearch, refreshKey]);
+  }, [inactivePage, inactiveSearch, refreshKey]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -747,7 +719,7 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
       <div className="school-student-tabs" role="tablist" aria-label="Data siswa dan rombel">
         <button type="button" role="tab" aria-selected={tab === 'students'} className={tab === 'students' ? 'selected' : ''} onClick={() => setTab('students')}><Users size={16} />Data Siswa <span>{studentCount.toLocaleString('id-ID')}</span></button>
         <button type="button" role="tab" aria-selected={tab === 'classes'} className={tab === 'classes' ? 'selected' : ''} onClick={() => setTab('classes')}>Data Rombel / Kelas <span>{classes.length}</span></button>
-        <button type="button" role="tab" aria-selected={tab === 'archives'} className={tab === 'archives' ? 'selected' : ''} onClick={() => setTab('archives')}>Arsip Tahun Pelajaran <span>{academicYears.filter((year) => year.hasArchive).length}</span></button>
+        <button type="button" role="tab" aria-selected={tab === 'inactive'} className={tab === 'inactive' ? 'selected' : ''} onClick={() => setTab('inactive')}>Siswa Nonaktif <span>{inactivePagination.total.toLocaleString('id-ID')}</span></button>
       </div>
 
       {tab === 'students' ? (
@@ -842,46 +814,32 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
         </section>
       ) : (
         <>
-          {academicYearsError && <div className="library-error" role="alert"><span>{academicYearsError}</span><button type="button" onClick={() => setRefreshKey((value) => value + 1)}>Coba lagi</button></div>}
-          <section className="catalog-toolbar-panel student-toolbar student-archive-toolbar">
-            <label>Tahun Pelajaran
-              <select value={archiveYearId} disabled={academicYearsLoading || !academicYears.some((year) => year.hasArchive)} onChange={(event) => { setArchiveYearId(event.target.value); setArchivePage(1); }}>
-                {academicYearsLoading && <option value="">Memuat tahun pelajaran...</option>}
-                {!academicYearsLoading && !academicYears.some((year) => year.hasArchive) && <option value="">Belum ada arsip</option>}
-                {academicYears.filter((year) => year.hasArchive).map((year) => <option key={year.id} value={year.id}>{year.label}</option>)}
-              </select>
-            </label>
-            <label className="master-search student-search"><Search size={16} /><input value={archiveQueryInput} onChange={(event) => setArchiveQueryInput(event.target.value)} placeholder="Cari nama, NIS/NISN, atau rombel arsip..." maxLength={100} /></label>
+          {inactiveError && <div className="library-error" role="alert"><span>{inactiveError}</span><button type="button" onClick={() => setRefreshKey((value) => value + 1)}>Coba lagi</button></div>}
+          <section className="catalog-toolbar-panel student-toolbar student-inactive-toolbar">
+            <label className="master-search student-search"><Search size={16} /><input value={inactiveQueryInput} onChange={(event) => setInactiveQueryInput(event.target.value)} placeholder="Cari nama, NIS/NISN, atau rombel..." maxLength={100} /></label>
           </section>
           <section className="master-data-panel student-table-panel">
-            <div className="school-settings-panel-heading"><div><h2>Arsip Siswa Tahun Sebelumnya</h2><p>{archivePagination.total.toLocaleString('id-ID')} siswa tersimpan sebagai snapshot, tidak mengubah data aktif.</p></div></div>
-            {academicYearsLoading ? (
-              <div className="master-empty-cell">Memuat daftar tahun pelajaran...</div>
-            ) : academicYearsError ? (
-              <div className="master-empty-cell">Arsip siswa belum dapat dimuat. Coba muat ulang daftar tahun pelajaran.</div>
-            ) : !academicYears.some((year) => year.hasArchive) ? (
-              <div className="master-empty-cell">Belum ada arsip. Arsip dibuat saat tahun pelajaran baru disimpan dengan opsi salin dan kenaikan kelas.</div>
-            ) : (
-              <>
-                <div className="master-table-scroll">
-                  <table className="master-table student-table">
-                    <thead><tr><th>No</th><th>NIS / NISN</th><th>Nama Lengkap</th><th>Rombel Saat Itu</th><th>Status Arsip</th><th>Hasil Kenaikan</th></tr></thead>
-                    <tbody>{archiveLoading ? <tr><td className="master-empty-cell" colSpan={6}>Memuat arsip siswa...</td></tr>
-                      : archives.length === 0 ? <tr><td className="master-empty-cell" colSpan={6}>Tidak ada data arsip yang cocok.</td></tr>
-                        : archives.map((student, index) => <tr key={student.id}>
-                          <td>{(archivePage - 1) * pageSize + index + 1}</td><td>{student.nis_nisn || '—'}</td><td><b>{student.name}</b></td><td>{student.rombel || 'Belum diatur'}</td>
-                          <td><span className="master-status is-active">{studentStatusLabel(student.status)} saat arsip</span></td>
-                          <td>{student.promotion_status === 'graduated' ? 'Lulus · akun nonaktif' : `Naik ke ${student.next_rombel}`}</td>
-                        </tr>)}
-                    </tbody>
-                  </table>
-                </div>
-                <footer className="catalog-pagination"><span>Halaman {archivePagination.totalPages ? archivePage : 0} dari {Math.max(1, archivePagination.totalPages)}</span><div>
-                  <button type="button" className="master-icon-button" disabled={archiveLoading || archivePage <= 1} onClick={() => setArchivePage((value) => Math.max(1, value - 1))} aria-label="Arsip halaman sebelumnya">‹</button>
-                  <button type="button" className="master-icon-button" disabled={archiveLoading || archivePage >= archivePagination.totalPages} onClick={() => setArchivePage((value) => value + 1)} aria-label="Arsip halaman berikutnya">›</button>
-                </div></footer>
-              </>
-            )}
+            <div className="school-settings-panel-heading"><div><h2>Daftar Siswa Nonaktif</h2><p>{inactivePagination.total.toLocaleString('id-ID')} siswa lulus atau berstatus nonaktif.</p></div></div>
+            <div className="master-table-scroll">
+              <table className="master-table student-table">
+                <thead><tr><th>No</th><th>NIS / NISN</th><th>Nama Lengkap</th><th>Rombel Terakhir</th><th>Status Akun</th><th>Keterangan</th></tr></thead>
+                <tbody>{inactiveLoading ? <tr><td className="master-empty-cell" colSpan={6}>Memuat siswa nonaktif...</td></tr>
+                  : inactiveStudents.length === 0 ? <tr><td className="master-empty-cell" colSpan={6}>{inactiveSearch ? 'Tidak ada siswa nonaktif yang cocok.' : 'Belum ada siswa lulus atau nonaktif.'}</td></tr>
+                    : inactiveStudents.map((student, index) => <tr key={student.id}>
+                      <td>{(inactivePage - 1) * studentPageSize + index + 1}</td>
+                      <td>{student.nis_nisn || '—'}</td>
+                      <td><b>{student.name}</b></td>
+                      <td>{student.rombel || 'Belum diatur'}</td>
+                      <td><span className="master-status is-inactive">{studentStatusLabel(student.status)}</span></td>
+                      <td>{student.inactive_reason === 'graduated' ? `Lulus${student.graduation_year ? ` · ${student.graduation_year}` : ''}` : 'Nonaktif'}</td>
+                    </tr>)}
+                </tbody>
+              </table>
+            </div>
+            <footer className="catalog-pagination"><span>Halaman {inactivePagination.totalPages ? inactivePage : 0} dari {Math.max(1, inactivePagination.totalPages)}</span><div>
+              <button type="button" className="master-icon-button" disabled={inactiveLoading || inactivePage <= 1} onClick={() => setInactivePage((value) => Math.max(1, value - 1))} aria-label="Siswa nonaktif halaman sebelumnya">‹</button>
+              <button type="button" className="master-icon-button" disabled={inactiveLoading || inactivePage >= inactivePagination.totalPages} onClick={() => setInactivePage((value) => value + 1)} aria-label="Siswa nonaktif halaman berikutnya">›</button>
+            </div></footer>
           </section>
         </>
       )}

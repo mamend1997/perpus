@@ -18,6 +18,9 @@ async function requestMasterData(path, options = {}) {
 export async function fetchMasterCategories(type, signal) {
   const query = new URLSearchParams({ type });
   const result = await requestMasterData(`?${query}`, { signal });
+  if (!Array.isArray(result.categories)) {
+    throw new Error('Respons data Master Data tidak valid. Muat ulang halaman atau coba lagi.');
+  }
   return result.categories;
 }
 

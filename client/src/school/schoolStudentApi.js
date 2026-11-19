@@ -59,6 +59,12 @@ export function fetchStudentArchives({ schoolYearId, page = 1, limit = 25, searc
   return request(`/archives?${query}`, { signal });
 }
 
+export function fetchInactiveStudents({ page = 1, limit = 25, search = '', signal } = {}) {
+  const query = new URLSearchParams({ page: String(page), limit: String(limit) });
+  if (search) query.set('search', search);
+  return request(`/inactive?${query}`, { signal });
+}
+
 export function createStudent(student) {
   return request('', { method: 'POST', body: student });
 }

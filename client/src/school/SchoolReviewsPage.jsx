@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
-  Check, ChevronLeft, ChevronRight, LoaderCircle, Search, Star, Trash2, X
+  Check, ChevronDown, ChevronLeft, ChevronRight, LoaderCircle, Search, Star, Trash2, X
 } from 'lucide-react';
 import {
   createReview, deleteReview, fetchEligibleReviewBooks, fetchReviews
@@ -45,6 +45,9 @@ export default function SchoolReviewsPage({ rights, role }) {
   const [refreshKey, setRefreshKey] = useState(0);
   const [eligibleBooks, setEligibleBooks] = useState([]);
   const [eligibleLoading, setEligibleLoading] = useState(false);
+  const [eligibleSearch, setEligibleSearch] = useState('');
+  const [eligibleOpen, setEligibleOpen] = useState(false);
+  const [eligibleActiveIndex, setEligibleActiveIndex] = useState(0);
   const [bookId, setBookId] = useState('');
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState('');
@@ -88,18 +91,26 @@ export default function SchoolReviewsPage({ rights, role }) {
     }
     const controller = new AbortController();
     setEligibleLoading(true);
-    fetchEligibleReviewBooks('', controller.signal)
-      .then((result) => {
-        if (!controller.signal.aborted) setEligibleBooks(result.books || []);
-      })
-      .catch((fetchError) => {
-        if (!controller.signal.aborted) setError(fetchError.message);
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setEligibleLoading(false);
-      });
-    return () => controller.abort();
-  }, [isMember, canEdit, refreshKey]);
+    const timer = window.setTimeout(() => {
+      fetchEligibleReviewBooks(eligibleSearch.trim(), controller.signal)
+        .then((result) => {
+          if (!controller.signal.aborted) {
+            setEligibleBooks(result.books || []);
+            setEligibleActiveIndex(0);
+          }
+        })
+        .catch((fetchError) => {
+          if (!controller.signal.aborted) setError(fetchError.message);
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setEligibleLoading(false);
+        });
+    }, 200);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [isMember, canEdit, eligibleSearch, refreshKey]);
 
   async function submitReview(event) {
     event.preventDefault();
@@ -114,6 +125,8 @@ export default function SchoolReviewsPage({ rights, role }) {
       const result = await createReview({ bookId, rating, review: comment });
       setNotice(result.message);
       setBookId('');
+      setEligibleSearch('');
+      setEligibleOpen(false);
       setRating(0);
       setComment('');
       setPage(1);
@@ -122,6 +135,30 @@ export default function SchoolReviewsPage({ rights, role }) {
       setError(submitError.message);
     } finally {
       setSaving(false);
+    }
+  }
+
+  function chooseEligibleBook(book) {
+    setBookId(String(book.id));
+    setEligibleSearch(book.title);
+    setEligibleOpen(false);
+  }
+
+  function handleEligibleKeyDown(event) {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      if (!eligibleOpen) setEligibleActiveIndex(0);
+      else setEligibleActiveIndex((index) => Math.min(index + 1, Math.max(eligibleBooks.length - 1, 0)));
+      setEligibleOpen(true);
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setEligibleOpen(true);
+      setEligibleActiveIndex((index) => Math.max(index - 1, 0));
+    } else if (event.key === 'Enter' && eligibleOpen && eligibleBooks[eligibleActiveIndex]) {
+      event.preventDefault();
+      chooseEligibleBook(eligibleBooks[eligibleActiveIndex]);
+    } else if (event.key === 'Escape') {
+      setEligibleOpen(false);
     }
   }
 
@@ -155,30 +192,85 @@ export default function SchoolReviewsPage({ rights, role }) {
       {error && <div className="master-form-error" role="alert">{error}</div>}
 
       {isMember && canEdit && (
-        <section className="library-panel" style={{ padding: 20, marginBottom: 18 }}>
-          <div className="catalog-table-heading"><div><h2>Tulis Ulasan</h2><p>Hanya buku yang sudah Anda kembalikan yang dapat diulas.</p></div></div>
-          <form onSubmit={submitReview} style={{ display: 'grid', gap: 14, maxWidth: 680 }}>
-            <label>
-              <span className="loan-form-label">Judul buku</span>
-              <select value={bookId} onChange={(event) => setBookId(event.target.value)} required disabled={eligibleLoading}>
-                <option value="">{eligibleLoading ? 'Memuat buku yang dapat diulas...' : 'Pilih buku yang sudah dikembalikan'}</option>
-                {eligibleBooks.map((book) => <option value={book.id} key={book.id}>{book.title} · dikembalikan {formatDate(book.last_returned_at)}</option>)}
-              </select>
-              {!eligibleLoading && eligibleBooks.length === 0 && <small>Belum ada buku yang dapat diulas. Buku akan muncul setelah dikembalikan.</small>}
-            </label>
-            <div>
-              <span className="loan-form-label">Rating</span>
-              <RatingStars rating={rating} interactive onChange={setRating} />
+        <section className="library-panel review-composer">
+          <div className="review-composer-heading"><div><span className="library-eyebrow">BAGIKAN PENGALAMAN</span><h2>Tulis Ulasan</h2><p>Hanya buku yang sudah dipinjam dan dikembalikan yang dapat diulas.</p></div></div>
+          <form onSubmit={submitReview} className="review-form">
+            <div className="review-form-field">
+              <label htmlFor="review-book-search">Judul buku</label>
+              <div className="review-book-picker">
+                <div className="master-search" onBlur={(event) => {
+                  if (!event.currentTarget.parentElement?.contains(event.relatedTarget)) setEligibleOpen(false);
+                }}>
+                  <Search size={16} />
+                  <input
+                    id="review-book-search"
+                    role="combobox"
+                    aria-haspopup="listbox"
+                    aria-autocomplete="list"
+                    aria-expanded={eligibleOpen}
+                    aria-controls="review-book-options"
+                    aria-activedescendant={eligibleOpen && eligibleBooks[eligibleActiveIndex] ? `review-book-option-${eligibleBooks[eligibleActiveIndex].id}` : undefined}
+                    value={eligibleSearch}
+                    onFocus={() => setEligibleOpen(true)}
+                    onChange={(event) => {
+                      setEligibleSearch(event.target.value);
+                      setEligibleBooks([]);
+                      setBookId('');
+                      setEligibleActiveIndex(0);
+                      setEligibleOpen(true);
+                    }}
+                    onKeyDown={handleEligibleKeyDown}
+                    placeholder="Cari judul buku yang sudah dikembalikan..."
+                    autoComplete="off"
+                    required={!bookId}
+                  />
+                  {eligibleLoading ? <LoaderCircle size={15} className="book-stock-spinner" /> : <ChevronDown size={16} />}
+                </div>
+                {eligibleOpen && (
+                  <div className="review-book-options" id="review-book-options" role="listbox" aria-label="Buku yang dapat diulas">
+                    {eligibleLoading && <div className="review-book-option-message">Memuat daftar buku...</div>}
+                    {!eligibleLoading && eligibleBooks.length === 0 && (
+                      <div className="review-book-option-message">
+                        {eligibleSearch ? 'Tidak ada judul yang cocok dari buku yang sudah dikembalikan.' : 'Belum ada buku yang dapat diulas. Buku muncul setelah peminjaman dikembalikan.'}
+                      </div>
+                    )}
+                    {eligibleBooks.map((book, index) => (
+                      <button
+                        type="button"
+                        role="option"
+                        aria-selected={bookId === String(book.id)}
+                        id={`review-book-option-${book.id}`}
+                        className={index === eligibleActiveIndex ? 'active' : ''}
+                        key={book.id}
+                        onMouseEnter={() => setEligibleActiveIndex(index)}
+                        onClick={() => chooseEligibleBook(book)}
+                      >
+                        <b>{book.title}</b><small>Dikembalikan {formatDate(book.last_returned_at)}</small>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {bookId && <small className="review-selected-book">Buku terpilih: {eligibleSearch}</small>}
             </div>
-            <label>
-              <span className="loan-form-label">Ulasan (opsional)</span>
+            <div className="review-form-field">
+              <span className="review-form-label">Rating</span>
+              <div className="review-rating-control">
+                <RatingStars rating={rating} interactive onChange={setRating} />
+                <span>{rating ? `${rating} dari 5` : 'Pilih rating'}</span>
+              </div>
+            </div>
+            <label className="review-form-field">
+              <span className="review-form-label">Ulasan <small>(opsional)</small></span>
               <textarea value={comment} onChange={(event) => setComment(event.target.value)} maxLength={2000} rows={4} placeholder="Ceritakan kesan Anda tentang buku ini..." />
-              <small>{comment.length}/2.000 karakter</small>
+              <small className="review-character-count">{comment.length.toLocaleString('id-ID')}/2.000 karakter</small>
             </label>
-            {!canEdit && <p className="library-module-notice">Akun Anda belum diberi izin untuk mengirim ulasan.</p>}
-            <div><button type="submit" className="master-button master-button-primary" disabled={!canEdit || saving || !bookId || !rating}>
-              {saving ? <><LoaderCircle size={16} className="book-stock-spinner" />Mengirim...</> : <><Star size={16} />Kirim ulasan</>}
-            </button></div>
+            <div className="review-form-footer">
+              <span>Ulasan akan tampil di katalog buku setelah dikirim.</span>
+              <button type="submit" className="master-button master-button-primary" disabled={saving || !bookId || !rating}>
+                {saving ? <><LoaderCircle size={16} className="book-stock-spinner" />Mengirim...</> : <><Star size={16} />Kirim ulasan</>}
+              </button>
+            </div>
           </form>
         </section>
       )}
