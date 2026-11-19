@@ -13,6 +13,8 @@ import PlatformAuditLogsPage from './PlatformAuditLogsPage.jsx';
 import PlatformTicketsPage from './PlatformTicketsPage.jsx';
 import PlatformUserGuidePage from './PlatformUserGuidePage.jsx';
 import PlatformAppearancePage from './PlatformAppearancePage.jsx';
+import PlatformPaymentSettingsPage from './PlatformPaymentSettingsPage.jsx';
+import PlatformSubscriptionPackagesPage from './PlatformSubscriptionPackagesPage.jsx';
 import './super-admin.css';
 
 const groups = [
@@ -701,10 +703,10 @@ function BillingPage({ billing, onBillingCheck }) {
 }
 
 const moduleDescriptions = {
-  'Paket Langganan': 'Atur paket Basic, Premium, dan Lifetime beserta harga bulanan, semester, atau tahunan.',
+  'Paket Langganan': 'Atur nama, keterangan, ketersediaan, dan harga paket Basic, Premium, serta Lifetime.',
   'Default Menu Sekolah': 'Atur nama, urutan, dan visibilitas menu bawaan untuk sekolah.',
   'Branding Sistem': 'Atur identitas aplikasi, logo, dan teks yang digunakan pada halaman platform.',
-  'QRIS & Harga': 'Atur metode pembayaran, instruksi, QRIS, dan harga per periode langganan.',
+  'QRIS & Harga': 'Atur QRIS manual dan instruksi pembayaran untuk sekolah.',
   'Pusat Tiket': 'Kelola tiket bantuan yang dikirim oleh sekolah.',
   'Pengumuman & Maintenance': 'Kelola pengumuman dan informasi pemeliharaan sistem.',
   'Petunjuk Pengguna': 'Lihat dan kelola panduan penggunaan platform.',
@@ -1215,6 +1217,8 @@ export default function App() {
         <div className="page-content">
           {active === 'Daftar Sekolah' ? <SchoolListPage />
             : active === 'Pembayaran & Penagihan' ? <BillingPage billing={billing} onBillingCheck={runBillingCheck} />
+            : active === 'Paket Langganan' ? <PlatformSubscriptionPackagesPage />
+            : active === 'QRIS & Harga' ? <PlatformPaymentSettingsPage />
             : active === 'Backup & Restore' ? <BackupRestorePanel scope="platform" />
             : active === 'Pengaturan Profil' ? <ProfilePage admin={admin} onUpdate={setAdmin} />
             : active === 'Syarat & SLA' ? <LegalDocumentsPage />

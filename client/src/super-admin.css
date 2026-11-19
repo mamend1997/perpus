@@ -337,6 +337,64 @@
   .platform-appearance-logo-control > div:last-child,
   .platform-appearance-footer .primary-button { justify-content: center; }
 }
+.platform-payment-settings,
+.platform-packages-page { display: grid; gap: 15px; }
+.platform-payment-settings form,
+.platform-package-list { display: grid; gap: 14px; }
+.platform-payment-card,
+.platform-package-card { min-width: 0; padding: 18px; }
+.platform-payment-card-heading,
+.platform-package-card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 15px; }
+.platform-payment-card-heading h2,
+.platform-package-card-heading h2 { margin: 0; color: #35415a; font-size: 13px; }
+.platform-payment-card-heading p { margin: 5px 0 0; color: #8994a6; font-size: 10px; line-height: 1.5; }
+.platform-payment-toggle { display: inline-flex; align-items: center; gap: 7px; color: #59657b; font-size: 10px; font-weight: 700; white-space: nowrap; }
+.platform-payment-toggle input { width: 15px; height: 15px; accent-color: var(--platform-accent, #f97316); }
+.platform-payment-qris-layout { display: grid; grid-template-columns: minmax(180px, 250px) minmax(0, 1fr); gap: 20px; margin-top: 17px; }
+.platform-payment-qris-preview { min-height: 200px; display: grid; place-items: center; overflow: hidden; border: 1px dashed #dfe5ee; border-radius: 12px; background: #f9fafc; }
+.platform-payment-qris-preview img { width: min(100%, 220px); max-height: 240px; object-fit: contain; }
+.platform-payment-qris-preview > div { display: grid; justify-items: center; gap: 8px; color: #a0a9b7; font-size: 10px; }
+.platform-payment-qris-fields,
+.platform-package-fields { display: grid; gap: 12px; min-width: 0; }
+.platform-payment-qris-fields > label,
+.platform-package-fields > label { display: grid; gap: 6px; color: #59657b; font-size: 10px; font-weight: 700; }
+.platform-payment-qris-fields input,
+.platform-payment-qris-fields textarea,
+.platform-package-fields input,
+.platform-package-fields textarea { width: 100%; box-sizing: border-box; padding: 9px 10px; border: 1px solid #e0e5ed; border-radius: 8px; outline: 0; background: #fff; color: #35415a; font: inherit; font-size: 10px; font-weight: 400; resize: vertical; }
+.platform-payment-qris-fields input:focus,
+.platform-payment-qris-fields textarea:focus,
+.platform-package-fields input:focus,
+.platform-package-fields textarea:focus { border-color: var(--platform-accent, #f97316); box-shadow: 0 0 0 3px #f973161c; }
+.platform-payment-qris-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.platform-payment-qris-actions label { cursor: pointer; }
+.platform-payment-qris-actions input { display: none; }
+.platform-payment-qris-actions small { color: #8994a6; font-size: 9px; }
+.platform-payment-save-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 2px 0 8px; }
+.platform-payment-save-row > span { color: #8994a6; font-size: 9px; }
+.platform-package-card-heading { align-items: center; }
+.platform-package-card-heading > div { display: grid; justify-items: start; gap: 7px; }
+.platform-package-badge { padding: 4px 7px; border-radius: 20px; background: #eff6ff; color: #3566a7; font-size: 8px; font-weight: 750; text-transform: uppercase; letter-spacing: .5px; }
+.platform-package-badge.premium { background: #f5f3ff; color: #7147b8; }
+.platform-package-badge.lifetime { background: #ecfdf5; color: #16835d; }
+.platform-package-fields { grid-template-columns: minmax(180px, .7fr) minmax(0, 1.3fr); margin-top: 15px; }
+.platform-package-prices { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+.platform-package-prices > label { display: grid; gap: 6px; color: #59657b; font-size: 9px; font-weight: 700; }
+.platform-price-input { min-width: 0; display: flex; align-items: center; gap: 6px; padding: 0 9px; border: 1px solid #e0e5ed; border-radius: 8px; background: #fff; color: #8994a6; font-size: 10px; }
+.platform-price-input:focus-within { border-color: var(--platform-accent, #f97316); box-shadow: 0 0 0 3px #f973161c; }
+.platform-price-input input { width: 100%; min-width: 0; height: 36px; padding: 0; border: 0; outline: 0; color: #35415a; background: transparent; font: inherit; font-size: 10px; }
+.platform-package-price-summary { margin: 11px 0 0; color: #8994a6; font-size: 9px; }
+
+@media (max-width: 620px) {
+  .platform-payment-card,
+  .platform-package-card { padding: 13px; }
+  .platform-payment-qris-layout { grid-template-columns: 1fr; gap: 13px; }
+  .platform-payment-qris-preview { min-height: 180px; }
+  .platform-package-fields,
+  .platform-package-prices { grid-template-columns: 1fr; }
+  .platform-payment-save-row { align-items: stretch; flex-direction: column; }
+  .platform-payment-save-row .primary-button { justify-content: center; }
+}
 
 .school-password-reset-dialog .error-box {
   width: 100%;

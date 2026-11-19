@@ -328,6 +328,35 @@ const defaultPlatformBranding = {
   primaryColor: '#f97316',
   logo: ''
 };
+const defaultPlatformPaymentSettings = {
+  qrisEnabled: false,
+  merchantName: '',
+  instructions: '',
+  qrisImage: ''
+};
+const defaultSubscriptionPackages = [
+  {
+    id: 'basic',
+    name: 'Basic',
+    description: '',
+    enabled: true,
+    prices: { monthly: 0, semester: 0, yearly: 0 }
+  },
+  {
+    id: 'premium',
+    name: 'Premium',
+    description: '',
+    enabled: true,
+    prices: { monthly: 0, semester: 0, yearly: 0 }
+  },
+  {
+    id: 'lifetime',
+    name: 'Lifetime',
+    description: '',
+    enabled: true,
+    prices: { once: 0 }
+  }
+];
 const platformThemeColors = new Set([
   '#f97316', '#2563eb', '#16a34a', '#7c3aed', '#0f766e', '#dc2626'
 ]);
@@ -384,6 +413,105 @@ router.put('/branding', async (req, res, next) => {
       ['platform_branding', JSON.stringify(branding)]
     );
     return res.json({ branding, message: 'Tema dan branding platform berhasil disimpan.' });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/payment-settings', async (_req, res, next) => {
+  try {
+    const [rows] = await pool.execute(
+      'SELECT value FROM platform_settings WHERE key_name = ? LIMIT 1',
+      ['platform_payment_settings']
+    );
+    const saved = rows[0] ? JSON.parse(rows[0].value) : {};
+    return res.json({ settings: { ...defaultPlatformPaymentSettings, ...saved } });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.put('/payment-settings', async (req, res, next) => {
+  const { qrisEnabled, merchantName, instructions, qrisImage } = req.body || {};
+  if (typeof qrisEnabled !== 'boolean'
+      || typeof merchantName !== 'string' || merchantName.trim().length > 120
+      || typeof instructions !== 'string' || instructions.length > 2000
+      || !isValidPlatformLogo(qrisImage)
+      || (qrisEnabled && !qrisImage)) {
+    return res.status(400).json({ message: 'Periksa status QRIS, nama merchant, instruksi, dan gambar QRIS.' });
+  }
+  const settings = {
+    qrisEnabled,
+    merchantName: merchantName.trim(),
+    instructions: instructions.trim(),
+    qrisImage
+  };
+  try {
+    await pool.execute(
+      `INSERT INTO platform_settings (key_name, value)
+       VALUES (?, ?)
+       ON DUPLICATE KEY UPDATE value = VALUES(value)`,
+      ['platform_payment_settings', JSON.stringify(settings)]
+    );
+    return res.json({ settings, message: 'Pengaturan QRIS berhasil disimpan.' });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/subscription-packages', async (_req, res, next) => {
+  try {
+    const [rows] = await pool.execute(
+      'SELECT value FROM platform_settings WHERE key_name = ? LIMIT 1',
+      ['subscription_packages']
+    );
+    const packages = rows[0] ? JSON.parse(rows[0].value) : defaultSubscriptionPackages;
+    return res.json({ packages });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.put('/subscription-packages', async (req, res, next) => {
+  const packages = req.body?.packages;
+  const expectedPackages = new Map(defaultSubscriptionPackages.map((item) => [item.id, item]));
+  if (!Array.isArray(packages) || packages.length !== defaultSubscriptionPackages.length) {
+    return res.status(400).json({ message: 'Data paket langganan tidak lengkap.' });
+  }
+  const normalizedPackages = [];
+  for (const item of packages) {
+    const defaults = expectedPackages.get(item?.id);
+    if (!defaults || normalizedPackages.some((existing) => existing.id === item.id)
+        || typeof item.name !== 'string' || item.name.trim().length < 2 || item.name.trim().length > 40
+        || typeof item.description !== 'string' || item.description.length > 500
+        || typeof item.enabled !== 'boolean'
+        || !item.prices || typeof item.prices !== 'object' || Array.isArray(item.prices)) {
+      return res.status(400).json({ message: 'Nama, deskripsi, status, atau harga paket tidak valid.' });
+    }
+    const priceFields = Object.keys(defaults.prices);
+    if (priceFields.some((field) => !Number.isSafeInteger(item.prices[field])
+        || item.prices[field] < 0 || item.prices[field] > 1000000000)) {
+      return res.status(400).json({ message: 'Harga harus berupa bilangan Rupiah antara 0 dan 1.000.000.000.' });
+    }
+    normalizedPackages.push({
+      id: item.id,
+      name: item.name.trim(),
+      description: item.description.trim(),
+      enabled: item.enabled,
+      prices: Object.fromEntries(priceFields.map((field) => [field, item.prices[field]]))
+    });
+  }
+  if (normalizedPackages.length !== expectedPackages.size) {
+    return res.status(400).json({ message: 'Semua paket langganan harus disertakan.' });
+  }
+  try {
+    await pool.execute(
+      `INSERT INTO platform_settings (key_name, value)
+       VALUES (?, ?)
+       ON DUPLICATE KEY UPDATE value = VALUES(value)`,
+      ['subscription_packages', JSON.stringify(normalizedPackages)]
+    );
+    return res.json({ packages: normalizedPackages, message: 'Paket dan harga langganan berhasil disimpan.' });
   } catch (error) {
     return next(error);
   }
