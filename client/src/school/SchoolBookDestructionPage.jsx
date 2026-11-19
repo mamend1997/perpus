@@ -116,7 +116,11 @@ function DestructionModal({ onClose, onSaved }) {
     }}>
       <section className="master-modal book-destruction-modal" role="dialog" aria-modal="true" aria-labelledby="book-destruction-title">
         <header className="master-modal-heading">
-          <div><span className="library-eyebrow">KOLEKSI RUSAK</span><h2 id="book-destruction-title">Tambah Pemusnahan</h2></div>
+          <div className="book-destruction-heading-copy">
+            <span className="library-eyebrow">KOLEKSI RUSAK</span>
+            <h2 id="book-destruction-title">Tambah Pemusnahan</h2>
+            <p>Pilih buku berkondisi rusak, tentukan rak dan jumlah, lalu catat alasannya.</p>
+          </div>
           <button type="button" className="master-icon-button" onClick={onClose} disabled={saving} aria-label="Tutup form"><X size={17} /></button>
         </header>
         {error && <div className="library-error" role="alert">{error}</div>}
@@ -147,22 +151,41 @@ function DestructionModal({ onClose, onSaved }) {
           {selectedBook && <div className="book-destruction-selected">
             <PackageX size={18} /><div><b>{selectedBook.title}</b><small>{selectedBook.kode_buku || selectedBook.nomor_induk || 'Kode belum tersedia'}</small></div>
           </div>}
-          <label>Tanggal Pemusnahan
-            <input type="date" value={todayDate()} readOnly />
-          </label>
-          <label>Lokasi Rak
-            <select value={rackId} onChange={(event) => { setRackId(event.target.value); setQuantity(''); }} required disabled={!selectedBook || loadingRacks}>
-              <option value="">{loadingRacks ? 'Memuat rak...' : 'Pilih lokasi rak'}</option>
-              {racks.map((rack) => <option key={rack.id} value={rack.id}>{rack.name} · {rack.damaged_qty} rusak</option>)}
-            </select>
-          </label>
-          <label>Jumlah Barang
-            <input type="number" min="1" max={Math.max(maximumQuantity, 1)} step="1" value={quantity} onChange={(event) => setQuantity(event.target.value)} required disabled={!selectedRack || saving} />
-            {selectedRack && <small>Maksimal {maximumQuantity} eksemplar rusak pada rak ini.</small>}
-          </label>
-          <label className="book-destruction-reason">Alasan Pemusnahan
-            <textarea value={reason} onChange={(event) => setReason(event.target.value)} maxLength={1000} rows={3} required placeholder="Jelaskan alasan buku dimusnahkan" disabled={saving} />
-          </label>
+          {selectedBook ? (
+            <>
+              <label className="book-destruction-date">Tanggal Pemusnahan
+                <input type="date" value={todayDate()} readOnly />
+              </label>
+              <label className="book-destruction-rack">Lokasi Rak
+                <select value={rackId} onChange={(event) => { setRackId(event.target.value); setQuantity(''); }} required disabled={loadingRacks || !racks.length || saving}>
+                  <option value="">{loadingRacks ? 'Memuat rak...' : racks.length ? 'Pilih lokasi rak' : 'Tidak ada stok rusak'}</option>
+                  {racks.map((rack) => <option key={rack.id} value={rack.id}>{rack.name} · {rack.damaged_qty} rusak</option>)}
+                </select>
+                {loadingRacks && <small>Memuat lokasi stok buku...</small>}
+                {!loadingRacks && !racks.length && <small className="book-destruction-field-note">Buku ini tidak memiliki stok rusak pada rak yang tersedia.</small>}
+              </label>
+              {!loadingRacks && racks.length > 0 && !selectedRack && (
+                <div className="book-destruction-step-hint">Pilih rak untuk mengisi jumlah barang dan alasan pemusnahan.</div>
+              )}
+              {selectedRack && (
+                <>
+                  <label className="book-destruction-quantity">Jumlah Barang
+                    <input type="number" min="1" max={maximumQuantity} step="1" value={quantity} onChange={(event) => setQuantity(event.target.value)} required disabled={saving} placeholder={`1–${maximumQuantity}`} />
+                    <small>Maksimal {maximumQuantity} eksemplar rusak tersedia di rak ini.</small>
+                  </label>
+                  <label className="book-destruction-reason">Alasan Pemusnahan
+                    <textarea value={reason} onChange={(event) => setReason(event.target.value)} maxLength={1000} rows={3} required placeholder="Jelaskan alasan buku dimusnahkan" disabled={saving} />
+                    <small>{reason.length}/1000 karakter</small>
+                  </label>
+                </>
+              )}
+            </>
+          ) : (
+            <div className="book-destruction-step-hint book-destruction-book-hint">
+              <PackageX size={17} />
+              <span>Pilih buku rusak dari hasil pencarian untuk menampilkan tanggal, lokasi rak, jumlah barang, dan alasan pemusnahan.</span>
+            </div>
+          )}
           <footer className="master-modal-actions book-destruction-actions">
             <button type="button" className="master-button master-button-muted" onClick={onClose} disabled={saving}>Batal</button>
             <button type="submit" className="master-button master-button-primary" disabled={saving || !selectedBook || !selectedRack || !quantity || maximumQuantity < 1}>
@@ -214,7 +237,7 @@ export default function SchoolBookDestructionPage({ rights }) {
       <header className="library-module-heading">
         <span className="library-eyebrow">PENGELOLAAN KOLEKSI</span>
         <h1>Pemusnahan Buku</h1>
-        <p>Catat pemusnahan eksemplar berkondisi rusak dan kurangi stok katalog secara otomatis.</p>
+        <p>Catat buku rusak yang dimusnahkan dan perbarui stok katalog secara otomatis.</p>
       </header>
       {success && <div className="book-stock-success" role="status"><Check size={16} />{success}</div>}
       {error && <div className="library-error" role="alert">{error}</div>}

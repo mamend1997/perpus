@@ -424,6 +424,11 @@ export default function SchoolMembersPage({ rights, schoolIdentity }) {
     });
   }
 
+  function printSelectedMemberCards() {
+    const selected = members.filter((member) => selectedMembers.has(String(member.id)));
+    if (selected.length) setMemberCards(selected);
+  }
+
   return (
     <div className="library-module-page school-members-page">
       <header className="library-module-heading">
@@ -444,9 +449,14 @@ export default function SchoolMembersPage({ rights, schoolIdentity }) {
       <section className="master-data-panel member-table-panel">
         <div className="school-settings-panel-heading member-table-heading">
           <div><h2>Daftar Member</h2><p>{pagination.total.toLocaleString('id-ID')} siswa sebagai member · {selectedIds.length.toLocaleString('id-ID')} dipilih</p></div>
-          {canDelete && <button type="button" className="master-button master-button-danger" disabled={!selectedIds.length || deleting} onClick={() => { setDeleteError(''); setDeleteTarget(selectedIds); }}>
-            <Trash2 size={15} />Hapus Terpilih ({selectedIds.length})
-          </button>}
+          {canDelete && <div className="member-table-heading-actions">
+            <button type="button" className="master-button master-button-light" disabled={!selectedIds.length || loading} onClick={printSelectedMemberCards}>
+              <Printer size={15} />Cetak Kartu Terpilih ({selectedIds.length})
+            </button>
+            <button type="button" className="master-button master-button-danger" disabled={!selectedIds.length || deleting} onClick={() => { setDeleteError(''); setDeleteTarget(selectedIds); }}>
+              <Trash2 size={15} />Hapus Terpilih ({selectedIds.length})
+            </button>
+          </div>}
         </div>
         <div className="master-table-scroll">
           <table className="master-table member-table">
