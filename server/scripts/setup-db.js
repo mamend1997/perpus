@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import mysql from 'mysql2/promise';
 import { generateSchoolCode } from '../src/utils/school-code.js';
+import { classDetailsFromRombel } from '../src/utils/school-year-promotion.js';
 
 const connectionString = process.env.DATABASE_URL || process.env.MYSQL_URL;
 const databaseUrl = connectionString ? new URL(connectionString) : null;
@@ -249,6 +250,20 @@ try {
     if (!schoolColumnNames.has(columnName)) {
       await connection.query(`ALTER TABLE tenants_schools ADD COLUMN ${columnName} ${definition}`);
     }
+  }
+  const [legacyClasses] = await connection.execute(
+    `SELECT DISTINCT u.school_id, s.education_level, TRIM(u.rombel) AS class_name
+     FROM users u
+     JOIN tenants_schools s ON s.id = u.school_id
+     WHERE u.role = 'member' AND u.rombel IS NOT NULL AND TRIM(u.rombel) <> ''`
+  );
+  for (const item of legacyClasses) {
+    const classDetails = classDetailsFromRombel(item.class_name, item.education_level);
+    await connection.execute(
+      `INSERT IGNORE INTO school_classes (school_id, grade_level, name, class_name)
+       VALUES (?, ?, ?, ?)`,
+      [item.school_id, classDetails.gradeLevel, classDetails.name, classDetails.className]
+    );
   }
   if (schoolColumns.some((column) => column.COLUMN_NAME === 'logo' && column.DATA_TYPE !== 'mediumtext')) {
     await connection.query('ALTER TABLE tenants_schools MODIFY logo MEDIUMTEXT NULL');

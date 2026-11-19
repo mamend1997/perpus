@@ -27,6 +27,28 @@ export function fetchStudentClasses(signal) {
   return request('/classes', { signal });
 }
 
+export function createStudentClass(studentClass) {
+  return request('/classes', { method: 'POST', body: studentClass });
+}
+
+export function updateStudentClass(id, studentClass) {
+  return request(`/classes/${encodeURIComponent(id)}`, { method: 'PATCH', body: studentClass });
+}
+
+export function deleteStudentClasses(ids) {
+  return request('/classes/bulk', { method: 'DELETE', body: { ids } });
+}
+
+export function fetchClassStudents(classId, { page = 1, limit = 25, search = '', signal } = {}) {
+  const query = new URLSearchParams({ page: String(page), limit: String(limit) });
+  if (search) query.set('search', search);
+  return request(`/classes/${encodeURIComponent(classId)}/students?${query}`, { signal });
+}
+
+export function assignClassStudents(classId, changes) {
+  return request(`/classes/${encodeURIComponent(classId)}/students`, { method: 'PUT', body: changes });
+}
+
 export function fetchStudentAcademicYears(signal) {
   return request('/academic-years', { signal });
 }

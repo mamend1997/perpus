@@ -2578,6 +2578,47 @@
 .student-checkbox { width: 40px; text-align: center; }
 .student-checkbox input { width: 16px; height: 16px; accent-color: #f97316; cursor: pointer; }
 .student-row-actions { display: flex; gap: 5px; }
+.school-class-panel-heading { align-items: center; gap: 12px; }
+.school-class-toolbar-actions { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.school-class-level-warning { margin: 0 14px 12px; padding: 10px 12px; border: 1px solid #fed7aa; border-radius: 9px; background: #fff7ed; color: #9a4d10; font-size: 11px; }
+.school-class-checkbox input { width: 16px; height: 16px; margin: 0; accent-color: #f97316; cursor: pointer; }
+.school-class-table { min-width: 780px; }
+.school-class-checkbox { width: 42px; text-align: center !important; }
+.school-class-row-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.school-class-row-actions .master-button { min-height: 32px; padding: 0 9px; }
+.school-class-delete-button { color: #c2410c; }
+.school-class-unassigned-label { display: block; margin-top: 3px; color: #8994a6; font-size: 10px; font-weight: 500; }
+.school-class-modal { width: min(520px, 100%); }
+.school-class-form { display: grid; gap: 14px; }
+.school-class-form > label { display: grid; gap: 6px; color: #59657b; font-size: 12px; font-weight: 700; }
+.school-class-form input,
+.school-class-form select { width: 100%; height: 42px; box-sizing: border-box; padding: 0 11px; border: 1px solid #e0e5ed; border-radius: 9px; outline: 0; background: #fff; color: #35415a; font: inherit; font-size: 12px; font-weight: 450; }
+.school-class-form input:focus,
+.school-class-form select:focus { border-color: #f97316; box-shadow: 0 0 0 3px #f973161c; }
+.school-class-form small { color: #8994a6; font-size: 10px; font-weight: 450; }
+.class-students-modal { width: min(760px, 100%); max-height: calc(100dvh - 36px); display: flex; flex-direction: column; gap: 12px; overflow: hidden; }
+.class-students-modal > .master-modal-heading { flex: 0 0 auto; align-items: flex-start; margin: 0; }
+.class-students-modal .master-modal-heading h2 { margin-top: 5px; font-size: 21px; }
+.class-students-modal .master-modal-heading p { max-width: 520px; margin: 6px 0 0; color: #78859a; font-size: 11px; font-weight: 450; line-height: 1.5; }
+.class-students-search { flex: 0 0 auto; min-width: 0; min-height: 42px; border-radius: 9px; }
+.class-students-search input { font-size: 12px; }
+.class-students-toolbar { display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: 10px; color: #788499; font-size: 10px; }
+.class-students-toolbar label { display: inline-flex; align-items: center; gap: 6px; color: #526078; font-weight: 700; cursor: pointer; }
+.class-students-toolbar input,
+.class-student-option > input { width: 16px; height: 16px; margin: 0; accent-color: #f97316; cursor: pointer; }
+.class-students-list { min-height: 100px; max-height: min(44dvh, 390px); display: grid; flex: 1 1 auto; align-content: start; gap: 6px; overflow-y: auto; overscroll-behavior: contain; padding: 2px 3px 2px 1px; }
+.class-student-option { min-height: 54px; display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid #e8edf4; border-radius: 9px; background: #fff; cursor: pointer; }
+.class-student-option.is-selected { border-color: #fdba74; background: #fff8f1; }
+.class-student-option > span:first-of-type { min-width: 0; display: grid; gap: 4px; }
+.class-student-option b { overflow: hidden; color: #34425b; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.class-student-option small { display: flex; align-items: center; gap: 6px; overflow: hidden; color: #8994a6; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.class-student-option small i { width: 3px; height: 3px; flex: 0 0 auto; border-radius: 50%; background: #cbd5e1; }
+.class-student-assigned { color: #9a6b3d; font-size: 9px; font-weight: 700; }
+.class-student-option.is-selected .class-student-assigned { color: #c2410c; }
+.class-students-empty { min-height: 120px; display: flex; align-items: center; justify-content: center; gap: 8px; color: #8994a6; font-size: 11px; }
+.class-students-footer { display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: 12px; color: #788499; font-size: 10px; }
+.class-students-footer > div { display: flex; align-items: center; gap: 8px; }
+.class-students-modal > .master-modal-actions { flex: 0 0 auto; margin: 0; }
 .school-members-page { display: grid; gap: 16px; }
 .member-toolbar { display: flex; align-items: center; gap: 12px; }
 .member-toolbar > .master-search { min-width: min(320px, 100%); flex: 1; }
@@ -3180,6 +3221,12 @@
   .school-mobile-navbar-settings-list li { grid-template-columns: 28px minmax(0, 1fr) auto; gap: 7px; }
   .school-mobile-navbar-highlight { grid-column: 3; grid-row: 1; }
   .school-mobile-navbar-order { grid-column: 2 / -1; justify-self: end; }
+  .school-class-panel-heading { align-items: flex-start; flex-direction: column; }
+  .school-class-toolbar-actions { width: 100%; justify-content: flex-start; }
+  .class-students-modal { gap: 10px; }
+  .class-students-list { min-height: 82px; max-height: 35dvh; }
+  .class-student-option { grid-template-columns: 18px minmax(0, 1fr); gap: 8px; }
+  .class-student-assigned { grid-column: 2; }
   .fines-page > .catalog-toolbar-panel.fine-toolbar {
     grid-template-columns: minmax(0, 1fr) minmax(120px, .8fr);
     gap: 8px;

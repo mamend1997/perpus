@@ -8,8 +8,9 @@ import {
 import SchoolConfirmDialog from './SchoolConfirmDialog.jsx';
 import SchoolPrintHeader from './SchoolPrintHeader.jsx';
 import {
-  createStudent, deleteStudent, deleteStudents, fetchStudentAcademicYears, fetchStudentArchives,
-  fetchStudentClasses, fetchStudents, importStudents, updateStudent
+  assignClassStudents, createStudent, createStudentClass, deleteStudent, deleteStudentClasses, deleteStudents,
+  fetchClassStudents, fetchStudentAcademicYears, fetchStudentArchives, fetchStudentClasses, fetchStudents,
+  importStudents, updateStudent, updateStudentClass
 } from './schoolStudentApi.js';
 import { resizeSchoolImage } from './schoolImageUtils.js';
 
@@ -110,6 +111,177 @@ function StudentForm({ student, onClose, onSave }) {
             <button type="submit" className="master-button master-button-primary" disabled={saving || photoLoading}>{saving ? <LoaderCircle size={15} className="book-stock-spinner" /> : <Plus size={15} />}{saving ? 'Menyimpan...' : photoLoading ? 'Memproses Foto...' : 'Simpan Data'}</button>
           </footer>
         </form>
+      </section>
+    </div>
+  ), document.body);
+}
+
+function SchoolClassForm({ schoolClass, gradeLevels, onClose, onSave }) {
+  const [name, setName] = useState(schoolClass?.name || '');
+  const [gradeLevel, setGradeLevel] = useState(schoolClass ? schoolClass.gradeLevel || '' : gradeLevels[0] || '');
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  async function submit(event) {
+    event.preventDefault();
+    setSaving(true);
+    setError('');
+    try {
+      await onSave({ name, gradeLevel });
+    } catch (saveError) {
+      setError(saveError.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return createPortal((
+    <div className="master-modal-backdrop student-form-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) onClose(); }}>
+      <section className="master-modal school-class-modal" role="dialog" aria-modal="true" aria-labelledby="school-class-title">
+        <header className="master-modal-heading">
+          <div><span className="library-eyebrow">MASTER KELAS</span><h2 id="school-class-title">{schoolClass ? 'Edit Kelas' : 'Tambah Kelas'}</h2></div>
+          <button type="button" className="master-icon-button" onClick={onClose} disabled={saving} aria-label="Tutup form kelas">×</button>
+        </header>
+        {error && <div className="library-error" role="alert">{error}</div>}
+        <form className="school-class-form" onSubmit={submit}>
+          <label>Nama Kelas
+            <input value={name} onChange={(event) => setName(event.target.value)} maxLength={70} placeholder="Contoh: RPL 1" required autoFocus />
+            <small>Nama lengkap akan digabung dengan tingkat kelas.</small>
+          </label>
+          <label>Tingkat Kelas
+            <select value={gradeLevel} onChange={(event) => setGradeLevel(event.target.value)} required>
+              <option value="" disabled>Pilih tingkat kelas</option>
+              {gradeLevels.map((level) => <option value={level} key={level}>{level}</option>)}
+            </select>
+          </label>
+          <footer className="master-modal-actions">
+            <button type="button" className="master-button master-button-muted" onClick={onClose} disabled={saving}>Batal</button>
+            <button type="submit" className="master-button master-button-primary" disabled={saving || !gradeLevels.length}>
+              {saving ? <LoaderCircle size={15} className="book-stock-spinner" /> : <Plus size={15} />}
+              {saving ? 'Menyimpan...' : 'Simpan Kelas'}
+            </button>
+          </footer>
+        </form>
+      </section>
+    </div>
+  ), document.body);
+}
+
+function ClassStudentsModal({ schoolClass, onClose, onSave }) {
+  const [students, setStudents] = useState([]);
+  const [pagination, setPagination] = useState({ page: 1, total: 0, totalPages: 0 });
+  const [page, setPage] = useState(1);
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [original, setOriginal] = useState({});
+  const [selection, setSelection] = useState({});
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setSearch(searchInput.trim());
+      setPage(1);
+    }, 250);
+    return () => window.clearTimeout(timeout);
+  }, [searchInput]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setLoading(true);
+    setError('');
+    fetchClassStudents(schoolClass.id, { page, limit: 25, search, signal: controller.signal })
+      .then((result) => {
+        if (controller.signal.aborted) return;
+        const nextStudents = result.students || [];
+        setStudents(nextStudents);
+        setPagination(normalizePagination(result.pagination));
+        setOriginal((current) => {
+          const next = { ...current };
+          nextStudents.forEach((student) => {
+            const id = String(student.id);
+            if (!Object.prototype.hasOwnProperty.call(next, id)) next[id] = Boolean(student.assigned);
+          });
+          return next;
+        });
+      })
+      .catch((loadError) => { if (!controller.signal.aborted) setError(loadError.message); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [schoolClass.id, page, search]);
+
+  function isSelected(student) {
+    const id = String(student.id);
+    return Object.prototype.hasOwnProperty.call(selection, id) ? selection[id] : Boolean(student.assigned);
+  }
+
+  function togglePage(checked) {
+    setSelection((current) => {
+      const next = { ...current };
+      students.forEach((student) => { next[String(student.id)] = checked; });
+      return next;
+    });
+  }
+
+  const changes = Object.keys(selection)
+    .filter((id) => Object.prototype.hasOwnProperty.call(original, id) && selection[id] !== original[id]);
+  const assignIds = changes.filter((id) => selection[id]);
+  const unassignIds = changes.filter((id) => !selection[id]);
+  const allPageSelected = students.length > 0 && students.every(isSelected);
+
+  async function submit() {
+    if (!changes.length || changes.length > 500) return;
+    setSaving(true);
+    setError('');
+    try {
+      await onSave({ assignIds, unassignIds });
+    } catch (saveError) {
+      setError(saveError.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return createPortal((
+    <div className="master-modal-backdrop student-form-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) onClose(); }}>
+      <section className="master-modal class-students-modal" role="dialog" aria-modal="true" aria-labelledby="class-students-title">
+        <header className="master-modal-heading">
+          <div><span className="library-eyebrow">PENETAPAN SISWA</span><h2 id="class-students-title">{schoolClass.className}</h2><p>Pilih siswa untuk ditambahkan ke kelas atau lepaskan centang untuk mengeluarkannya.</p></div>
+          <button type="button" className="master-icon-button" onClick={onClose} disabled={saving} aria-label="Tutup penetapan siswa">×</button>
+        </header>
+        {error && <div className="library-error" role="alert">{error}</div>}
+        <label className="master-search class-students-search"><Search size={16} /><input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Cari nama atau NIS/NISN..." maxLength={100} /></label>
+        <div className="class-students-toolbar">
+          <span>{pagination.total.toLocaleString('id-ID')} siswa · halaman ini {students.length}</span>
+          <label><input type="checkbox" checked={allPageSelected} onChange={(event) => togglePage(event.target.checked)} disabled={loading || !students.length} /> Pilih semua di halaman</label>
+        </div>
+        <div className="class-students-list">
+          {loading ? <div className="class-students-empty"><LoaderCircle size={18} className="book-stock-spinner" />Memuat data siswa...</div>
+            : students.length ? students.map((student) => (
+              <label className={`class-student-option ${isSelected(student) ? 'is-selected' : ''}`} key={student.id}>
+                <input type="checkbox" checked={isSelected(student)} onChange={(event) => setSelection((current) => ({ ...current, [String(student.id)]: event.target.checked }))} />
+                <span><b>{student.name}</b><small>{student.nis_nisn || 'Tanpa NIS/NISN'} <i /> {student.rombel || 'Belum diatur'}</small></span>
+                <span className="class-student-assigned">{isSelected(student) ? 'Dipilih' : 'Tidak dipilih'}</span>
+              </label>
+            )) : <div className="class-students-empty">Tidak ada siswa yang cocok dengan pencarian.</div>}
+        </div>
+        <div className="class-students-footer">
+          <span>{assignIds.length} ditambahkan · {unassignIds.length} dilepas</span>
+          <div>
+            <button type="button" className="master-icon-button" disabled={loading || page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))} aria-label="Halaman siswa sebelumnya">‹</button>
+            <small>Halaman {pagination.totalPages ? page : 0} / {Math.max(1, pagination.totalPages)}</small>
+            <button type="button" className="master-icon-button" disabled={loading || page >= pagination.totalPages} onClick={() => setPage((value) => value + 1)} aria-label="Halaman siswa berikutnya">›</button>
+          </div>
+        </div>
+        {changes.length > 500 && <div className="library-error" role="alert">Maksimal 500 perubahan siswa dapat disimpan sekaligus.</div>}
+        <footer className="master-modal-actions">
+          <button type="button" className="master-button master-button-muted" onClick={onClose} disabled={saving}>Batal</button>
+          <button type="button" className="master-button master-button-primary" onClick={submit} disabled={saving || !changes.length || changes.length > 500}>
+            {saving ? <LoaderCircle size={15} className="book-stock-spinner" /> : <Users size={15} />}
+            {saving ? 'Menyimpan...' : `Simpan Penetapan${changes.length ? ` (${changes.length})` : ''}`}
+          </button>
+        </footer>
       </section>
     </div>
   ), document.body);
@@ -231,6 +403,7 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
   const [tab, setTab] = useState('students');
   const [students, setStudents] = useState([]);
   const [classes, setClasses] = useState([]);
+  const [gradeLevels, setGradeLevels] = useState([]);
   const [classesError, setClassesError] = useState('');
   const [academicYears, setAcademicYears] = useState([]);
   const [academicYearsLoading, setAcademicYearsLoading] = useState(false);
@@ -258,11 +431,22 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  const [classEditor, setClassEditor] = useState(null);
+  const [classAssignment, setClassAssignment] = useState(null);
+  const [selectedClasses, setSelectedClasses] = useState({});
+  const [classDeleteTarget, setClassDeleteTarget] = useState(null);
+  const [classDeleting, setClassDeleting] = useState(false);
+  const [classDeleteError, setClassDeleteError] = useState('');
   const [exporting, setExporting] = useState(false);
   const [pdfRows, setPdfRows] = useState(null);
   const [memberCards, setMemberCards] = useState(null);
   const selectedIds = Object.keys(selected);
   const allVisibleSelected = students.length > 0 && students.every((student) => Boolean(selected[String(student.id)]));
+  const managedClasses = classes.filter((item) => item.id && !item.isUnassigned);
+  const selectedClassIds = Object.keys(selectedClasses);
+  const allClassesSelected = managedClasses.length > 0
+    && managedClasses.every((item) => Boolean(selectedClasses[String(item.id)]));
+  const classColumnCount = 6 + (canDelete ? 1 : 0);
   const columnCount = 9 + (canDelete ? 1 : 0);
 
   useEffect(() => {
@@ -278,7 +462,11 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
     const controller = new AbortController();
     setClassesError('');
     fetchStudentClasses(controller.signal)
-      .then(({ classes: result }) => { if (!controller.signal.aborted) setClasses(result || []); })
+      .then((result) => {
+        if (controller.signal.aborted) return;
+        setClasses(result.classes || []);
+        setGradeLevels(result.gradeLevels || []);
+      })
       .catch((loadError) => { if (!controller.signal.aborted) setClassesError(loadError.message); });
     return () => controller.abort();
   }, [refreshKey]);
@@ -399,6 +587,59 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
       setDeleteError(failure.message);
     } finally {
       setDeleting(false);
+    }
+  }
+
+  async function saveSchoolClass(data) {
+    const result = classEditor?.id
+      ? await updateStudentClass(classEditor.id, data)
+      : await createStudentClass(data);
+    if (classEditor?.id && classFilter === classEditor.className) setClassFilter(result.class.className);
+    setClassEditor(null);
+    setSelectedClasses({});
+    setNotice(result.message);
+    setRefreshKey((value) => value + 1);
+  }
+
+  async function saveClassAssignments(changes) {
+    const result = await assignClassStudents(classAssignment.id, changes);
+    setClassAssignment(null);
+    setNotice(result.message);
+    setRefreshKey((value) => value + 1);
+  }
+
+  function toggleVisibleClasses(checked) {
+    setSelectedClasses((current) => {
+      const next = { ...current };
+      managedClasses.forEach((item) => {
+        const id = String(item.id);
+        if (checked) next[id] = true;
+        else delete next[id];
+      });
+      return next;
+    });
+  }
+
+  async function confirmDeleteClasses() {
+    if (!classDeleteTarget) return;
+    const targets = classDeleteTarget === 'selected'
+      ? managedClasses.filter((item) => selectedClasses[String(item.id)])
+      : [classDeleteTarget];
+    if (!targets.length) return;
+    setClassDeleting(true);
+    setClassDeleteError('');
+    try {
+      const result = await deleteStudentClasses(targets.map((item) => item.id));
+      if (targets.some((item) => item.className === classFilter)) setClassFilter('');
+      setClassDeleteTarget(null);
+      setSelectedClasses({});
+      setNotice(result.message);
+      setPage(1);
+      setRefreshKey((value) => value + 1);
+    } catch (failure) {
+      setClassDeleteError(failure.message);
+    } finally {
+      setClassDeleting(false);
     }
   }
 
@@ -534,11 +775,40 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
         </>
       ) : tab === 'classes' ? (
         <section className="master-data-panel student-classes-panel">
-          <div className="school-settings-panel-heading"><div><h2>Data Rombel / Kelas</h2><p>Jumlah siswa dikelompokkan berdasarkan nama kelas.</p></div></div>
+          <div className="school-settings-panel-heading school-class-panel-heading">
+            <div><h2>Data Rombel / Kelas</h2><p>Atur kelas dan penetapan siswa sesuai jenjang sekolah.</p></div>
+            <div className="school-class-toolbar-actions">
+              {canDelete && selectedClassIds.length > 0 && <button type="button" className="master-button procurement-delete-selected" onClick={() => { setClassDeleteError(''); setClassDeleteTarget('selected'); }}><Trash2 size={15} />Hapus Terpilih ({selectedClassIds.length})</button>}
+              {canEdit && <button type="button" className="master-button master-button-primary" onClick={() => setClassEditor({})} disabled={!gradeLevels.length}><Plus size={15} />Tambah Kelas</button>}
+            </div>
+          </div>
           {classesError && <div className="library-error" role="alert">{classesError}<button type="button" onClick={() => setRefreshKey((value) => value + 1)}>Coba lagi</button></div>}
-          <div className="master-table-scroll"><table className="master-table"><thead><tr><th>No</th><th>Nama Rombel</th><th>Jumlah Siswa</th><th>Akun Aktif</th><th>Aksi</th></tr></thead>
-            <tbody>{classes.length ? classes.map((item, index) => <tr key={item.className}><td>{index + 1}</td><td><b>{item.className}</b></td><td>{item.studentCount}</td><td>{item.activeCount}</td><td><button type="button" className="master-button master-button-light" onClick={() => { setClassFilter(item.className); setPage(1); setTab('students'); }}>Lihat Siswa</button></td></tr>)
-              : <tr><td className="master-empty-cell" colSpan={5}>Belum ada data rombel.</td></tr>}</tbody>
+          {!gradeLevels.length && <div className="school-class-level-warning">Atur jenjang pendidikan terlebih dahulu melalui menu Identitas Sekolah agar pilihan tingkat kelas sesuai.</div>}
+          <div className="master-table-scroll"><table className="master-table school-class-table"><thead><tr>
+            {canDelete && <th className="school-class-checkbox"><input type="checkbox" checked={allClassesSelected} onChange={(event) => toggleVisibleClasses(event.target.checked)} disabled={!managedClasses.length} aria-label="Pilih semua kelas" /></th>}
+            <th>No</th><th>Tingkat</th><th>Nama Kelas</th><th>Jumlah Siswa</th><th>Akun Aktif</th><th>Aksi</th>
+          </tr></thead>
+            <tbody>{classes.length ? classes.map((item, index) => <tr key={item.id || `unassigned-${index}`}>
+              {canDelete && <td className="school-class-checkbox">{item.id && !item.isUnassigned ? <input type="checkbox" checked={Boolean(selectedClasses[String(item.id)])} onChange={(event) => setSelectedClasses((current) => {
+                const next = { ...current };
+                if (event.target.checked) next[String(item.id)] = true;
+                else delete next[String(item.id)];
+                return next;
+              })} aria-label={`Pilih kelas ${item.className}`} /> : null}</td>}
+              <td>{index + 1}</td><td>{item.gradeLevel || '—'}</td><td><b>{item.name || item.className}</b>{item.isUnassigned && <small className="school-class-unassigned-label">Belum ada kelas</small>}</td>
+              <td>{item.studentCount.toLocaleString('id-ID')}</td><td>{item.activeCount.toLocaleString('id-ID')}</td>
+              <td><div className="school-class-row-actions">
+                {item.isUnassigned
+                  ? <button type="button" className="master-button master-button-light" onClick={() => { setClassFilter(item.className); setPage(1); setTab('students'); }}>Lihat Siswa</button>
+                  : <>
+                    {canEdit && <button type="button" className="master-button master-button-light" onClick={() => setClassEditor(item)} disabled={!gradeLevels.length} title={`Edit ${item.className}`}><Pencil size={14} />Edit</button>}
+                    {canEdit && <button type="button" className="master-button master-button-light" onClick={() => setClassAssignment(item)}><Users size={14} />Penetapan Siswa</button>}
+                    {canDelete && <button type="button" className="master-icon-button school-class-delete-button" onClick={() => { setClassDeleteError(''); setClassDeleteTarget(item); }} title={`Hapus ${item.className}`} aria-label={`Hapus ${item.className}`}><Trash2 size={15} /></button>}
+                    {!canEdit && !canDelete && <button type="button" className="master-button master-button-light" onClick={() => { setClassFilter(item.className); setPage(1); setTab('students'); }}>Lihat Siswa</button>}
+                  </>}
+              </div></td>
+            </tr>)
+              : <tr><td className="master-empty-cell" colSpan={classColumnCount}>Belum ada data rombel.</td></tr>}</tbody>
           </table></div>
         </section>
       ) : (
@@ -623,6 +893,8 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
       </section>}
       {editor && <StudentForm student={editor.id ? editor : null} onClose={() => setEditor(null)} onSave={saveStudent} />}
       {importOpen && <ImportStudentsModal onClose={() => setImportOpen(false)} onImport={runImport} />}
+      {classEditor && <SchoolClassForm schoolClass={classEditor.id ? classEditor : null} gradeLevels={gradeLevels} onClose={() => setClassEditor(null)} onSave={saveSchoolClass} />}
+      {classAssignment && <ClassStudentsModal schoolClass={classAssignment} onClose={() => setClassAssignment(null)} onSave={saveClassAssignments} />}
       {deleteTarget && <SchoolConfirmDialog
         title={deleteTarget === 'selected' ? 'Hapus siswa terpilih?' : 'Hapus data siswa?'}
         message={deleteTarget === 'selected' ? `${selectedIds.length} siswa akan dihapus permanen.` : 'Data siswa akan dihapus permanen jika tidak terikat pada riwayat transaksi.'}
@@ -631,6 +903,17 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
         error={deleteError}
         onClose={() => { if (!deleting) { setDeleteTarget(null); setDeleteError(''); } }}
         onConfirm={confirmDelete}
+      />}
+      {classDeleteTarget && <SchoolConfirmDialog
+        title={classDeleteTarget === 'selected' ? 'Hapus kelas terpilih?' : 'Hapus kelas?'}
+        message="Siswa pada kelas yang dihapus tetap tersimpan dan akan menjadi belum diatur."
+        itemName={classDeleteTarget === 'selected'
+          ? `${selectedClassIds.length} kelas terpilih`
+          : classDeleteTarget.className}
+        loading={classDeleting}
+        error={classDeleteError}
+        onClose={() => { if (!classDeleting) { setClassDeleteTarget(null); setClassDeleteError(''); } }}
+        onConfirm={confirmDeleteClasses}
       />}
     </div>
   );

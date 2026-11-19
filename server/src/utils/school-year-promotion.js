@@ -12,6 +12,19 @@ const promotionGrades = {
   SMK: { numeric: ['10', '11', '12'], roman: ['X', 'XI', 'XII'] }
 };
 
+export function classGradeLevels(educationLevel) {
+  return promotionGrades[educationLevel]?.roman || [];
+}
+
+export function classDetailsFromRombel(rombel, educationLevel) {
+  const className = typeof rombel === 'string' ? rombel.trim() : '';
+  if (!className) return null;
+  const levels = classGradeLevels(educationLevel);
+  const gradeLevel = levels.find((level) => new RegExp(`^${level}[\\s.-]+(.+)$`, 'i').test(className)) || null;
+  const match = gradeLevel ? new RegExp(`^${gradeLevel}[\\s.-]+(.+)$`, 'i').exec(className) : null;
+  return { className, gradeLevel, name: match ? match[1].trim() : className };
+}
+
 export function promoteRombel(rombel, educationLevel) {
   if (typeof rombel !== 'string') return null;
   const allowed = promotionGrades[educationLevel];

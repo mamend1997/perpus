@@ -22,6 +22,7 @@ import {
 import {
   parseSchoolLetterhead, validateSchoolLetterhead
 } from '../utils/school-letterhead.js';
+import { classDetailsFromRombel } from '../utils/school-year-promotion.js';
 
 const router = Router();
 const masterCategoryTypes = new Set([
@@ -292,6 +293,20 @@ router.post('/users', requireSchoolAdmin, async (req, res, next) => {
     connection = await pool.getConnection();
     await connection.beginTransaction();
     transactionStarted = true;
+    if (role === 'member') {
+      const [schools] = await connection.execute(
+        'SELECT education_level FROM tenants_schools WHERE id = ? FOR UPDATE',
+        [req.school.id]
+      );
+      const classDetails = classDetailsFromRombel(rombel, schools[0]?.education_level);
+      if (classDetails) {
+        await connection.execute(
+          `INSERT IGNORE INTO school_classes (school_id, grade_level, name, class_name)
+           VALUES (?, ?, ?, ?)`,
+          [req.school.id, classDetails.gradeLevel, classDetails.name, classDetails.className]
+        );
+      }
+    }
     const [result] = await connection.execute(
       `INSERT INTO users (school_id, role, is_library_member, name, email, password, phone, nis_nisn, rombel, gender, status)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
@@ -366,6 +381,20 @@ router.patch('/users/:id', requireSchoolAdmin, async (req, res, next) => {
     }
 
     const passwordHash = password ? await bcrypt.hash(password, 12) : null;
+    if (role === 'member') {
+      const [schools] = await pool.execute(
+        'SELECT education_level FROM tenants_schools WHERE id = ? LIMIT 1',
+        [req.school.id]
+      );
+      const classDetails = classDetailsFromRombel(rombel, schools[0]?.education_level);
+      if (classDetails) {
+        await pool.execute(
+          `INSERT IGNORE INTO school_classes (school_id, grade_level, name, class_name)
+           VALUES (?, ?, ?, ?)`,
+          [req.school.id, classDetails.gradeLevel, classDetails.name, classDetails.className]
+        );
+      }
+    }
     await pool.execute(
       `UPDATE users
        SET role = ?, name = ?, email = ?, phone = ?, nis_nisn = ?, rombel = ?, gender = ?, status = ?,

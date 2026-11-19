@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { pool } from '../config/database.js';
 import { requireSchoolPermission } from '../middleware/require-school-permission.js';
 import {
-  buildPromotionPlan, promotionToken, validEducationLevels
+  buildPromotionPlan, classDetailsFromRombel, promotionToken, validEducationLevels
 } from '../utils/school-year-promotion.js';
 
 const router = Router();
@@ -233,6 +233,16 @@ router.post('/', requireSchoolPermission('master.academic-years', 'edit'), async
       }
 
       const promoted = promotionData.plan.filter((student) => student.promotion.action === 'promoted');
+      const nextClasses = [...new Set(promoted.map((student) => student.promotion.nextRombel))];
+      for (const rombel of nextClasses) {
+        const classDetails = classDetailsFromRombel(rombel, promotionData.educationLevel);
+        if (!classDetails) continue;
+        await connection.execute(
+          `INSERT IGNORE INTO school_classes (school_id, grade_level, name, class_name)
+           VALUES (?, ?, ?, ?)`,
+          [req.school.id, classDetails.gradeLevel, classDetails.name, classDetails.className]
+        );
+      }
       for (let offset = 0; offset < promoted.length; offset += 200) {
         const batch = promoted.slice(offset, offset + 200);
         const caseSql = batch.map(() => 'WHEN ? THEN ?').join(' ');

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { pool } from '../config/database.js';
 import { requireSchoolPermission } from '../middleware/require-school-permission.js';
+import { classDetailsFromRombel, classGradeLevels } from '../utils/school-year-promotion.js';
 
 const router = Router();
 const validId = (value) => /^[1-9]\d*$/.test(String(value ?? ''));
@@ -12,6 +13,74 @@ const memberCodeFor = (schoolCode, userId) => `MBR${schoolCode}-${userId}`;
 function parsePage(value, fallback, maximum) {
   const parsed = value == null ? fallback : Number(value);
   return Number.isSafeInteger(parsed) && parsed >= 1 && parsed <= maximum ? parsed : null;
+}
+
+function normalizeSchoolClass(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return { error: 'Data kelas tidak valid.' };
+  const name = typeof body.name === 'string' ? body.name.trim() : '';
+  const gradeLevel = typeof body.gradeLevel === 'string' ? body.gradeLevel.trim() : '';
+  if (!name || name.length > 80 || !gradeLevel) return { error: 'Nama kelas dan tingkat kelas wajib diisi.' };
+  const className = `${gradeLevel} ${name}`;
+  if (className.length > 80) return { error: 'Nama lengkap kelas maksimal 80 karakter.' };
+  return { value: { name, gradeLevel, className } };
+}
+
+async function ensureSchoolClass(connection, schoolId, educationLevel, rombel) {
+  const classDetails = classDetailsFromRombel(rombel, educationLevel);
+  if (!classDetails) return;
+  await connection.execute(
+    `INSERT IGNORE INTO school_classes (school_id, grade_level, name, class_name)
+     VALUES (?, ?, ?, ?)`,
+    [schoolId, classDetails.gradeLevel, classDetails.name, classDetails.className]
+  );
+}
+
+function normalizeClassIds(rawIds) {
+  if (!Array.isArray(rawIds) || rawIds.length < 1 || rawIds.length > 500) return null;
+  const ids = [...new Set(rawIds.map(String))];
+  return ids.length === rawIds.length && ids.every(validId) ? ids : null;
+}
+
+async function removeSchoolClasses(schoolId, ids) {
+  const connection = await pool.getConnection();
+  let transactionStarted = false;
+  try {
+    await connection.beginTransaction();
+    transactionStarted = true;
+    await connection.execute(
+      'SELECT id FROM tenants_schools WHERE id = ? FOR UPDATE',
+      [schoolId]
+    );
+    const placeholders = ids.map(() => '?').join(', ');
+    const [classes] = await connection.execute(
+      `SELECT id, class_name FROM school_classes
+       WHERE school_id = ? AND id IN (${placeholders}) FOR UPDATE`,
+      [schoolId, ...ids]
+    );
+    if (classes.length !== ids.length) {
+      await connection.rollback();
+      transactionStarted = false;
+      return { error: 'Sebagian kelas tidak ditemukan atau bukan milik sekolah ini.', status: 404 };
+    }
+    const classNames = classes.map((item) => item.class_name);
+    await connection.execute(
+      `UPDATE users SET rombel = NULL
+       WHERE school_id = ? AND role = 'member' AND TRIM(rombel) IN (${classNames.map(() => '?').join(', ')})`,
+      [schoolId, ...classNames]
+    );
+    await connection.execute(
+      `DELETE FROM school_classes WHERE school_id = ? AND id IN (${placeholders})`,
+      [schoolId, ...ids]
+    );
+    await connection.commit();
+    transactionStarted = false;
+    return { deleted: classes.length };
+  } catch (error) {
+    if (transactionStarted) await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
 }
 
 function normalizeStudent(body) {
@@ -148,23 +217,306 @@ router.get('/archives', staffOnly, requireSchoolPermission('master.students', 'v
 
 router.get('/classes', staffOnly, requireSchoolPermission('master.students', 'view'), async (req, res, next) => {
   try {
-    const [classes] = await pool.execute(
-      `SELECT COALESCE(NULLIF(TRIM(rombel), ''), 'Belum diatur') AS class_name,
-              COUNT(*) AS student_count,
-              SUM(status = 'active') AS active_count
-       FROM users
-       WHERE school_id = ? AND role = 'member'
-       GROUP BY COALESCE(NULLIF(TRIM(rombel), ''), 'Belum diatur')
-       ORDER BY class_name ASC`,
+    const [[classes], [unassignedRows], [schools]] = await Promise.all([
+      pool.execute(
+        `SELECT c.id, c.grade_level, c.name, c.class_name,
+                COUNT(u.id) AS student_count,
+                COALESCE(SUM(u.status = 'active'), 0) AS active_count
+         FROM school_classes c
+         LEFT JOIN users u ON u.school_id = c.school_id AND u.role = 'member'
+           AND TRIM(u.rombel) = c.class_name
+         WHERE c.school_id = ?
+         GROUP BY c.id, c.grade_level, c.name, c.class_name`,
+        [req.school.id]
+      ),
+      pool.execute(
+        `SELECT COUNT(*) AS student_count,
+                COALESCE(SUM(status = 'active'), 0) AS active_count
+         FROM users
+         WHERE school_id = ? AND role = 'member'
+           AND (rombel IS NULL OR TRIM(rombel) = '')`,
+        [req.school.id]
+      ),
+      pool.execute('SELECT education_level FROM tenants_schools WHERE id = ? LIMIT 1', [req.school.id])
+    ]);
+    const educationLevel = schools[0]?.education_level || '';
+    const gradeLevels = classGradeLevels(educationLevel);
+    const result = classes.map((item) => ({
+      id: String(item.id),
+      gradeLevel: item.grade_level,
+      name: item.name,
+      className: item.class_name,
+      studentCount: Number(item.student_count),
+      activeCount: Number(item.active_count)
+    }));
+    const rank = new Map(gradeLevels.map((level, index) => [level, index]));
+    result.sort((left, right) => (rank.get(left.gradeLevel) ?? gradeLevels.length)
+      - (rank.get(right.gradeLevel) ?? gradeLevels.length)
+      || left.name.localeCompare(right.name, 'id'));
+    const unassignedCount = Number(unassignedRows[0]?.student_count || 0);
+    if (unassignedCount > 0) {
+      result.push({
+        id: null,
+        gradeLevel: null,
+        name: '',
+        className: 'Belum diatur',
+        studentCount: unassignedCount,
+        activeCount: Number(unassignedRows[0]?.active_count || 0),
+        isUnassigned: true
+      });
+    }
+    return res.json({
+      educationLevel,
+      gradeLevels,
+      classes: result
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post('/classes', staffOnly, requireSchoolPermission('master.students', 'edit'), async (req, res, next) => {
+  const { value, error } = normalizeSchoolClass(req.body);
+  if (error) return res.status(400).json({ message: error });
+  let connection;
+  let transactionStarted = false;
+  try {
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    transactionStarted = true;
+    const [schools] = await connection.execute(
+      'SELECT education_level FROM tenants_schools WHERE id = ? FOR UPDATE',
       [req.school.id]
     );
-    return res.json({
-      classes: classes.map((item) => ({
-        className: item.class_name,
-        studentCount: Number(item.student_count),
-        activeCount: Number(item.active_count)
-      }))
+    const gradeLevels = classGradeLevels(schools[0]?.education_level);
+    if (!gradeLevels.length) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(400).json({ message: 'Atur jenjang pendidikan sekolah terlebih dahulu di menu Identitas Sekolah.' });
+    }
+    if (!gradeLevels.includes(value.gradeLevel)) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(400).json({ message: 'Tingkat kelas tidak sesuai dengan jenjang pendidikan sekolah.' });
+    }
+    const [result] = await connection.execute(
+      `INSERT INTO school_classes (school_id, grade_level, name, class_name)
+       VALUES (?, ?, ?, ?)`,
+      [req.school.id, value.gradeLevel, value.name, value.className]
+    );
+    await connection.commit();
+    transactionStarted = false;
+    return res.status(201).json({
+      class: { id: String(result.insertId), ...value },
+      message: 'Kelas berhasil ditambahkan.'
     });
+  } catch (error) {
+    if (transactionStarted && connection) await connection.rollback();
+    if (error.code === 'ER_DUP_ENTRY') return res.status(409).json({ message: 'Nama kelas tersebut sudah digunakan.' });
+    return next(error);
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+router.patch('/classes/:id', staffOnly, requireSchoolPermission('master.students', 'edit'), async (req, res, next) => {
+  const id = String(req.params.id);
+  if (!validId(id)) return res.status(400).json({ message: 'ID kelas tidak valid.' });
+  const { value, error } = normalizeSchoolClass(req.body);
+  if (error) return res.status(400).json({ message: error });
+  let connection;
+  let transactionStarted = false;
+  try {
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    transactionStarted = true;
+    const [schools] = await connection.execute(
+      'SELECT education_level FROM tenants_schools WHERE id = ? FOR UPDATE',
+      [req.school.id]
+    );
+    const gradeLevels = classGradeLevels(schools[0]?.education_level);
+    if (!gradeLevels.includes(value.gradeLevel)) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(400).json({
+        message: gradeLevels.length
+          ? 'Tingkat kelas tidak sesuai dengan jenjang pendidikan sekolah.'
+          : 'Atur jenjang pendidikan sekolah terlebih dahulu di menu Identitas Sekolah.'
+      });
+    }
+    const [classes] = await connection.execute(
+      'SELECT class_name FROM school_classes WHERE id = ? AND school_id = ? FOR UPDATE',
+      [id, req.school.id]
+    );
+    if (!classes[0]) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(404).json({ message: 'Kelas tidak ditemukan.' });
+    }
+    await connection.execute(
+      `UPDATE school_classes SET grade_level = ?, name = ?, class_name = ?
+       WHERE id = ? AND school_id = ?`,
+      [value.gradeLevel, value.name, value.className, id, req.school.id]
+    );
+    await connection.execute(
+      `UPDATE users SET rombel = ?
+       WHERE school_id = ? AND role = 'member' AND TRIM(rombel) = ?`,
+      [value.className, req.school.id, classes[0].class_name]
+    );
+    await connection.commit();
+    transactionStarted = false;
+    return res.json({ class: { id, ...value }, message: 'Kelas berhasil diperbarui.' });
+  } catch (error) {
+    if (transactionStarted && connection) await connection.rollback();
+    if (error.code === 'ER_DUP_ENTRY') return res.status(409).json({ message: 'Nama kelas tersebut sudah digunakan.' });
+    return next(error);
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+router.get('/classes/:id/students', staffOnly, requireSchoolPermission('master.students', 'view'), async (req, res, next) => {
+  const id = String(req.params.id);
+  const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+  const page = parsePage(req.query.page, 1, 1000000);
+  const limit = parsePage(req.query.limit, 25, 100);
+  if (!validId(id)) return res.status(400).json({ message: 'ID kelas tidak valid.' });
+  if (search.length > 100) return res.status(400).json({ message: 'Pencarian siswa maksimal 100 karakter.' });
+  if (!page || !limit) return res.status(400).json({ message: 'Nomor halaman atau jumlah data tidak valid.' });
+  try {
+    const [classes] = await pool.execute(
+      'SELECT class_name FROM school_classes WHERE id = ? AND school_id = ? LIMIT 1',
+      [id, req.school.id]
+    );
+    if (!classes[0]) return res.status(404).json({ message: 'Kelas tidak ditemukan.' });
+    const conditions = ['school_id = ?', "role = 'member'"];
+    const values = [req.school.id];
+    if (search) {
+      conditions.push('(name LIKE ? OR nis_nisn LIKE ? OR COALESCE(rombel, \'\') LIKE ?)');
+      values.push(...Array(3).fill(`%${search}%`));
+    }
+    const where = conditions.join(' AND ');
+    const [[count], [students]] = await Promise.all([
+      pool.execute(`SELECT COUNT(*) AS total FROM users WHERE ${where}`, values),
+      pool.execute(
+        `SELECT id, name, nis_nisn, rombel,
+                (TRIM(COALESCE(rombel, '')) = ?) AS assigned
+         FROM users WHERE ${where}
+         ORDER BY name ASC, id ASC LIMIT ? OFFSET ?`,
+        [classes[0].class_name, ...values, limit, (page - 1) * limit]
+      )
+    ]);
+    const total = Number(count.total);
+    return res.json({
+      className: classes[0].class_name,
+      students: students.map((student) => ({
+        ...student,
+        id: String(student.id),
+        assigned: Boolean(student.assigned)
+      })),
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.put('/classes/:id/students', staffOnly, requireSchoolPermission('master.students', 'edit'), async (req, res, next) => {
+  const id = String(req.params.id);
+  if (!validId(id)) return res.status(400).json({ message: 'ID kelas tidak valid.' });
+  const rawAssignIds = req.body?.assignIds ?? [];
+  const rawUnassignIds = req.body?.unassignIds ?? [];
+  if (!Array.isArray(rawAssignIds) || !Array.isArray(rawUnassignIds)
+      || rawAssignIds.length + rawUnassignIds.length < 1
+      || rawAssignIds.length + rawUnassignIds.length > 500) {
+    return res.status(400).json({ message: 'Pilih 1 sampai 500 perubahan siswa.' });
+  }
+  const assignIds = rawAssignIds.length ? normalizeClassIds(rawAssignIds) : [];
+  const unassignIds = rawUnassignIds.length ? normalizeClassIds(rawUnassignIds) : [];
+  if (!assignIds || !unassignIds || assignIds.some((studentId) => unassignIds.includes(studentId))) {
+    return res.status(400).json({ message: 'Daftar siswa yang dipilih tidak valid.' });
+  }
+  let connection;
+  let transactionStarted = false;
+  try {
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    transactionStarted = true;
+    const [classes] = await connection.execute(
+      'SELECT class_name FROM school_classes WHERE id = ? AND school_id = ? FOR UPDATE',
+      [id, req.school.id]
+    );
+    if (!classes[0]) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(404).json({ message: 'Kelas tidak ditemukan.' });
+    }
+    const allIds = [...assignIds, ...unassignIds];
+    const placeholders = allIds.map(() => '?').join(', ');
+    const [students] = await connection.execute(
+      `SELECT id, rombel FROM users
+       WHERE school_id = ? AND role = 'member' AND id IN (${placeholders}) FOR UPDATE`,
+      [req.school.id, ...allIds]
+    );
+    if (students.length !== allIds.length) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(404).json({ message: 'Sebagian siswa tidak ditemukan di sekolah ini.' });
+    }
+    const className = classes[0].class_name;
+    const studentsToUnassign = students.filter((student) => unassignIds.includes(String(student.id)));
+    if (studentsToUnassign.some((student) => String(student.rombel || '').trim() !== className)) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(409).json({ message: 'Sebagian siswa sudah tidak berada di kelas ini. Muat ulang daftar siswa.' });
+    }
+    if (assignIds.length) {
+      await connection.execute(
+        `UPDATE users SET rombel = ?
+         WHERE school_id = ? AND role = 'member' AND id IN (${assignIds.map(() => '?').join(', ')})`,
+        [className, req.school.id, ...assignIds]
+      );
+    }
+    if (unassignIds.length) {
+      await connection.execute(
+        `UPDATE users SET rombel = NULL
+         WHERE school_id = ? AND role = 'member' AND id IN (${unassignIds.map(() => '?').join(', ')})`,
+        [req.school.id, ...unassignIds]
+      );
+    }
+    await connection.commit();
+    transactionStarted = false;
+    return res.json({
+      message: `Penetapan ${allIds.length} siswa ke kelas ${className} berhasil disimpan.`,
+      updated: allIds.length
+    });
+  } catch (error) {
+    if (transactionStarted && connection) await connection.rollback();
+    return next(error);
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+router.delete('/classes/bulk', staffOnly, requireSchoolPermission('master.students', 'delete'), async (req, res, next) => {
+  const ids = normalizeClassIds(req.body?.ids);
+  if (!ids) return res.status(400).json({ message: 'Pilih 1 sampai 500 kelas yang valid untuk dihapus.' });
+  try {
+    const result = await removeSchoolClasses(req.school.id, ids);
+    if (result.error) return res.status(result.status).json({ message: result.error });
+    return res.json({ deleted: result.deleted, message: `${result.deleted} kelas berhasil dihapus. Siswa terkait menjadi belum diatur.` });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.delete('/classes/:id', staffOnly, requireSchoolPermission('master.students', 'delete'), async (req, res, next) => {
+  const id = String(req.params.id);
+  if (!validId(id)) return res.status(400).json({ message: 'ID kelas tidak valid.' });
+  try {
+    const result = await removeSchoolClasses(req.school.id, [id]);
+    if (result.error) return res.status(result.status).json({ message: result.error });
+    return res.json({ deleted: 1, message: 'Kelas berhasil dihapus. Siswa terkait menjadi belum diatur.' });
   } catch (error) {
     return next(error);
   }
@@ -416,6 +768,11 @@ router.post('/', staffOnly, requireSchoolPermission('master.students', 'edit'), 
     connection = await pool.getConnection();
     await connection.beginTransaction();
     transactionStarted = true;
+    const [schools] = await connection.execute(
+      'SELECT education_level FROM tenants_schools WHERE id = ? FOR UPDATE',
+      [req.school.id]
+    );
+    await ensureSchoolClass(connection, req.school.id, schools[0]?.education_level, value.rombel);
     const [result] = await connection.execute(
       `INSERT INTO users (school_id, role, is_library_member, name, password, photo, nis_nisn, rombel, phone, gender, status)
        VALUES (?, 'member', 0, ?, NULL, ?, ?, ?, ?, ?, ?)`,
@@ -476,8 +833,13 @@ router.post('/import', staffOnly, requireSchoolPermission('master.students', 'ed
     connection = await pool.getConnection();
     await connection.beginTransaction();
     transactionStarted = true;
+    const [schools] = await connection.execute(
+      'SELECT education_level FROM tenants_schools WHERE id = ? FOR UPDATE',
+      [req.school.id]
+    );
     for (let index = 0; index < normalized.length; index += 1) {
       const student = normalized[index];
+      await ensureSchoolClass(connection, req.school.id, schools[0]?.education_level, student.rombel);
       const [result] = await connection.execute(
         `INSERT INTO users (school_id, role, is_library_member, name, password, photo, nis_nisn, rombel, phone, gender, status)
          VALUES (?, 'member', 0, ?, NULL, ?, ?, ?, ?, ?, ?)`,
@@ -507,23 +869,40 @@ router.patch('/:id', staffOnly, requireSchoolPermission('master.students', 'edit
   if (!validId(id)) return res.status(400).json({ message: 'ID siswa tidak valid.' });
   const { value, error } = normalizeStudent(req.body);
   if (error) return res.status(400).json({ message: error });
+  let connection;
+  let transactionStarted = false;
   try {
-    const [result] = await pool.execute(
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    transactionStarted = true;
+    const [schools] = await connection.execute(
+      'SELECT education_level FROM tenants_schools WHERE id = ? FOR UPDATE',
+      [req.school.id]
+    );
+    await ensureSchoolClass(connection, req.school.id, schools[0]?.education_level, value.rombel);
+    const [students] = await connection.execute(
+      'SELECT id FROM users WHERE id = ? AND school_id = ? AND role = \'member\' FOR UPDATE',
+      [id, req.school.id]
+    );
+    if (!students[0]) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(404).json({ message: 'Data siswa tidak ditemukan.' });
+    }
+    await connection.execute(
       `UPDATE users SET name = ?, photo = ?, nis_nisn = ?, rombel = ?, phone = ?, gender = ?, status = ?
        WHERE id = ? AND school_id = ? AND role = 'member'`,
       [value.name, value.photo, value.nis, value.rombel, value.phone, value.gender, value.status, id, req.school.id]
     );
-    if (!result.affectedRows) {
-      const [rows] = await pool.execute(
-        `SELECT id FROM users WHERE id = ? AND school_id = ? AND role = 'member' LIMIT 1`,
-        [id, req.school.id]
-      );
-      if (!rows[0]) return res.status(404).json({ message: 'Data siswa tidak ditemukan.' });
-    }
+    await connection.commit();
+    transactionStarted = false;
     return res.json({ message: 'Data siswa berhasil diperbarui.' });
   } catch (error) {
+    if (transactionStarted && connection) await connection.rollback();
     if (error.code === 'ER_DUP_ENTRY') return res.status(409).json({ message: 'NIS/NISN atau email sudah digunakan siswa lain.' });
     return next(error);
+  } finally {
+    if (connection) connection.release();
   }
 });
 
