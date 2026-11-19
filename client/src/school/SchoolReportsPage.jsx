@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Download, FileBarChart2, LoaderCircle, Printer, Search } from 'lucide-react';
 import ExcelJS from 'exceljs';
 import { fetchAcademicYears } from './schoolAcademicYearApi.js';
-import { fetchSchoolReport } from './schoolReportApi.js';
+import { fetchSchoolReport, fetchSchoolReportClasses } from './schoolReportApi.js';
 
 const reportTypes = [
   { key: 'loans', label: 'Sirkulasi & Peminjaman' },
@@ -19,6 +19,11 @@ function todayDate() {
 
 function monthStart() {
   return `${todayDate().slice(0, 8)}01`;
+}
+
+function monthEnd(value) {
+  const [year, month] = value.split('-').map(Number);
+  return `${value}-${String(new Date(Date.UTC(year, month, 0)).getUTCDate()).padStart(2, '0')}`;
 }
 
 function formatValue(value, key) {
@@ -52,7 +57,9 @@ function summaryCards(type, summary) {
     ['Judul Buku', summary.total_titles],
     ['Total Eksemplar', summary.total_items],
     ['Tersedia', summary.available_items],
-    ['Dipinjam / Rusak', `${Number(summary.borrowed_items || 0)} / ${Number(summary.damaged_items || 0)}`]
+    ['Dipinjam', summary.borrowed_items],
+    ['Rusak Ringan', summary.lightly_damaged_items],
+    ['Rusak Berat', summary.heavily_damaged_items]
   ];
 }
 
@@ -60,6 +67,7 @@ export default function SchoolReportsPage({ rights }) {
   const [type, setType] = useState('loans');
   const [startDate, setStartDate] = useState(monthStart);
   const [endDate, setEndDate] = useState(todayDate);
+  const [periodMonth, setPeriodMonth] = useState('');
   const [academicYearId, setAcademicYearId] = useState('');
   const [className, setClassName] = useState('');
   const [queryInput, setQueryInput] = useState('');
@@ -67,9 +75,29 @@ export default function SchoolReportsPage({ rights }) {
   const [page, setPage] = useState(1);
   const [report, setReport] = useState(null);
   const [years, setYears] = useState([]);
+  const [classes, setClasses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState('');
+  const monthlyTypes = ['loans', 'fines', 'visitors'];
+  const classAndSearchTypes = ['loans', 'fines'];
+  const supportsMonth = monthlyTypes.includes(type);
+  const supportsClassAndSearch = classAndSearchTypes.includes(type);
+
+  function makeReportFilters(pageNumber, limit) {
+    const selectedMonth = supportsMonth ? periodMonth : '';
+    return {
+      type,
+      startDate: selectedMonth ? `${selectedMonth}-01` : startDate,
+      endDate: selectedMonth ? monthEnd(selectedMonth) : endDate,
+      academicYearId: selectedMonth ? '' : academicYearId,
+      periodMonth: selectedMonth,
+      className: supportsClassAndSearch ? className.trim() : '',
+      search: supportsClassAndSearch ? search : '',
+      page: pageNumber,
+      limit
+    };
+  }
 
   function printReport() {
     const cleanup = () => {
@@ -99,11 +127,17 @@ export default function SchoolReportsPage({ rights }) {
 
   useEffect(() => {
     const controller = new AbortController();
+    fetchSchoolReportClasses(controller.signal)
+      .then((results) => { if (!controller.signal.aborted) setClasses(results); })
+      .catch((loadError) => { if (!controller.signal.aborted) setError(loadError.message); });
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
     setLoading(true);
     setError('');
-    fetchSchoolReport({
-      type, startDate, endDate, academicYearId, className: className.trim(), search, page, limit: pageSize
-    }, controller.signal)
+    fetchSchoolReport(makeReportFilters(page, pageSize), controller.signal)
       .then((result) => {
         if (controller.signal.aborted) return;
         setReport(result);
@@ -112,7 +146,7 @@ export default function SchoolReportsPage({ rights }) {
       .catch((loadError) => { if (!controller.signal.aborted) setError(loadError.message); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [type, startDate, endDate, academicYearId, className, search, page]);
+  }, [type, startDate, endDate, academicYearId, periodMonth, className, search, page]);
 
   const cards = useMemo(() => summaryCards(type, report?.summary || {}), [type, report]);
   const title = reportTypes.find((item) => item.key === type)?.label || 'Laporan';
@@ -125,9 +159,7 @@ export default function SchoolReportsPage({ rights }) {
       const allRows = [];
       const totalPages = Math.ceil((report.pagination?.total || 0) / 100);
       for (let currentPage = 1; currentPage <= totalPages; currentPage += 1) {
-        const pageResult = await fetchSchoolReport({
-          type, startDate, endDate, academicYearId, className: className.trim(), search, page: currentPage, limit: 100
-        });
+        const pageResult = await fetchSchoolReport(makeReportFilters(currentPage, 100));
         allRows.push(...(pageResult.rows || []));
       }
       const workbook = new ExcelJS.Workbook();
@@ -190,21 +222,36 @@ export default function SchoolReportsPage({ rights }) {
 
       <section className="library-panel school-report-filter-panel">
         <label>Tahun Pelajaran
-          <select value={academicYearId} onChange={(event) => { setAcademicYearId(event.target.value); setPage(1); }}>
+          <select value={academicYearId} onChange={(event) => { setAcademicYearId(event.target.value); setPeriodMonth(''); setPage(1); }}>
             <option value="">Pilih rentang tanggal manual</option>
             {years.map((year) => <option key={year.id} value={year.id}>{year.label}{year.isActive ? ' · Aktif' : ''}</option>)}
           </select>
         </label>
+        {supportsMonth && <label>Periode Bulan
+          <input type="month" value={periodMonth} onChange={(event) => {
+            const value = event.target.value;
+            setPeriodMonth(value);
+            setAcademicYearId('');
+            if (value) {
+              setStartDate(`${value}-01`);
+              setEndDate(monthEnd(value));
+            }
+            setPage(1);
+          }} />
+        </label>}
         <label>Dari Tanggal
-          <input type="date" value={startDate} onChange={(event) => { setAcademicYearId(''); setStartDate(event.target.value); setPage(1); }} disabled={Boolean(academicYearId)} />
+          <input type="date" value={startDate} onChange={(event) => { setAcademicYearId(''); setPeriodMonth(''); setStartDate(event.target.value); setPage(1); }} disabled={Boolean(academicYearId || periodMonth)} />
         </label>
         <label>Sampai Tanggal
-          <input type="date" value={endDate} onChange={(event) => { setAcademicYearId(''); setEndDate(event.target.value); setPage(1); }} disabled={Boolean(academicYearId)} />
+          <input type="date" value={endDate} onChange={(event) => { setAcademicYearId(''); setPeriodMonth(''); setEndDate(event.target.value); setPage(1); }} disabled={Boolean(academicYearId || periodMonth)} />
         </label>
-        {type !== 'inventory' && <label>Kelas / Rombel
-          <input value={className} onChange={(event) => { setClassName(event.target.value); setPage(1); }} maxLength={80} placeholder="Semua kelas" />
+        {supportsClassAndSearch && <label>Kelas / Rombel
+          <select value={className} onChange={(event) => { setClassName(event.target.value); setPage(1); }}>
+            <option value="">Semua kelas</option>
+            {classes.map((classOption) => <option key={classOption} value={classOption}>{classOption}</option>)}
+          </select>
         </label>}
-        <label className="school-report-search"><span>Cari data</span><span className="master-search"><Search size={15} /><input value={queryInput} onChange={(event) => setQueryInput(event.target.value)} placeholder="Kata kunci..." maxLength={100} /></span></label>
+        {supportsClassAndSearch && <label className="school-report-search"><span>Cari data</span><span className="master-search"><Search size={15} /><input value={queryInput} onChange={(event) => setQueryInput(event.target.value)} placeholder="Kata kunci..." maxLength={100} /></span></label>}
         <div className="school-report-actions">
           <button type="button" className="master-button master-button-light" onClick={printReport} disabled={!report}><Printer size={15} />Cetak / PDF</button>
           <button type="button" className="master-button master-button-primary" onClick={exportExcel} disabled={exporting || loading || !report}>
@@ -213,7 +260,7 @@ export default function SchoolReportsPage({ rights }) {
         </div>
       </section>
 
-      <section className="school-report-summary" aria-label="Ringkasan laporan">
+      <section className={`school-report-summary ${type === 'inventory' ? 'is-inventory' : ''}`} aria-label="Ringkasan laporan">
         {cards.map(([label, value]) => <article className="library-stat-card" key={label}><div><small>{label}</small><b>{report ? value : '—'}</b></div></article>)}
       </section>
 

@@ -1,7 +1,8 @@
 async function request(path, signal) {
   const token = localStorage.getItem('school-token');
   if (!token) throw new Error('Sesi sekolah tidak ditemukan. Silakan masuk kembali.');
-  const response = await fetch(`/api/school/reports?${path}`, {
+  const suffix = path.startsWith('/') ? path : `/${path}`;
+  const response = await fetch(`/api/school/reports${suffix}`, {
     headers: { Authorization: `Bearer ${token}` },
     signal
   });
@@ -15,5 +16,10 @@ export function fetchSchoolReport(filters, signal) {
   Object.entries(filters).forEach(([key, value]) => {
     if (value !== '' && value != null) query.set(key, String(value));
   });
-  return request(query.toString(), signal);
+  return request(`?${query.toString()}`, signal);
+}
+
+export async function fetchSchoolReportClasses(signal) {
+  const result = await request('/classes', signal);
+  return result.classes || [];
 }

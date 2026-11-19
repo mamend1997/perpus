@@ -2561,6 +2561,7 @@
 .school-report-actions { display: flex; gap: 7px; }
 .school-report-actions .master-button { white-space: nowrap; }
 .school-report-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 12px 0; }
+.school-report-summary.is-inventory { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .school-report-summary .library-stat-card { min-height: 75px; padding: 12px; }
 .school-report-summary .library-stat-card b { margin-top: 5px; }
 .school-report-print-heading { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-bottom: 2px solid #344054; }
@@ -2723,7 +2724,8 @@
   .school-report-filter-panel { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .school-report-actions { grid-column: 1 / -1; }
   .school-report-actions .master-button { flex: 1; }
-  .school-report-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .school-report-summary,
+  .school-report-summary.is-inventory { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 520px) {
@@ -2777,8 +2779,22 @@
   }
   .school-report-document-title b { font-size: 11pt; }
   .school-report-document-title small { color: #475569; font-size: 9pt; }
-  .school-report-table { min-width: 0; font-size: 9pt; }
-  .school-report-table th, .school-report-table td { padding: 5px; border: 1px solid #cbd5e1; color: #111827; white-space: normal; }
+  .school-report-table-panel .master-table-scroll { overflow: visible !important; }
+  .school-report-table {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    table-layout: fixed;
+    font-size: 7pt;
+  }
+  .school-report-table th, .school-report-table td {
+    padding: 3px;
+    border: 1px solid #cbd5e1;
+    color: #111827;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
   .school-report-signatures { break-inside: avoid; margin-top: 20px; }
 }
 

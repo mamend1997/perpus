@@ -28,11 +28,31 @@ function parseDateRange(query) {
   return { startDate, endDate };
 }
 
+router.get('/classes', requireSchoolPermission('reports.monthly', 'view'), async (req, res, next) => {
+  try {
+    const [classes] = await pool.execute(
+      `SELECT class_name FROM (
+         SELECT class_name FROM school_classes
+         WHERE school_id = ? AND TRIM(COALESCE(class_name, '')) <> ''
+         UNION
+         SELECT DISTINCT TRIM(rombel) AS class_name FROM users
+         WHERE school_id = ? AND role = 'member' AND TRIM(COALESCE(rombel, '')) <> ''
+       ) AS school_class_options
+       ORDER BY class_name ASC`,
+      [req.school.id, req.school.id]
+    );
+    return res.json({ classes: classes.map((row) => row.class_name) });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 router.get('/', requireSchoolPermission('reports.monthly', 'view'), async (req, res, next) => {
   const type = typeof req.query.type === 'string' ? req.query.type : 'loans';
   const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
   const className = typeof req.query.className === 'string' ? req.query.className.trim() : '';
   const academicYearId = typeof req.query.academicYearId === 'string' ? req.query.academicYearId : '';
+  const periodMonth = typeof req.query.periodMonth === 'string' ? req.query.periodMonth.trim() : '';
   const page = parsePage(req.query.page, 1, 1000000);
   const limit = parsePage(req.query.limit, 25, 100);
   if (!reportTypes.has(type)) return res.status(400).json({ message: 'Jenis laporan tidak valid.' });
@@ -46,9 +66,22 @@ router.get('/', requireSchoolPermission('reports.monthly', 'view'), async (req, 
 
   let dateRange = parseDateRange(req.query);
   if (!dateRange) return res.status(400).json({ message: 'Rentang tanggal laporan tidak valid.' });
+  if (periodMonth && !/^(?:[1-9]\d{3})-(?:0[1-9]|1[0-2])$/.test(periodMonth)) {
+    return res.status(400).json({ message: 'Periode bulan laporan tidak valid.' });
+  }
 
   try {
-    if (academicYearId) {
+    if (periodMonth) {
+      if (!['loans', 'fines', 'visitors'].includes(type)) {
+        return res.status(400).json({ message: 'Filter periode bulan tidak tersedia untuk jenis laporan ini.' });
+      }
+      const [year, month] = periodMonth.split('-').map(Number);
+      const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+      dateRange = {
+        startDate: `${periodMonth}-01`,
+        endDate: `${periodMonth}-${String(lastDay).padStart(2, '0')}`
+      };
+    } else if (academicYearId) {
       const [years] = await pool.execute(
         `SELECT DATE_FORMAT(start_date, '%Y-%m-%d') AS start_date,
                 DATE_FORMAT(end_date, '%Y-%m-%d') AS end_date
@@ -147,14 +180,6 @@ router.get('/', requireSchoolPermission('reports.monthly', 'view'), async (req, 
         LEFT JOIN users u ON u.school_id = v.school_id AND u.id = v.user_id`;
       conditions = ['v.school_id = ?', 'v.visit_date >= ?', 'v.visit_date < DATE_ADD(?, INTERVAL 1 DAY)'];
       values.push(dateRange.startDate, dateRange.endDate);
-      if (className) {
-        conditions.push('u.rombel = ?');
-        values.push(className);
-      }
-      if (search) {
-        conditions.push('(u.name LIKE ? OR COALESCE(u.nis_nisn, \'\') LIKE ? OR v.purpose LIKE ?)');
-        values.push(...Array(3).fill(`%${search}%`));
-      }
       countSql = `SELECT COUNT(*) AS total ${from} WHERE ${conditions.join(' AND ')}`;
       rowsSql = `SELECT v.id, v.visit_date, COALESCE(u.name, 'Pengunjung') AS member_name,
           u.nis_nisn, u.rombel, v.purpose
@@ -172,17 +197,14 @@ router.get('/', requireSchoolPermission('reports.monthly', 'view'), async (req, 
         LEFT JOIN master_categories publisher ON publisher.school_id = b.school_id AND publisher.id = b.publisher_id
         LEFT JOIN book_items bi ON bi.school_id = b.school_id AND bi.book_id = b.id`;
       conditions = ['b.school_id = ?'];
-      if (search) {
-        conditions.push('(b.title LIKE ? OR COALESCE(author.name, \'\') LIKE ? OR COALESCE(publisher.name, \'\') LIKE ? OR COALESCE(b.nomor_induk, \'\') LIKE ?)');
-        values.push(...Array(4).fill(`%${search}%`));
-      }
       countSql = `SELECT COUNT(DISTINCT b.id) AS total ${from} WHERE ${conditions.join(' AND ')}`;
       rowsSql = `SELECT b.id, b.title AS book_title, author.name AS author_name,
           publisher.name AS publisher_name, b.\`year\`, b.nomor_induk,
           COUNT(bi.id) AS total_items,
           SUM(bi.status = 'Tersedia') AS available_items,
           SUM(bi.status = 'Dipinjam') AS borrowed_items,
-          SUM(bi.status = 'Rusak') AS damaged_items
+          SUM(bi.\`condition\` = 'Rusak Ringan') AS lightly_damaged_items,
+          SUM(bi.\`condition\` = 'Rusak Berat') AS heavily_damaged_items
         ${from} WHERE ${conditions.join(' AND ')}
         GROUP BY b.id, b.title, author.name, publisher.name, b.\`year\`, b.nomor_induk
         ORDER BY b.title ASC LIMIT ? OFFSET ?`;
@@ -190,12 +212,14 @@ router.get('/', requireSchoolPermission('reports.monthly', 'view'), async (req, 
           COUNT(bi.id) AS total_items,
           SUM(bi.status = 'Tersedia') AS available_items,
           SUM(bi.status = 'Dipinjam') AS borrowed_items,
-          SUM(bi.status = 'Rusak') AS damaged_items
+          SUM(bi.\`condition\` = 'Rusak Ringan') AS lightly_damaged_items,
+          SUM(bi.\`condition\` = 'Rusak Berat') AS heavily_damaged_items
         ${from} WHERE ${conditions.join(' AND ')}`;
       columns = [
         ['book_title', 'Judul Buku'], ['author_name', 'Pengarang'], ['publisher_name', 'Penerbit'],
         ['year', 'Tahun Terbit'], ['nomor_induk', 'Nomor Induk'], ['total_items', 'Total Eksemplar'],
-        ['available_items', 'Tersedia'], ['borrowed_items', 'Dipinjam'], ['damaged_items', 'Rusak']
+        ['available_items', 'Tersedia'], ['borrowed_items', 'Dipinjam'],
+        ['lightly_damaged_items', 'Rusak Ringan'], ['heavily_damaged_items', 'Rusak Berat']
       ];
     }
 
@@ -226,7 +250,8 @@ router.get('/', requireSchoolPermission('reports.monthly', 'view'), async (req, 
         total_items: row.total_items == null ? undefined : Number(row.total_items),
         available_items: row.available_items == null ? undefined : Number(row.available_items),
         borrowed_items: row.borrowed_items == null ? undefined : Number(row.borrowed_items),
-        damaged_items: row.damaged_items == null ? undefined : Number(row.damaged_items),
+        lightly_damaged_items: row.lightly_damaged_items == null ? undefined : Number(row.lightly_damaged_items),
+        heavily_damaged_items: row.heavily_damaged_items == null ? undefined : Number(row.heavily_damaged_items),
         days_late: row.days_late == null ? undefined : Number(row.days_late)
       })),
       summary: Object.fromEntries(
