@@ -1380,6 +1380,60 @@ router.post('/destructions', requireSchoolPermission('books.stock', 'edit'), asy
   }
 });
 
+router.delete('/destructions', requireSchoolPermission('books.stock', 'delete'), async (req, res, next) => {
+  const rawIds = req.body?.destructionIds;
+  if (!Array.isArray(rawIds) || rawIds.length < 1 || rawIds.length > 500) {
+    return res.status(400).json({ message: 'Pilih 1 sampai 500 riwayat pemusnahan untuk dihapus.' });
+  }
+  const ids = [...new Set(rawIds.map(String))];
+  if (ids.length !== rawIds.length || ids.some((id) => !/^[1-9]\d*$/.test(id))) {
+    return res.status(400).json({ message: 'Daftar riwayat pemusnahan yang dipilih tidak valid.' });
+  }
+
+  let connection;
+  let transactionStarted = false;
+  try {
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    transactionStarted = true;
+    const placeholders = ids.map(() => '?').join(', ');
+    const [destructions] = await connection.execute(
+      `SELECT id FROM book_destructions
+       WHERE school_id = ? AND id IN (${placeholders})
+       FOR UPDATE`,
+      [req.school.id, ...ids]
+    );
+    if (destructions.length !== ids.length) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(409).json({ message: 'Sebagian riwayat pemusnahan sudah tidak tersedia. Segarkan daftar lalu coba lagi.' });
+    }
+
+    await connection.execute(
+      `DELETE FROM book_destructions WHERE school_id = ? AND id IN (${placeholders})`,
+      [req.school.id, ...ids]
+    );
+    await connection.commit();
+    transactionStarted = false;
+    return res.json({
+      deleted: destructions.length,
+      message: `${destructions.length} catatan riwayat pemusnahan berhasil dihapus.`
+    });
+  } catch (error) {
+    if (transactionStarted && connection) {
+      try {
+        await connection.rollback();
+      } catch (rollbackError) {
+        error.rollbackError = rollbackError;
+        return next(error);
+      }
+    }
+    return next(error);
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
 router.get('/activity-logs', requireSchoolPermission('books.stock', 'view'), async (req, res, next) => {
   const page = parsePageValue(req.query.page, 1, 1000000);
   const limit = parsePageValue(req.query.limit, 25, 100);

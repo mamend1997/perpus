@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, LoaderCircle, PackageX, Plus, Search, X } from 'lucide-react';
+import { Check, LoaderCircle, PackageX, Plus, Search, Trash2, X } from 'lucide-react';
 import CameraBarcodeScanner from './CameraBarcodeScanner.jsx';
+import SchoolConfirmDialog from './SchoolConfirmDialog.jsx';
 import {
-  createBookDestruction, fetchBookDestructionHistory, fetchBookDestructionRacks,
+  createBookDestruction, deleteBookDestructionHistory, fetchBookDestructionHistory, fetchBookDestructionRacks,
   searchDestructibleBooks
 } from './schoolBookApi.js';
 
@@ -209,6 +210,12 @@ export default function SchoolBookDestructionPage({ rights }) {
   const [success, setSuccess] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+  const canDelete = Boolean(rights?.delete);
+  const allVisibleSelected = history.length > 0 && history.every((entry) => selectedIds.has(String(entry.id)));
 
   useEffect(() => {
     const controller = new AbortController();
@@ -225,11 +232,53 @@ export default function SchoolBookDestructionPage({ rights }) {
     return () => controller.abort();
   }, [page, refreshKey]);
 
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [page, refreshKey]);
+
   function handleSaved(message) {
     setModalOpen(false);
     setSuccess(message);
     setPage(1);
     setRefreshKey((value) => value + 1);
+  }
+
+  function toggleVisibleSelection(checked) {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      history.forEach((entry) => {
+        if (checked) next.add(String(entry.id));
+        else next.delete(String(entry.id));
+      });
+      return next;
+    });
+  }
+
+  function toggleEntrySelection(id, checked) {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (checked) next.add(String(id));
+      else next.delete(String(id));
+      return next;
+    });
+  }
+
+  async function deleteSelectedHistory() {
+    if (!deleteTarget?.length) return;
+    setDeleting(true);
+    setDeleteError('');
+    try {
+      const result = await deleteBookDestructionHistory(deleteTarget);
+      setDeleteTarget(null);
+      setSelectedIds(new Set());
+      setSuccess(result.message);
+      setPage(1);
+      setRefreshKey((value) => value + 1);
+    } catch (deleteRequestError) {
+      setDeleteError(deleteRequestError.message);
+    } finally {
+      setDeleting(false);
+    }
   }
 
   return (
@@ -244,15 +293,19 @@ export default function SchoolBookDestructionPage({ rights }) {
       <section className="library-panel book-destruction-history">
         <div className="library-panel-heading">
           <div><span className="library-eyebrow">RIWAYAT PEMUSNAHAN</span><h2>Data Pemusnahan</h2><p>{Number(pagination.total || 0).toLocaleString('id-ID')} transaksi</p></div>
-          {rights?.edit && <button type="button" className="master-button master-button-primary" onClick={() => { setSuccess(''); setModalOpen(true); }}><Plus size={15} />Tambah Pemusnahan</button>}
+          <div className="book-destruction-heading-actions">
+            {canDelete && <button type="button" className="master-button master-button-danger" disabled={!selectedIds.size || deleting} onClick={() => { setDeleteError(''); setDeleteTarget([...selectedIds]); }}><Trash2 size={15} />Hapus Terpilih ({selectedIds.size})</button>}
+            {rights?.edit && <button type="button" className="master-button master-button-primary" onClick={() => { setSuccess(''); setModalOpen(true); }}><Plus size={15} />Tambah Pemusnahan</button>}
+          </div>
         </div>
         <div className="master-table-scroll">
-          <table className="master-table">
-            <thead><tr><th>No</th><th>Tanggal Pemusnahan</th><th>Nama Buku</th><th>Jumlah Buku</th><th>Lokasi Rak</th><th>Keterangan</th></tr></thead>
+          <table className="master-table book-destruction-table">
+            <thead><tr>{canDelete && <th className="book-destruction-checkbox"><input type="checkbox" checked={allVisibleSelected} onChange={(event) => toggleVisibleSelection(event.target.checked)} disabled={loading || deleting || !history.length} aria-label="Pilih semua riwayat pemusnahan pada halaman ini" /></th>}<th>No</th><th>Tanggal Pemusnahan</th><th>Nama Buku</th><th>Jumlah Buku</th><th>Lokasi Rak</th><th>Keterangan</th></tr></thead>
             <tbody>
-              {loading ? <tr><td className="master-empty-cell" colSpan={6}>Memuat data pemusnahan...</td></tr>
-                : !history.length ? <tr><td className="master-empty-cell" colSpan={6}>Belum ada data pemusnahan.</td></tr>
+              {loading ? <tr><td className="master-empty-cell" colSpan={canDelete ? 7 : 6}>Memuat data pemusnahan...</td></tr>
+                : !history.length ? <tr><td className="master-empty-cell" colSpan={canDelete ? 7 : 6}>Belum ada data pemusnahan.</td></tr>
                   : history.map((entry, index) => <tr key={entry.id}>
+                    {canDelete && <td className="book-destruction-checkbox"><input type="checkbox" checked={selectedIds.has(String(entry.id))} onChange={(event) => toggleEntrySelection(entry.id, event.target.checked)} aria-label={`Pilih riwayat pemusnahan ${entry.book_title}`} /></td>}
                     <td>{(page - 1) * pageSize + index + 1}</td>
                     <td>{dateLabel(entry.destruction_date)}</td>
                     <td><b>{entry.book_title}</b></td>
@@ -272,6 +325,16 @@ export default function SchoolBookDestructionPage({ rights }) {
         </footer>
       </section>
       {modalOpen && <DestructionModal onClose={() => setModalOpen(false)} onSaved={handleSaved} />}
+      {deleteTarget && <SchoolConfirmDialog
+        title={deleteTarget.length > 1 ? 'Hapus riwayat pemusnahan terpilih?' : 'Hapus riwayat pemusnahan?'}
+        message={`${deleteTarget.length} catatan riwayat pemusnahan akan dihapus.`}
+        itemName={`${deleteTarget.length} catatan riwayat`}
+        warningMessage="Penghapusan hanya menghapus catatan riwayat. Eksemplar yang sudah dimusnahkan tidak akan dipulihkan."
+        loading={deleting}
+        error={deleteError}
+        onClose={() => { if (!deleting) { setDeleteTarget(null); setDeleteError(''); } }}
+        onConfirm={deleteSelectedHistory}
+      />}
     </div>
   );
 }

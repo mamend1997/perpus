@@ -8,6 +8,10 @@ import { encryptSchoolSecret } from '../utils/school-settings.js';
 import { readPlatformWhatsAppSettings, sendPlatformWhatsAppMessage } from '../utils/platform-whatsapp.js';
 import { normalizePlatformBranding, readPlatformBranding } from '../utils/platform-branding.js';
 import { defaultSubscriptionPackages } from '../utils/platform-subscription-packages.js';
+import {
+  isPlatformKaseraConfigured, platformKaseraMode, readPlatformKaseraCredentials,
+  savePlatformKaseraCredentials
+} from '../utils/platform-kasera.js';
 
 const router = Router();
 router.use(requireSuperAdmin);
@@ -416,18 +420,22 @@ router.put('/branding', async (req, res, next) => {
 
 router.get('/payment-settings', async (_req, res, next) => {
   try {
-    const [rows] = await pool.execute(
-      'SELECT value FROM platform_settings WHERE key_name = ? LIMIT 1',
-      ['platform_payment_settings']
-    );
+    const [[rows], credentials] = await Promise.all([
+      pool.execute(
+        'SELECT value FROM platform_settings WHERE key_name = ? LIMIT 1',
+        ['platform_payment_settings']
+      ),
+      readPlatformKaseraCredentials()
+    ]);
     const saved = rows[0] ? JSON.parse(rows[0].value) : {};
-    const apiKey = process.env.KASERA_API_KEY?.trim() || '';
     return res.json({
       settings: {
         ...defaultPlatformPaymentSettings,
         ...saved,
-        kaseraConfigured: /^(kp_test_|kp_live_)/.test(apiKey) && Boolean(process.env.KASERA_WEBHOOK_SECRET),
-        kaseraMode: apiKey.startsWith('kp_test_') ? 'sandbox' : apiKey.startsWith('kp_live_') ? 'live' : 'unknown',
+        kaseraConfigured: isPlatformKaseraConfigured(credentials),
+        kaseraMode: platformKaseraMode(credentials),
+        kaseraApiKey: '',
+        kaseraWebhookSecret: '',
         webhookUrl: process.env.PUBLIC_API_URL
           ? `${process.env.PUBLIC_API_URL.replace(/\/+$/, '')}/api/payments/kasera/webhook`
           : ''
@@ -441,18 +449,21 @@ router.get('/payment-settings', async (_req, res, next) => {
 router.put('/payment-settings', async (req, res, next) => {
   const { qrisEnabled, merchantName, instructions, qrisImage } = req.body || {};
   const kaseraEnabled = req.body?.kaseraEnabled === true;
+  const rawApiKey = req.body?.kaseraApiKey;
+  const rawWebhookSecret = req.body?.kaseraWebhookSecret;
+  const apiKey = typeof rawApiKey === 'string' ? rawApiKey.trim() : '';
+  const webhookSecret = typeof rawWebhookSecret === 'string' ? rawWebhookSecret.trim() : '';
   if (typeof qrisEnabled !== 'boolean'
       || typeof merchantName !== 'string' || merchantName.trim().length > 120
       || typeof instructions !== 'string' || instructions.length > 2000
       || !isValidPlatformLogo(qrisImage)
       || (qrisEnabled && !qrisImage)
-      || (kaseraEnabled && (!/^(kp_test_|kp_live_)/.test(process.env.KASERA_API_KEY || '')
-        || !process.env.KASERA_WEBHOOK_SECRET))) {
+      || (rawApiKey != null && typeof rawApiKey !== 'string')
+      || (rawWebhookSecret != null && typeof rawWebhookSecret !== 'string')
+      || apiKey.length > 512 || (apiKey && !/^(kp_test_|kp_live_)\S+$/.test(apiKey))
+      || webhookSecret.length > 512) {
     return res.status(400).json({
-      message: kaseraEnabled && (!/^(kp_test_|kp_live_)/.test(process.env.KASERA_API_KEY || '')
-        || !process.env.KASERA_WEBHOOK_SECRET)
-        ? 'Atur KASERA_API_KEY dan KASERA_WEBHOOK_SECRET di environment server terlebih dahulu.'
-        : 'Periksa status QRIS, nama merchant, instruksi, dan gambar QRIS.'
+      message: 'Periksa status QRIS, nama merchant, instruksi, gambar QRIS, serta format kredensial Kasera.'
     });
   }
   const settings = {
@@ -462,19 +473,41 @@ router.put('/payment-settings', async (req, res, next) => {
     qrisImage,
     kaseraEnabled
   };
+  let connection;
+  let transactionStarted = false;
   try {
-    await pool.execute(
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    transactionStarted = true;
+    const currentCredentials = await readPlatformKaseraCredentials(connection);
+    const credentials = {
+      apiKey: apiKey || currentCredentials.apiKey,
+      webhookSecret: webhookSecret || currentCredentials.webhookSecret
+    };
+    if (kaseraEnabled && !isPlatformKaseraConfigured(credentials)) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(400).json({
+        message: 'Masukkan API key Kasera (kp_test_ atau kp_live_) dan webhook secret sebelum mengaktifkan Kasera Pay.'
+      });
+    }
+
+    if (apiKey || webhookSecret) await savePlatformKaseraCredentials(credentials, connection);
+    await connection.execute(
       `INSERT INTO platform_settings (key_name, value)
        VALUES (?, ?)
        ON DUPLICATE KEY UPDATE value = VALUES(value)`,
       ['platform_payment_settings', JSON.stringify(settings)]
     );
-    const apiKey = process.env.KASERA_API_KEY?.trim() || '';
+    await connection.commit();
+    transactionStarted = false;
     return res.json({
       settings: {
         ...settings,
-        kaseraConfigured: /^(kp_test_|kp_live_)/.test(apiKey) && Boolean(process.env.KASERA_WEBHOOK_SECRET),
-        kaseraMode: apiKey.startsWith('kp_test_') ? 'sandbox' : apiKey.startsWith('kp_live_') ? 'live' : 'unknown',
+        kaseraConfigured: isPlatformKaseraConfigured(credentials),
+        kaseraMode: platformKaseraMode(credentials),
+        kaseraApiKey: '',
+        kaseraWebhookSecret: '',
         webhookUrl: process.env.PUBLIC_API_URL
           ? `${process.env.PUBLIC_API_URL.replace(/\/+$/, '')}/api/payments/kasera/webhook`
           : ''
@@ -482,7 +515,22 @@ router.put('/payment-settings', async (req, res, next) => {
       message: 'Pengaturan pembayaran berhasil disimpan.'
     });
   } catch (error) {
+    if (transactionStarted && connection) {
+      try {
+        await connection.rollback();
+      } catch (rollbackError) {
+        error.rollbackError = rollbackError;
+        return next(error);
+      }
+    }
+    if (error.code === 'SECRET_ENCRYPTION_KEY_MISSING') {
+      return res.status(503).json({
+        message: 'Server belum dikonfigurasi untuk menyimpan kredensial terenkripsi. Atur SCHOOL_SETTINGS_ENCRYPTION_KEY (minimal 32 karakter) pada environment server.'
+      });
+    }
     return next(error);
+  } finally {
+    if (connection) connection.release();
   }
 });
 

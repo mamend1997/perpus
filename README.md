@@ -18,7 +18,7 @@ npm install --prefix client
 
 Isi konfigurasi database di `.env`. Untuk Railway, salin connection URL MySQL ke `DATABASE_URL`; untuk MySQL lokal, isi `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, dan `DB_PASSWORD`. Buat database lokal `e_perpustakaan` terlebih dahulu. Ganti `SCHOOL_SETTINGS_ENCRYPTION_KEY` dengan secret acak minimal 32 karakter dan pertahankan nilainya; key ini digunakan untuk mengenkripsi token integrasi yang tersimpan.
 
-Untuk mengaktifkan pembayaran langganan Kasera Pay, atur `KASERA_API_KEY` (`kp_test_...` untuk Sandbox atau `kp_live_...` untuk Live), `KASERA_WEBHOOK_SECRET` dari mode yang sama, dan `PUBLIC_API_URL` ke URL publik API. Tambahkan `${PUBLIC_API_URL}/api/payments/kasera/webhook` di Developer → Webhook Kasera dan pilih event `payment.paid`, `payment.expired`, serta `payment.failed`. Setelah itu aktifkan Kasera pada menu Super Admin → QRIS & Harga. Checkout sekolah menggunakan QRIS dengan masa berlaku 60 menit; tarif transaksi mengikuti akun Kasera dan dipotong dari penerimaan merchant. Referensi: [Dokumentasi API Kasera Pay](https://pay.kasera.id/docs/api).
+Untuk mengaktifkan pembayaran langganan Kasera Pay, pastikan `SCHOOL_SETTINGS_ENCRYPTION_KEY` sudah diatur, lalu masukkan API key (`kp_test_...` untuk Sandbox atau `kp_live_...` untuk Live) dan webhook secret dari mode yang sama pada menu Super Admin → QRIS & Harga. Kredensial disimpan terenkripsi di database dan tidak dikirim kembali ke browser. Atur `PUBLIC_API_URL` ke URL publik API, lalu tambahkan `${PUBLIC_API_URL}/api/payments/kasera/webhook` di Developer → Webhook Kasera dan pilih event `payment.paid`, `payment.expired`, serta `payment.failed`. Kredensial `KASERA_API_KEY` dan `KASERA_WEBHOOK_SECRET` di environment tetap didukung sebagai fallback. Checkout sekolah menggunakan QRIS dengan masa berlaku 60 menit; tarif transaksi mengikuti akun Kasera dan dipotong dari penerimaan merchant. Referensi: [Dokumentasi API Kasera Pay](https://pay.kasera.id/docs/api).
 
 Set `JWT_SECRET` dengan string acak minimal 32 karakter dan isi `SUPER_ADMIN_NAME`, `SUPER_ADMIN_EMAIL`, serta `SUPER_ADMIN_PASSWORD` (minimal 12 karakter). Lalu jalankan:
 
@@ -42,7 +42,7 @@ Buka `http://localhost:5173` untuk portal sekolah. Perintah seed Master Data men
    - `SUPER_ADMIN_NAME`, `SUPER_ADMIN_EMAIL`, `SUPER_ADMIN_PASSWORD`: kredensial bootstrap admin; password minimal 12 karakter.
    - `CLIENT_ORIGIN`: URL publik layanan aplikasi, misalnya `https://nama-layanan.up.railway.app`.
    - `PUBLIC_API_URL`: URL publik API (umumnya sama dengan `CLIENT_ORIGIN` saat frontend dan API satu domain).
-   - `KASERA_API_KEY` dan `KASERA_WEBHOOK_SECRET`: kredensial mode Sandbox/Live yang sama. Jangan masukkan kredensial live ke repo.
+   - `KASERA_API_KEY` dan `KASERA_WEBHOOK_SECRET`: opsional, sebagai fallback kredensial Kasera mode Sandbox/Live yang sama. Kredensial juga dapat diatur di menu Super Admin → QRIS & Harga; jangan masukkan kredensial live ke repo.
 4. Deploy. Skema dan migrasi database dijalankan otomatis sebelum API mulai. Jalankan `npm run seed:admin` sekali dari Railway service shell untuk membuat akun admin.
 5. Generate domain publik Railway, lalu buka domain tersebut. `/api/health` adalah health check deployment.
 

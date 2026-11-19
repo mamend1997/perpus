@@ -2129,10 +2129,10 @@
   font-size: 9px;
 }
 .book-items-sort select:focus { border-color: #f97316; box-shadow: 0 0 0 3px #f973161c; }
-.book-items-selection-note { color: #d7651c; font-size: 9px; font-weight: 700; }
+.book-items-selection-note { color: #d7651c; font-size: 12px; font-weight: 700; }
 .book-items-table-panel { overflow: hidden; }
 .book-items-table-scroll { max-height: min(66vh, 680px); overflow: auto; }
-.book-items-table { width: 100%; min-width: 840px; border-collapse: separate; border-spacing: 0; color: #526078; font-size: 10px; }
+.book-items-table { width: 100%; min-width: 840px; border-collapse: separate; border-spacing: 0; color: #526078; font-size: 14px; }
 .book-items-table th {
   position: sticky;
   top: 0;
@@ -2140,7 +2140,7 @@
   height: 39px;
   background: #f8f9fc;
   color: #7c879a;
-  font-size: 9px;
+  font-size: 13px;
   font-weight: 750;
   text-align: left;
 }
@@ -2151,16 +2151,16 @@
 .book-items-table th:first-child,
 .book-items-table td:first-child { width: 42px; text-align: center; }
 .book-items-checkbox-cell { width: 38px; text-align: center !important; }
-.book-items-checkbox-cell input { width: 14px; height: 14px; accent-color: #f97316; cursor: pointer; }
-.book-items-serial { display: inline-flex; padding: 5px 8px; border: 1px solid #e4ecfb; border-radius: 7px; background: #f2f7ff; color: #3b67a5; font-size: 9px; font-weight: 800; letter-spacing: 0.3px; }
+.book-items-checkbox-cell input { width: 16px; height: 16px; accent-color: #f97316; cursor: pointer; }
+.book-items-serial { display: inline-flex; padding: 5px 8px; border: 1px solid #e4ecfb; border-radius: 7px; background: #f2f7ff; color: #3b67a5; font-size: 12px; font-weight: 800; letter-spacing: 0.3px; }
 .book-items-title { min-width: 220px; display: grid; gap: 4px; }
-.book-items-title b { color: #35415a; font-size: 10px; line-height: 1.45; }
-.book-items-title small { color: #8994a6; font-size: 9px; }
-.book-item-status { display: inline-flex; align-items: center; padding: 5px 8px; border-radius: 20px; font-size: 9px; font-weight: 750; white-space: nowrap; }
+.book-items-title b { color: #35415a; font-size: 14px; line-height: 1.45; }
+.book-items-title small { color: #8994a6; font-size: 12px; }
+.book-item-status { display: inline-flex; align-items: center; padding: 5px 8px; border-radius: 20px; font-size: 12px; font-weight: 750; white-space: nowrap; }
 .book-item-status.is-available { background: #eafaf2; color: #16834f; }
 .book-item-status.is-loaned { background: #eff6ff; color: #326ab1; }
 .book-item-status.is-damaged { background: #fff1f2; color: #c33b4b; }
-.book-item-condition { display: inline-flex; align-items: center; padding: 5px 8px; border-radius: 20px; font-size: 9px; font-weight: 750; white-space: nowrap; }
+.book-item-condition { display: inline-flex; align-items: center; padding: 5px 8px; border-radius: 20px; font-size: 12px; font-weight: 750; white-space: nowrap; }
 .book-item-condition.is-good { background: #eafaf2; color: #16834f; }
 .book-item-condition.is-lightly-damaged { background: #fff7ed; color: #c15b15; }
 .book-item-condition.is-heavily-damaged { background: #fff1f2; color: #c33b4b; }
@@ -2651,13 +2651,14 @@
 .school-report-tabs button { display: inline-flex; align-items: center; gap: 7px; padding: 9px 12px; border: 1px solid #e2e7f0; border-radius: 9px; background: #fff; color: #647087; cursor: pointer; white-space: nowrap; }
 .school-report-tabs button.selected { border-color: #fed7aa; background: #fff7ed; color: #c2410c; }
 .school-report-filter-panel { display: grid; grid-template-columns: repeat(4, minmax(140px, 1fr)); align-items: end; gap: 11px; padding: 14px; }
+.school-report-filter-panel.is-inventory { grid-template-columns: minmax(0, 1fr); }
 .school-report-filter-panel > label { display: grid; gap: 5px; color: #647087; font-weight: 700; }
 .school-report-filter-panel input, .school-report-filter-panel select { min-width: 0; height: 38px; box-sizing: border-box; padding: 0 9px; border: 1px solid #e2e7ee; border-radius: 8px; background: #fff; color: #46536a; }
 .school-report-filter-panel input:disabled { background: #f3f5f8; color: #8994a6; }
 .school-report-search .master-search { min-width: 0; height: 38px; box-sizing: border-box; }
 .school-report-search .master-search input { width: 100%; border: 0; outline: 0; }
-.school-report-actions { display: flex; gap: 7px; }
-.school-report-actions .master-button { white-space: nowrap; }
+.school-report-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; min-width: 0; }
+.school-report-actions .master-button { min-width: 0; flex: 0 1 auto; white-space: normal; }
 .school-report-orientation { display: grid; min-width: 105px; gap: 4px; color: #647087; font-size: 9px; font-weight: 700; }
 .school-report-orientation select { width: 100%; height: 32px; box-sizing: border-box; padding: 0 8px; border: 1px solid #e2e7ee; border-radius: 7px; background: #fff; color: #46536a; font: inherit; }
 .school-report-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 12px 0; }
@@ -3734,6 +3735,11 @@
 .book-destruction-history .library-panel-heading { padding: 16px; }
 .book-destruction-history .library-panel-heading h2 { margin: 0; color: #35415a; font-size: 15px; }
 .book-destruction-history .library-panel-heading p { margin: 5px 0 0; color: #8994a6; font-size: 10px; }
+.book-destruction-heading-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.school-app-shell .book-destruction-history .book-destruction-table th { font-size: 13px; }
+.school-app-shell .book-destruction-history .book-destruction-table td { font-size: 14px; line-height: 1.5; }
+.book-destruction-checkbox { width: 40px; text-align: center !important; }
+.book-destruction-checkbox input { width: 16px; height: 16px; accent-color: #f97316; }
 .book-destruction-history .catalog-pagination { padding: 10px 15px; }
 .book-destruction-modal { width: min(620px, calc(100vw - 32px)); }
 .book-destruction-page .library-module-heading .library-eyebrow,
@@ -3793,6 +3799,9 @@
   .book-destruction-page .library-module-heading p { font-size: 12px !important; }
   .book-destruction-modal .book-destruction-heading-copy h2 { font-size: 18px !important; }
   .book-destruction-modal .book-destruction-heading-copy p { font-size: 11px !important; }
+  .book-destruction-history .library-panel-heading { align-items: flex-start; }
+  .book-destruction-heading-actions { width: 100%; }
+  .book-destruction-heading-actions button { flex: 1 1 auto; justify-content: center; }
   .book-destruction-form { grid-template-columns: minmax(0, 1fr); gap: 12px; }
   .book-destruction-search-field,
   .book-destruction-selected,

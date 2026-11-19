@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { pool } from '../config/database.js';
 import { defaultSubscriptionPackages } from '../utils/platform-subscription-packages.js';
 import { createKaseraPayment } from '../utils/kasera-payment.js';
+import { isPlatformKaseraConfigured, readPlatformKaseraCredentials } from '../utils/platform-kasera.js';
 
 const router = Router();
 
@@ -38,7 +39,7 @@ router.get('/', requireSchoolAdmin, async (req, res, next) => {
          AND expires_at IS NOT NULL AND expires_at <= NOW()`,
       [req.school.id]
     );
-    const [schoolResult, packageResult, paymentResult, invoiceResult] = await Promise.all([
+    const [schoolResult, packageResult, paymentResult, invoiceResult, credentials] = await Promise.all([
       pool.execute(
         `SELECT s.package_type, s.subscription_expires_at, s.status AS school_status
          FROM tenants_schools s WHERE s.id = ? LIMIT 1`,
@@ -51,7 +52,8 @@ router.get('/', requireSchoolAdmin, async (req, res, next) => {
                 expires_at, paid_at, created_at
          FROM tenant_invoices WHERE school_id = ? ORDER BY created_at DESC, id DESC LIMIT 50`,
         [req.school.id]
-      )
+      ),
+      readPlatformKaseraCredentials()
     ]);
     const [schoolRows] = schoolResult;
     const [packageSettings] = packageResult;
@@ -70,9 +72,7 @@ router.get('/', requireSchoolAdmin, async (req, res, next) => {
         schoolStatus: schoolRows[0].school_status
       },
       packages: packages.filter((item) => item.enabled),
-      kaseraEnabled: payments.kaseraEnabled === true
-        && /^(kp_test_|kp_live_)/.test(process.env.KASERA_API_KEY || '')
-        && Boolean(process.env.KASERA_WEBHOOK_SECRET),
+      kaseraEnabled: payments.kaseraEnabled === true && isPlatformKaseraConfigured(credentials),
       invoices
     });
   } catch (error) {
@@ -83,9 +83,13 @@ router.get('/', requireSchoolAdmin, async (req, res, next) => {
 router.post('/renew', requireSchoolAdmin, async (req, res, next) => {
   const packageId = typeof req.body?.packageId === 'string' ? req.body.packageId : '';
   const period = typeof req.body?.period === 'string' ? req.body.period : '';
-  const configured = /^(kp_test_|kp_live_)/.test(process.env.KASERA_API_KEY || '')
-    && Boolean(process.env.KASERA_WEBHOOK_SECRET);
-  if (!configured) {
+  let credentials;
+  try {
+    credentials = await readPlatformKaseraCredentials();
+  } catch (error) {
+    return next(error);
+  }
+  if (!isPlatformKaseraConfigured(credentials)) {
     return res.status(503).json({ message: 'Gateway Kasera belum dikonfigurasi oleh Super Admin.' });
   }
 

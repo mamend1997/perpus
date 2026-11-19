@@ -6,7 +6,9 @@ const defaultSettings = {
   merchantName: '',
   instructions: '',
   qrisImage: '',
-  kaseraEnabled: false
+  kaseraEnabled: false,
+  kaseraApiKey: '',
+  kaseraWebhookSecret: ''
 };
 
 async function requestPaymentSettings(path, options = {}) {
@@ -121,7 +123,12 @@ export default function PlatformPaymentSettingsPage() {
           <div className="platform-payment-card-heading">
             <div><h2><CreditCard size={18} />Kasera Pay · QRIS Otomatis</h2><p>Buat checkout QRIS untuk tagihan dan perpanjangan akun sekolah. Konfirmasi pembayaran diproses melalui webhook Kasera.</p></div>
             <label className="platform-payment-toggle">
-              <input type="checkbox" checked={settings.kaseraEnabled} disabled={!settings.kaseraConfigured} onChange={(event) => setSettings((current) => ({ ...current, kaseraEnabled: event.target.checked }))} />
+              <input
+                type="checkbox"
+                checked={settings.kaseraEnabled}
+                disabled={!settings.kaseraConfigured && !(settings.kaseraApiKey.trim() && settings.kaseraWebhookSecret.trim())}
+                onChange={(event) => setSettings((current) => ({ ...current, kaseraEnabled: event.target.checked }))}
+              />
               <span>{settings.kaseraEnabled ? 'Aktif' : 'Nonaktif'}</span>
             </label>
           </div>
@@ -130,7 +137,13 @@ export default function PlatformPaymentSettingsPage() {
               <ShieldCheck size={17} />
               <span>{settings.kaseraConfigured ? `Kredensial server terpasang · ${settings.kaseraMode === 'sandbox' ? 'Sandbox' : 'Live'}` : 'Kredensial Kasera belum lengkap di server'}</span>
             </div>
-            <p>API key dan webhook secret hanya dibaca dari environment server; keduanya tidak disimpan di database atau dikirim ke browser. Gunakan key <code>kp_test_</code> untuk uji coba dan <code>kp_live_</code> untuk transaksi sungguhan.</p>
+            <label>API Key Kasera
+              <input type="password" autoComplete="new-password" value={settings.kaseraApiKey} onChange={(event) => setSettings((current) => ({ ...current, kaseraApiKey: event.target.value }))} placeholder="kp_test_... atau kp_live_..." disabled={loading || busy} />
+            </label>
+            <label>Webhook Secret Kasera
+              <input type="password" autoComplete="new-password" value={settings.kaseraWebhookSecret} onChange={(event) => setSettings((current) => ({ ...current, kaseraWebhookSecret: event.target.value }))} placeholder="Masukkan webhook secret" disabled={loading || busy} />
+            </label>
+            <p>Kredensial disimpan terenkripsi di server dan tidak ditampilkan kembali. Isi untuk menambah atau mengganti; kosongkan untuk mempertahankan kredensial tersimpan. Gunakan key <code>kp_test_</code> untuk uji coba dan <code>kp_live_</code> untuk transaksi sungguhan.</p>
             {settings.webhookUrl && <label>URL webhook Kasera<input readOnly value={settings.webhookUrl} onFocus={(event) => event.target.select()} /></label>}
             <small>Tambahkan URL tersebut pada Developer → Webhook di mode Kasera yang sama dengan API key. Tarif/biaya mengikuti pengaturan akun Kasera dan dipotong dari penerimaan merchant; masa berlaku checkout 60 menit.</small>
           </div>

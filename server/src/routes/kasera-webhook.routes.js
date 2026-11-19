@@ -1,11 +1,18 @@
 import { Router } from 'express';
 import { pool } from '../config/database.js';
 import { verifyKaseraWebhook } from '../utils/kasera-payment.js';
+import { readPlatformKaseraCredentials } from '../utils/platform-kasera.js';
 
 const router = Router();
 
 router.post('/webhook', async (req, res, next) => {
-  const secret = process.env.KASERA_WEBHOOK_SECRET;
+  let credentials;
+  try {
+    credentials = await readPlatformKaseraCredentials();
+  } catch (error) {
+    return next(error);
+  }
+  const secret = credentials.webhookSecret;
   const signature = req.get('Kasera-Signature-V1');
   if (!verifyKaseraWebhook(req.body, signature, secret)) {
     return res.status(400).json({ message: 'Signature webhook Kasera tidak valid.' });
@@ -20,7 +27,7 @@ router.post('/webhook', async (req, res, next) => {
 
   const eventId = req.get('Kasera-Event-Id') || event.id;
   const invoiceMatch = /^school-invoice-(\d+)$/.exec(event.data?.external_id || '');
-  const apiKey = process.env.KASERA_API_KEY?.trim() || '';
+  const apiKey = credentials.apiKey;
   const liveKey = apiKey.startsWith('kp_live_');
   if (typeof eventId !== 'string' || eventId.length > 80 || !invoiceMatch
       || (event.id && event.id !== eventId)

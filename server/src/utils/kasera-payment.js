@@ -3,7 +3,8 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 const kaseraApiUrl = 'https://pay.kasera.id/v1';
 
 export async function createKaseraPayment({ invoiceId, amount, description, customer, deliveryDate }) {
-  const apiKey = process.env.KASERA_API_KEY?.trim();
+  const { readPlatformKaseraCredentials } = await import('./platform-kasera.js');
+  const { apiKey } = await readPlatformKaseraCredentials();
   if (!apiKey) throw new Error('Kasera API key belum dikonfigurasi di server.');
 
   const returnUrl = process.env.CLIENT_ORIGIN;

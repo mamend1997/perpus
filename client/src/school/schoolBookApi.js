@@ -95,6 +95,13 @@ export function createBookDestruction(destruction) {
   return requestBookApi('/destructions', { method: 'POST', body: destruction });
 }
 
+export function deleteBookDestructionHistory(destructionIds) {
+  return requestBookApi('/destructions', {
+    method: 'DELETE',
+    body: { destructionIds }
+  });
+}
+
 export async function fetchBookActivityLogs({ page = 1, limit = 25, signal } = {}) {
   const query = new URLSearchParams({ page: String(page), limit: String(limit) });
   return requestBookApi(`/activity-logs?${query}`, { signal });

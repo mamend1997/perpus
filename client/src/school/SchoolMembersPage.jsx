@@ -315,7 +315,6 @@ export default function SchoolMembersPage({ rights, schoolIdentity }) {
   const [memberCards, setMemberCards] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
-  const [printingCards, setPrintingCards] = useState(false);
   const [deleteError, setDeleteError] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
   const selectedIds = [...selectedMembers];
@@ -374,27 +373,6 @@ export default function SchoolMembersPage({ rights, schoolIdentity }) {
     setRefreshKey((current) => current + 1);
   }
 
-  async function printAllMemberCards() {
-    setPrintingCards(true);
-    setError('');
-    try {
-      const allMembers = [];
-      let currentPage = 1;
-      while (true) {
-        const result = await fetchMembers({ page: currentPage, limit: 100, search });
-        const pageMembers = result.members || [];
-        allMembers.push(...pageMembers);
-        if (pageMembers.length < 100) break;
-        currentPage += 1;
-      }
-      if (allMembers.length) setMemberCards(allMembers);
-    } catch (printError) {
-      setError(printError.message);
-    } finally {
-      setPrintingCards(false);
-    }
-  }
-
   async function removeSelectedMembers() {
     if (!deleteTarget?.length) return;
     setDeleting(true);
@@ -440,10 +418,6 @@ export default function SchoolMembersPage({ rights, schoolIdentity }) {
       {error && <div className="library-error" role="alert">{error}</div>}
       <section className="catalog-toolbar-panel member-toolbar">
         <label className="master-search"><Search size={16} /><input value={queryInput} onChange={(event) => setQueryInput(event.target.value)} placeholder="Cari member..." maxLength={100} /></label>
-        <button type="button" className="master-button master-button-light" onClick={printAllMemberCards} disabled={loading || printingCards || !pagination.total}>
-          {printingCards ? <LoaderCircle size={15} className="book-stock-spinner" /> : <Printer size={15} />}
-          {printingCards ? 'Menyiapkan kartu...' : `Cetak Kartu Member${search ? '' : ` (${pagination.total})`}`}
-        </button>
         {canEdit && <button type="button" className="master-button master-button-primary" onClick={() => { setNotice(''); setAddOpen(true); }}><Plus size={15} />Tambah Member</button>}
       </section>
       <section className="master-data-panel member-table-panel">

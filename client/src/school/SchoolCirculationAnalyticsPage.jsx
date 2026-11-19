@@ -9,6 +9,7 @@ import {
   Tooltip, XAxis, YAxis
 } from 'recharts';
 import { fetchCirculationAnalytics } from './schoolCirculationAnalyticsApi.js';
+import { schoolMonthOptions } from './schoolMonthOptions.js';
 
 const palette = ['#f97316', '#3b82f6', '#14b8a6', '#8b5cf6', '#eab308', '#ec4899', '#06b6d4', '#84cc16'];
 const countFormat = new Intl.NumberFormat('id-ID');
@@ -23,13 +24,18 @@ function initialCustomRange() {
   return { start: localDateValue(new Date(today.getFullYear(), today.getMonth(), 1)), end: localDateValue(today) };
 }
 
-function getRange(period, customStart, customEnd) {
+function getRange(period, customStart, customEnd, selectedMonth) {
   const end = new Date();
   const start = new Date(end);
   if (period === 'week') {
     start.setDate(end.getDate() - ((end.getDay() + 6) % 7));
   } else if (period === 'month') {
-    start.setDate(1);
+    start.setFullYear(end.getFullYear(), Number(selectedMonth) - 1, 1);
+    const monthEnd = new Date(end.getFullYear(), Number(selectedMonth), 0);
+    return {
+      startDate: localDateValue(start),
+      endDate: localDateValue(end.getFullYear() === start.getFullYear() && end.getMonth() === start.getMonth() ? end : monthEnd)
+    };
   } else if (period === 'year') {
     start.setMonth(0, 1);
   } else if (period !== 'today') {
@@ -167,6 +173,7 @@ function AnalyticsPrintReport({ data, schoolName, schoolIdentity, onClose }) {
 
 export default function SchoolCirculationAnalyticsPage({ rights, schoolName, schoolIdentity }) {
   const [period, setPeriod] = useState('month');
+  const [selectedMonth, setSelectedMonth] = useState(() => String(new Date().getMonth() + 1).padStart(2, '0'));
   const [customRange, setCustomRange] = useState(initialCustomRange);
   const [analytics, setAnalytics] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -175,8 +182,8 @@ export default function SchoolCirculationAnalyticsPage({ rights, schoolName, sch
   const [exporting, setExporting] = useState(false);
   const [printOpen, setPrintOpen] = useState(false);
   const range = useMemo(
-    () => getRange(period, customRange.start, customRange.end),
-    [period, customRange.start, customRange.end]
+    () => getRange(period, customRange.start, customRange.end, selectedMonth),
+    [period, customRange.start, customRange.end, selectedMonth]
   );
   const validRange = Boolean(range.startDate && range.endDate && range.startDate <= range.endDate);
   const canView = Boolean(rights?.view);
@@ -252,11 +259,17 @@ export default function SchoolCirculationAnalyticsPage({ rights, schoolName, sch
           <select value={period} onChange={(event) => setPeriod(event.target.value)}>
             <option value="today">Hari ini</option>
             <option value="week">Minggu ini</option>
-            <option value="month">Bulan ini</option>
+            <option value="month">Bulanan</option>
             <option value="year">Tahun ini</option>
             <option value="custom">Rentang tanggal</option>
           </select>
         </label>
+        {period === 'month' && <label>
+          Periode Bulan
+          <select value={selectedMonth} onChange={(event) => setSelectedMonth(event.target.value)}>
+            {schoolMonthOptions.map((month) => <option key={month.value} value={month.value}>{month.label}</option>)}
+          </select>
+        </label>}
         {period === 'custom' && (
           <>
             <label>Tanggal mulai<input type="date" value={customRange.start} onChange={(event) => setCustomRange((current) => ({ ...current, start: event.target.value }))} /></label>

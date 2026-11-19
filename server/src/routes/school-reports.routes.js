@@ -64,8 +64,10 @@ router.get('/', requireSchoolPermission('reports.monthly', 'view'), async (req, 
     return res.status(400).json({ message: 'Tahun pelajaran tidak valid.' });
   }
 
-  let dateRange = parseDateRange(req.query);
-  if (!dateRange) return res.status(400).json({ message: 'Rentang tanggal laporan tidak valid.' });
+  let dateRange = type === 'inventory' ? null : parseDateRange(req.query);
+  if (type !== 'inventory' && !dateRange) {
+    return res.status(400).json({ message: 'Rentang tanggal laporan tidak valid.' });
+  }
   if (periodMonth && !/^(?:[1-9]\d{3})-(?:0[1-9]|1[0-2])$/.test(periodMonth)) {
     return res.status(400).json({ message: 'Periode bulan laporan tidak valid.' });
   }

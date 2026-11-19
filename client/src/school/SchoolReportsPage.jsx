@@ -3,6 +3,7 @@ import { Download, FileBarChart2, LoaderCircle, Printer, Search } from 'lucide-r
 import ExcelJS from 'exceljs';
 import { fetchAcademicYears } from './schoolAcademicYearApi.js';
 import { fetchSchoolReport, fetchSchoolReportClasses } from './schoolReportApi.js';
+import { schoolMonthOptions } from './schoolMonthOptions.js';
 
 const reportTypes = [
   { key: 'loans', label: 'Sirkulasi & Peminjaman' },
@@ -25,6 +26,11 @@ function monthStart() {
 function monthEnd(value) {
   const [year, month] = value.split('-').map(Number);
   return `${value}-${String(new Date(Date.UTC(year, month, 0)).getUTCDate()).padStart(2, '0')}`;
+}
+
+function reportPeriodLabel(report) {
+  const { startDate, endDate } = report?.dateRange || {};
+  return startDate && endDate ? `Periode ${startDate} s.d. ${endDate}` : 'Seluruh data';
 }
 
 function formatValue(value, key) {
@@ -104,14 +110,15 @@ export default function SchoolReportsPage({ rights }) {
   const classAndSearchTypes = ['loans', 'fines'];
   const supportsMonth = monthlyTypes.includes(type);
   const supportsClassAndSearch = classAndSearchTypes.includes(type);
+  const supportsDateRange = type !== 'inventory';
 
   function makeReportFilters(pageNumber, limit) {
     const selectedMonth = supportsMonth ? periodMonth : '';
     return {
       type,
-      startDate: selectedMonth ? `${selectedMonth}-01` : startDate,
-      endDate: selectedMonth ? monthEnd(selectedMonth) : endDate,
-      academicYearId: selectedMonth ? '' : academicYearId,
+      startDate: !supportsDateRange ? '' : selectedMonth ? `${selectedMonth}-01` : startDate,
+      endDate: !supportsDateRange ? '' : selectedMonth ? monthEnd(selectedMonth) : endDate,
+      academicYearId: !supportsDateRange || selectedMonth ? '' : academicYearId,
       periodMonth: selectedMonth,
       className: supportsClassAndSearch ? className.trim() : '',
       search: supportsClassAndSearch ? search : '',
@@ -209,7 +216,7 @@ export default function SchoolReportsPage({ rights }) {
         }
       }
       addHeaderRow(`Laporan ${title}`, { fontSize: 14, bold: true });
-      addHeaderRow(`Periode ${report.dateRange.startDate} s.d. ${report.dateRange.endDate}`, { fontSize: 11 });
+      addHeaderRow(reportPeriodLabel(report), { fontSize: 11 });
       sheet.addRow([]);
       sheet.addRow(report.columns.map((column) => column.label));
       allRows.forEach((row) => sheet.addRow(report.columns.map((column) => formatValue(row[column.key], column.key))));
@@ -218,7 +225,10 @@ export default function SchoolReportsPage({ rights }) {
       const url = URL.createObjectURL(new Blob([output], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
       const anchor = document.createElement('a');
       anchor.href = url;
-      anchor.download = `laporan-${type}-${report.dateRange.startDate}-${report.dateRange.endDate}.xlsx`;
+      const periodSuffix = report.dateRange
+        ? `-${report.dateRange.startDate}-${report.dateRange.endDate}`
+        : '';
+      anchor.download = `laporan-${type}${periodSuffix}.xlsx`;
       anchor.click();
       URL.revokeObjectURL(url);
     } catch (exportError) {
@@ -245,16 +255,16 @@ export default function SchoolReportsPage({ rights }) {
         </button>)}
       </div>
 
-      <section className="library-panel school-report-filter-panel">
-        <label>Tahun Pelajaran
+      <section className={`library-panel school-report-filter-panel ${type === 'inventory' ? 'is-inventory' : ''}`}>
+        {supportsDateRange && <label>Tahun Pelajaran
           <select value={academicYearId} onChange={(event) => { setAcademicYearId(event.target.value); setPeriodMonth(''); setPage(1); }}>
             <option value="">Pilih rentang tanggal manual</option>
             {years.map((year) => <option key={year.id} value={year.id}>{year.label}{year.isActive ? ' · Aktif' : ''}</option>)}
           </select>
-        </label>
+        </label>}
         {supportsMonth && <label>Periode Bulan
-          <input type="month" value={periodMonth} onChange={(event) => {
-            const value = event.target.value;
+          <select value={periodMonth ? periodMonth.slice(5, 7) : ''} onChange={(event) => {
+            const value = event.target.value ? `${startDate.slice(0, 4)}-${event.target.value}` : '';
             setPeriodMonth(value);
             setAcademicYearId('');
             if (value) {
@@ -262,14 +272,17 @@ export default function SchoolReportsPage({ rights }) {
               setEndDate(monthEnd(value));
             }
             setPage(1);
-          }} />
+          }}>
+            <option value="">Pilih bulan</option>
+            {schoolMonthOptions.map((month) => <option key={month.value} value={month.value}>{month.label}</option>)}
+          </select>
         </label>}
-        <label>Dari Tanggal
+        {supportsDateRange && <label>Dari Tanggal
           <input type="date" value={startDate} onChange={(event) => { setAcademicYearId(''); setPeriodMonth(''); setStartDate(event.target.value); setPage(1); }} disabled={Boolean(academicYearId || periodMonth)} />
-        </label>
-        <label>Sampai Tanggal
+        </label>}
+        {supportsDateRange && <label>Sampai Tanggal
           <input type="date" value={endDate} onChange={(event) => { setAcademicYearId(''); setPeriodMonth(''); setEndDate(event.target.value); setPage(1); }} disabled={Boolean(academicYearId || periodMonth)} />
-        </label>
+        </label>}
         {supportsClassAndSearch && <label>Kelas / Rombel
           <select value={className} onChange={(event) => { setClassName(event.target.value); setPage(1); }}>
             <option value="">Semua kelas</option>
@@ -306,17 +319,17 @@ export default function SchoolReportsPage({ rights }) {
                 fontStyle: line.italic ? 'italic' : 'normal',
                 textAlign: line.align
               }}>{line.text || '\u00a0'}</span>)}
-              <b>LAPORAN {title.toUpperCase()}</b><small>Periode {report?.dateRange?.startDate} s.d. {report?.dateRange?.endDate}</small>
+              <b>LAPORAN {title.toUpperCase()}</b><small>{reportPeriodLabel(report)}</small>
             </div>
           ) : <div className="school-report-letterhead-content">
             <h2>{report?.school?.name || 'Sekolah'}</h2>
             <p>{report?.school?.address || ''}{report?.school?.npsn ? ` · NPSN ${report.school.npsn}` : ''}</p>
-            <b>LAPORAN {title.toUpperCase()}</b><small>Periode {report?.dateRange?.startDate} s.d. {report?.dateRange?.endDate}</small>
+            <b>LAPORAN {title.toUpperCase()}</b><small>{reportPeriodLabel(report)}</small>
           </div>}
         </div>
         <div className="school-report-document-title">
           <b>LAPORAN {title.toUpperCase()}</b>
-          <small>Periode {report?.dateRange?.startDate} s.d. {report?.dateRange?.endDate}</small>
+          <small>{reportPeriodLabel(report)}</small>
         </div>
         <div className="catalog-table-heading"><div><h2>Data Preview · {title}</h2><p>{report?.pagination?.total?.toLocaleString('id-ID') || 0} baris</p></div></div>
         <div className="master-table-scroll">

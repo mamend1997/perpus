@@ -34,7 +34,7 @@ export function encryptSchoolSecret(value) {
 export function decryptSchoolSecret(value) {
   const [prefix, version, ivValue, tagValue, encryptedValue] = String(value).split(':');
   if (prefix !== 'enc' || version !== 'v1' || !ivValue || !tagValue || !encryptedValue) {
-    throw new Error('Format token WhatsApp tersimpan tidak valid.');
+    throw new Error('Format secret integrasi tersimpan tidak valid.');
   }
   const decipher = createDecipheriv('aes-256-gcm', encryptionKey(), Buffer.from(ivValue, 'base64'));
   decipher.setAuthTag(Buffer.from(tagValue, 'base64'));

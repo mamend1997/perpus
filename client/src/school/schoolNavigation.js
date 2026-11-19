@@ -35,7 +35,6 @@ export const schoolNavigation = [
           { label: 'Tambah Stok Buku', icon: PackagePlus, roles: allRoles, permission: 'books.stock' },
           { label: 'Pindah Rak', icon: Repeat2, roles: staffRoles, permission: 'books.stock' },
           { label: 'Pemusnahan Buku', icon: Trash2, roles: staffRoles, permission: 'books.stock' },
-          { label: 'Log Aktivitas', icon: Activity, roles: staffRoles, permission: 'books.stock' },
           { label: 'Eksemplar', icon: BookOpen, roles: allRoles, permission: 'books.items' },
           { label: 'Pengadaan Buku', icon: PackagePlus, roles: allRoles, permission: 'procurements' }
         ]
@@ -76,7 +75,8 @@ export const schoolNavigation = [
       { label: 'Booking Buku', icon: Ticket, roles: allRoles, permission: 'reservations' },
       { label: 'Ulasan & Rating', icon: Star, roles: allRoles, permission: 'reviews' },
       { label: 'Portal Publik', icon: QrCode, roles: staffRoles, permission: 'master.identity' },
-      { label: 'Pengumuman', icon: MessageSquare, roles: allRoles, permission: 'announcements' }
+      { label: 'Pengumuman', icon: MessageSquare, roles: allRoles, permission: 'announcements' },
+      { label: 'Log Aktivitas', icon: Activity, roles: staffRoles, permission: 'books.stock' }
     ]
   },
   {
