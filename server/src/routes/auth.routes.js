@@ -342,7 +342,7 @@ router.post('/school/login', async (req, res, next) => {
         name: account.name,
         email: account.email,
         role: account.role,
-        supportMode: claims.supportMode === true,
+        supportMode: false,
         school: { id: account.school_id, name: account.school_name, code: account.school_code, logo: account.school_logo }
       }
     });
