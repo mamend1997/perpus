@@ -95,7 +95,6 @@ router.get('/', requireSchoolPermission('announcements', 'view'), async (req, re
   const isStaff = req.school.role !== 'member';
   if (!isStaff) {
     conditions.push("a.status = 'Published'");
-    conditions.push('(a.start_date IS NULL OR a.start_date <= NOW())');
     conditions.push('(a.end_date IS NULL OR a.end_date >= NOW())');
     conditions.push("(a.target_audience = 'all' OR a.target_audience = 'students')");
   } else {

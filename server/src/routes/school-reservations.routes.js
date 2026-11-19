@@ -16,7 +16,7 @@ router.get('/notifications', requireSchoolPermission('reservations', 'view'), as
     const [notifications] = await pool.execute(
       `SELECT id, type, title, message, link, read_at, created_at
        FROM school_notifications
-       WHERE school_id = ? AND user_id = ? AND type <> 'announcement_dismissed'
+       WHERE school_id = ? AND user_id = ? AND type = 'reservation_ready'
        ORDER BY created_at DESC, id DESC
        LIMIT 100`,
       [req.school.id, req.school.userId]
@@ -33,12 +33,13 @@ router.post('/notifications/:id/read', requireSchoolPermission('reservations', '
   try {
     const [result] = await pool.execute(
       `UPDATE school_notifications SET read_at = COALESCE(read_at, NOW())
-       WHERE id = ? AND school_id = ? AND user_id = ?`,
+       WHERE id = ? AND school_id = ? AND user_id = ? AND type = 'reservation_ready'`,
       [id, req.school.id, req.school.userId]
     );
     if (!result.affectedRows) {
       const [rows] = await pool.execute(
-        'SELECT id FROM school_notifications WHERE id = ? AND school_id = ? AND user_id = ? LIMIT 1',
+        `SELECT id FROM school_notifications
+         WHERE id = ? AND school_id = ? AND user_id = ? AND type = 'reservation_ready' LIMIT 1`,
         [id, req.school.id, req.school.userId]
       );
       if (!rows[0]) return res.status(404).json({ message: 'Notifikasi tidak ditemukan.' });
