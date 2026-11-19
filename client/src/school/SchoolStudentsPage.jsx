@@ -467,6 +467,14 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
     : Math.max(classStudentCount, loadedStudentCount);
   const studentCount = Math.max(pagination.total, studentCountFallback);
   const studentTotalPages = Math.max(pagination.totalPages, Math.ceil(studentCount / studentPageSize));
+  const inactiveStudentCount = Math.max(
+    inactivePagination.total,
+    inactiveLoading ? 0 : (inactivePage - 1) * studentPageSize + inactiveStudents.length
+  );
+  const inactiveTotalPages = Math.max(
+    inactivePagination.totalPages,
+    Math.ceil(inactiveStudentCount / studentPageSize)
+  );
   const managedClasses = classes.filter((item) => item.id && !item.isUnassigned);
   const selectedClassIds = Object.keys(selectedClasses);
   const allClassesSelected = managedClasses.length > 0
@@ -765,7 +773,7 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
       <div className="school-student-tabs" role="tablist" aria-label="Data siswa dan rombel">
         <button type="button" role="tab" aria-selected={tab === 'students'} className={tab === 'students' ? 'selected' : ''} onClick={() => setTab('students')}><Users size={16} />Data Siswa <span>{studentCount.toLocaleString('id-ID')}</span></button>
         <button type="button" role="tab" aria-selected={tab === 'classes'} className={tab === 'classes' ? 'selected' : ''} onClick={() => setTab('classes')}>Data Rombel / Kelas <span>{classes.length}</span></button>
-        <button type="button" role="tab" aria-selected={tab === 'inactive'} className={tab === 'inactive' ? 'selected' : ''} onClick={() => setTab('inactive')}>Siswa Nonaktif <span>{inactivePagination.total.toLocaleString('id-ID')}</span></button>
+        <button type="button" role="tab" aria-selected={tab === 'inactive'} className={tab === 'inactive' ? 'selected' : ''} onClick={() => setTab('inactive')}>Siswa Nonaktif <span>{inactiveStudentCount.toLocaleString('id-ID')}</span></button>
       </div>
 
       {tab === 'students' ? (
@@ -863,7 +871,7 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
             {canDelete && <button type="button" className="master-button master-button-danger" disabled={!inactiveSelectedIds.length || deleting} onClick={() => { setDeleteError(''); setDeleteTarget('inactive-selected'); }}><Trash2 size={15} />Hapus Terpilih ({inactiveSelectedIds.length})</button>}
           </section>
           <section className="master-data-panel student-table-panel">
-            <div className="school-settings-panel-heading"><div><h2>Daftar Siswa Nonaktif</h2><p>{inactivePagination.total.toLocaleString('id-ID')} siswa lulus atau berstatus nonaktif{inactiveSelectedIds.length ? ` · ${inactiveSelectedIds.length} dipilih` : ''}.</p></div></div>
+            <div className="school-settings-panel-heading"><div><h2>Daftar Siswa Nonaktif</h2><p>{inactiveStudentCount.toLocaleString('id-ID')} siswa lulus atau berstatus nonaktif{inactiveSelectedIds.length ? ` · ${inactiveSelectedIds.length} dipilih` : ''}.</p></div></div>
             <div className="master-table-scroll">
               <table className="master-table student-table">
                 <thead><tr>{canDelete && <th className="student-checkbox"><input type="checkbox" checked={allInactiveVisibleSelected} onChange={(event) => toggleVisibleInactiveStudents(event.target.checked)} aria-label="Pilih semua siswa nonaktif di halaman ini" /></th>}<th>No</th><th>NIS / NISN</th><th>Nama Lengkap</th><th>Rombel Terakhir</th><th>Status Akun</th><th>Keterangan</th>{(canEdit || canDelete) && <th>Aksi</th>}</tr></thead>
@@ -891,9 +899,9 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
                 </tbody>
               </table>
             </div>
-            <footer className="catalog-pagination"><span>Halaman {inactivePagination.totalPages ? inactivePage : 0} dari {Math.max(1, inactivePagination.totalPages)}</span><div>
+            <footer className="catalog-pagination"><span>Halaman {inactiveTotalPages ? inactivePage : 0} dari {Math.max(1, inactiveTotalPages)}</span><div>
               <button type="button" className="master-icon-button" disabled={inactiveLoading || inactivePage <= 1} onClick={() => setInactivePage((value) => Math.max(1, value - 1))} aria-label="Siswa nonaktif halaman sebelumnya">‹</button>
-              <button type="button" className="master-icon-button" disabled={inactiveLoading || inactivePage >= inactivePagination.totalPages} onClick={() => setInactivePage((value) => value + 1)} aria-label="Siswa nonaktif halaman berikutnya">›</button>
+              <button type="button" className="master-icon-button" disabled={inactiveLoading || inactivePage >= inactiveTotalPages} onClick={() => setInactivePage((value) => value + 1)} aria-label="Siswa nonaktif halaman berikutnya">›</button>
             </div></footer>
           </section>
         </>

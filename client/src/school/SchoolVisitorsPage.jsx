@@ -110,6 +110,11 @@ export default function SchoolVisitorsPage({ rights, role, account, schoolName, 
   const [previewVisit, setPreviewVisit] = useState(null);
   const [printRows, setPrintRows] = useState(null);
   const memberInputRef = useRef(null);
+  const visitCount = Math.max(
+    pagination.total,
+    recordsLoading ? 0 : (page - 1) * pageSize + records.length
+  );
+  const visitTotalPages = Math.max(pagination.totalPages, Math.ceil(visitCount / pageSize));
 
   useEffect(() => {
     if (isMember || !canEdit || memberSearch.trim().length < 2) {
@@ -502,7 +507,7 @@ export default function SchoolVisitorsPage({ rights, role, account, schoolName, 
           {recordsNotice && <div className="master-message master-message-success" role="status">{recordsNotice}</div>}
           <div className="catalog-table-heading">
             <div><span className="library-eyebrow">REKAPITULASI</span><h2>Kunjungan {date ? formatDate(date) : 'Semua Tanggal'}</h2></div>
-            <span>{numberFormat.format(pagination.total)} kunjungan{selectedVisitIds.size ? ` · ${selectedVisitIds.size} dipilih` : ''}</span>
+            <span>{numberFormat.format(visitCount)} kunjungan{selectedVisitIds.size ? ` · ${selectedVisitIds.size} dipilih` : ''}</span>
           </div>
           <div className="visitor-table-scroll">
             <table className="visitor-table">
@@ -540,10 +545,10 @@ export default function SchoolVisitorsPage({ rights, role, account, schoolName, 
             </table>
           </div>
           <footer className="catalog-pagination">
-            <span>Halaman {pagination.totalPages ? page : 0} dari {pagination.totalPages} · {numberFormat.format(pagination.total)} kunjungan</span>
+            <span>Halaman {visitTotalPages ? page : 0} dari {visitTotalPages} · {numberFormat.format(visitCount)} kunjungan</span>
             <div>
               <button type="button" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={recordsLoading || page <= 1} aria-label="Halaman sebelumnya"><ChevronLeft size={15} /></button>
-              <button type="button" onClick={() => setPage((current) => Math.min(pagination.totalPages, current + 1))} disabled={recordsLoading || page >= pagination.totalPages} aria-label="Halaman berikutnya"><ChevronRight size={15} /></button>
+              <button type="button" onClick={() => setPage((current) => Math.min(visitTotalPages, current + 1))} disabled={recordsLoading || page >= visitTotalPages} aria-label="Halaman berikutnya"><ChevronRight size={15} /></button>
             </div>
           </footer>
         </section>
