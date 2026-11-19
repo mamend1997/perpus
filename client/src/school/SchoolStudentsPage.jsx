@@ -206,15 +206,10 @@ function ClassStudentsModal({ schoolClass, onClose, onSave }) {
     async function loadAllClassStudents() {
       try {
         const pageLimit = 100;
-        const firstPage = await fetchClassStudents(schoolClass.id, {
-          page: 1,
-          limit: pageLimit,
-          search,
-          signal: controller.signal
-        });
-        const nextStudents = [...(firstPage.students || [])];
-        const firstPagination = normalizePagination(firstPage.pagination);
-        for (let currentPage = 2; currentPage <= firstPagination.totalPages; currentPage += 1) {
+        const nextStudents = [];
+        let currentPagination = normalizePagination(null);
+        let currentPage = 1;
+        while (true) {
           if (controller.signal.aborted) return;
           const result = await fetchClassStudents(schoolClass.id, {
             page: currentPage,
@@ -222,11 +217,20 @@ function ClassStudentsModal({ schoolClass, onClose, onSave }) {
             search,
             signal: controller.signal
           });
-          nextStudents.push(...(result.students || []));
+          const pageStudents = result.students || [];
+          nextStudents.push(...pageStudents);
+          currentPagination = normalizePagination(result.pagination);
+          if (pageStudents.length < pageLimit) break;
+          currentPage += 1;
         }
         if (controller.signal.aborted) return;
         setStudents(nextStudents);
-        setPagination(firstPagination);
+        const total = Math.max(currentPagination.total, nextStudents.length);
+        setPagination({
+          ...currentPagination,
+          total,
+          totalPages: Math.max(currentPagination.totalPages, Math.ceil(total / pageLimit))
+        });
         setOriginal((current) => {
           const next = { ...current };
           nextStudents.forEach((student) => {
