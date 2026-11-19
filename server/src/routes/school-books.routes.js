@@ -6,6 +6,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import { pool } from '../config/database.js';
 import { requireSchoolPermission } from '../middleware/require-school-permission.js';
+import { barcodeValueFromItemId, readBarcodeLabelSettings } from '../utils/barcode-label-settings.js';
 
 const router = Router();
 const MAX_BOOK_QUANTITY = 10000;
@@ -414,24 +415,58 @@ async function synchronizeBookItems(connection, schoolId, bookId, desiredQuantit
   }
   if (!difference) return;
 
-  let nextSequence = items.reduce((maximum, item) => {
-    const match = String(item.serial_number).match(/^S(\d+)$/i);
-    return match ? Math.max(maximum, Number(match[1])) : maximum;
-  }, -1);
-  const existingSerials = new Set(items.map((item) => item.serial_number));
+  const { serialPrefix } = await readBarcodeLabelSettings(connection, schoolId);
+  const escapedPrefix = serialPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const serialPattern = new RegExp(`^${escapedPrefix}(\\d+)$`, 'i');
+  const nextSequence = items.reduce((maximum, item) => {
+    const match = String(item.serial_number).match(serialPattern);
+    if (!match) return maximum;
+    const sequence = BigInt(match[1]);
+    return sequence > maximum ? sequence : maximum;
+  }, -1n);
+  const existingSerials = new Set(items.map((item) => String(item.serial_number).toUpperCase()));
+  let sequence = nextSequence;
   const rows = [];
   while (rows.length < difference) {
-    nextSequence += 1;
-    const serialNumber = `S${String(nextSequence).padStart(2, '0')}`;
-    if (existingSerials.has(serialNumber)) continue;
-    existingSerials.add(serialNumber);
-    rows.push([schoolId, bookId, serialNumber, defaultRackId || null, 'Tersedia']);
+    sequence += 1n;
+    const serialNumber = `${serialPrefix}${sequence.toString().padStart(2, '0')}`;
+    if (serialNumber.length > 50) {
+      const error = new Error('Prefix serial dan nomor urut melebihi panjang maksimal 50 karakter.');
+      error.status = 400;
+      throw error;
+    }
+    if (existingSerials.has(serialNumber.toUpperCase())) continue;
+    existingSerials.add(serialNumber.toUpperCase());
+    rows.push([schoolId, bookId, serialNumber, `TMP${bookId}-${serialNumber}`, defaultRackId || null, 'Tersedia']);
   }
-  const placeholders = rows.map(() => '(?, ?, ?, ?, ?)').join(', ');
+  const placeholders = rows.map(() => '(?, ?, ?, ?, ?, ?)').join(', ');
   await connection.execute(
-    `INSERT INTO book_items (school_id, book_id, serial_number, rack_id, status) VALUES ${placeholders}`,
+    `INSERT INTO book_items (school_id, book_id, serial_number, barcode_value, rack_id, status) VALUES ${placeholders}`,
     rows.flat()
   );
+
+  const [createdItems] = await connection.execute(
+    `SELECT id FROM book_items
+     WHERE school_id = ? AND book_id = ? AND barcode_value LIKE ?
+     ORDER BY id FOR UPDATE`,
+    [schoolId, bookId, `TMP${bookId}-%`]
+  );
+  for (let offset = 0; offset < createdItems.length; offset += 500) {
+    const chunk = createdItems.slice(offset, offset + 500);
+    const cases = chunk.map(() => 'WHEN ? THEN ?').join(' ');
+    const ids = chunk.map((item) => String(item.id));
+    const placeholdersForIds = ids.map(() => '?').join(', ');
+    const values = chunk.flatMap((item) => [
+      String(item.id),
+      barcodeValueFromItemId(item.id)
+    ]);
+    await connection.execute(
+      `UPDATE book_items
+       SET barcode_value = CASE id ${cases} ELSE barcode_value END
+       WHERE school_id = ? AND id IN (${placeholdersForIds})`,
+      [...values, schoolId, ...ids]
+    );
+  }
 }
 
 router.get('/meta', requireSchoolPermission('books.catalog', 'view'), async (req, res, next) => {
@@ -712,14 +747,40 @@ router.get('/', requireSchoolPermission('books.catalog', 'view'), async (req, re
   }
 });
 
+router.get('/items/books', requireSchoolPermission('books.items', 'view'), async (req, res, next) => {
+  const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+  if (search.length > 100) return res.status(400).json({ message: 'Pencarian buku maksimal 100 karakter.' });
+  if (search.length < 2) return res.json({ books: [] });
+  try {
+    const [books] = await pool.execute(
+      `SELECT CAST(b.id AS CHAR) AS id, b.title, b.nomor_induk, b.kode_buku,
+              COUNT(bi.id) AS item_count
+       FROM books b
+       JOIN book_items bi ON bi.school_id = b.school_id AND bi.book_id = b.id
+       WHERE b.school_id = ? AND (
+         b.title LIKE ? OR b.nomor_induk LIKE ? OR b.kode_buku LIKE ? OR b.isbn LIKE ?
+       )
+       GROUP BY b.id, b.title, b.nomor_induk, b.kode_buku
+       ORDER BY b.title ASC
+       LIMIT 20`,
+      [req.school.id, ...Array(4).fill(`%${search}%`)]
+    );
+    return res.json({ books });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 router.get('/items', requireSchoolPermission('books.items', 'view'), async (req, res, next) => {
   const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+  const bookId = req.query.bookId == null ? '' : String(req.query.bookId);
   const page = parsePageValue(req.query.page, 1, 1000000);
   const limit = parsePageValue(req.query.limit, 25, 100);
   const sort = req.query.sort == null ? 'serial' : req.query.sort;
   const direction = req.query.direction == null ? 'asc' : req.query.direction;
   const status = req.query.status == null ? '' : req.query.status;
   if (search.length > 100) return res.status(400).json({ message: 'Kata pencarian maksimal 100 karakter.' });
+  if (bookId && !/^[1-9]\d*$/.test(bookId)) return res.status(400).json({ message: 'ID buku tidak valid.' });
   if (!page || !limit) return res.status(400).json({ message: 'Halaman atau jumlah data tidak valid.' });
   if (!['serial', 'title'].includes(sort) || !['asc', 'desc'].includes(direction)) {
     return res.status(400).json({ message: 'Pengurutan eksemplar tidak valid.' });
@@ -734,15 +795,20 @@ router.get('/items', requireSchoolPermission('books.items', 'view'), async (req,
     conditions.push('bi.status = ?');
     values.push(status);
   }
+  if (bookId) {
+    conditions.push('bi.book_id = ?');
+    values.push(bookId);
+  }
   if (search) {
-    conditions.push('(bi.serial_number LIKE ? OR b.title LIKE ? OR b.nomor_induk LIKE ? OR b.kode_buku LIKE ?)');
-    values.push(...Array(4).fill(`%${search}%`));
+    conditions.push('(bi.serial_number LIKE ? OR bi.barcode_value LIKE ? OR b.title LIKE ? OR b.nomor_induk LIKE ? OR b.kode_buku LIKE ?)');
+    values.push(...Array(5).fill(`%${search}%`));
   }
 
   try {
     const where = conditions.join(' AND ');
     const from = `FROM book_items bi
-      JOIN books b ON b.school_id = bi.school_id AND b.id = bi.book_id`;
+      JOIN books b ON b.school_id = bi.school_id AND b.id = bi.book_id
+      LEFT JOIN master_categories r ON r.school_id = bi.school_id AND r.id = bi.rack_id AND r.type = 'rak'`;
     const [[count]] = await pool.execute(
       `SELECT COUNT(*) AS total ${from} WHERE ${where}`,
       values
@@ -751,8 +817,9 @@ router.get('/items', requireSchoolPermission('books.items', 'view'), async (req,
     const orderDirection = direction.toUpperCase();
     const offset = (page - 1) * limit;
     const [items] = await pool.execute(
-      `SELECT bi.id, bi.book_id, bi.serial_number, bi.status, b.title AS book_title,
-              b.nomor_induk, b.kode_buku
+      `SELECT bi.id, bi.book_id, bi.serial_number, bi.barcode_value, bi.status,
+              b.title AS book_title, b.nomor_induk, b.kode_buku,
+              r.name AS rack_name, r.code AS rack_code
        ${from}
        WHERE ${where}
        ORDER BY ${orderColumn} ${orderDirection}, bi.serial_number ASC, bi.id ASC
@@ -990,10 +1057,10 @@ router.get('/stock/books', requireSchoolPermission('books.stock', 'view'), async
         `SELECT DISTINCT b.id, b.title, b.nomor_induk, b.kode_buku, b.qty
          FROM book_items bi
          JOIN books b ON b.school_id = bi.school_id AND b.id = bi.book_id
-         WHERE bi.school_id = ? AND bi.serial_number = ?
+         WHERE bi.school_id = ? AND (bi.barcode_value = ? OR bi.serial_number = ?)
          ORDER BY b.title
          LIMIT 10`,
-        [req.school.id, barcode]
+        [req.school.id, barcode, barcode]
       );
       return res.json({ books: itemMatches });
     } catch (error) {
@@ -1008,14 +1075,16 @@ router.get('/stock/books', requireSchoolPermission('books.stock', 'view'), async
   const pattern = `%${search}%`;
   try {
     const [books] = await pool.execute(
-      `SELECT b.id, b.title, b.nomor_induk, b.kode_buku, b.qty
+      `SELECT DISTINCT b.id, b.title, b.nomor_induk, b.kode_buku, b.qty
        FROM books b
+       LEFT JOIN book_items bi ON bi.school_id = b.school_id AND bi.book_id = b.id
        WHERE b.school_id = ? AND (
          b.title LIKE ? OR b.nomor_induk LIKE ? OR b.kode_buku LIKE ?
+         OR bi.serial_number LIKE ? OR bi.barcode_value LIKE ?
        )
        ORDER BY b.title
        LIMIT 10`,
-      [req.school.id, pattern, pattern, pattern]
+      [req.school.id, pattern, pattern, pattern, pattern, pattern]
     );
     return res.json({ books });
   } catch (error) {

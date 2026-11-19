@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Check, ChevronLeft, ChevronRight, Clock3, LoaderCircle, Plus, RefreshCw,
@@ -9,6 +9,7 @@ import {
   updateLoanStatus
 } from './schoolLoanApi.js';
 import CameraBarcodeScanner from './CameraBarcodeScanner.jsx';
+import { fetchBarcodeLabelSettings } from './schoolSettingsApi.js';
 
 const pageSize = 25;
 const numberFormat = new Intl.NumberFormat('id-ID');
@@ -21,33 +22,43 @@ function formatDate(value) {
 }
 
 function LoanSearchPicker({
-  label, placeholder, query, selected, results, loading, onQueryChange, onChoose, onClear, getTitle, getSubtitle, onScan, fixed = false
+  label, placeholder, query, selected, results, loading, onQueryChange, onChoose, onClear,
+  getTitle, getSubtitle, getExactValues, onScan, onBarcodeScan, inputRef, keepSearchWhenSelected = false, fixed = false
 }) {
+  const term = query.trim().toLocaleLowerCase('id-ID');
+  const barcodeMatch = getExactValues && results.find((result) => getExactValues(result)
+    .some((value) => String(value || '').toLocaleLowerCase('id-ID') === term));
   const matchingResult = results.find((result) => {
     const text = `${getTitle(result)} ${getSubtitle(result)}`.toLocaleLowerCase('id-ID');
-    return text === query.trim().toLocaleLowerCase('id-ID');
+    return text === term;
   });
 
   return (
     <div className="loan-picker">
       <span className="loan-form-label">{label}</span>
       {onScan && <CameraBarcodeScanner label="Scan kamera" onScan={onScan} />}
-      {selected ? (
+      {selected && (
         <div className="loan-picker-selected">
           <div><b>{getTitle(selected)}</b><small>{getSubtitle(selected)}</small></div>
           {!fixed && <button type="button" onClick={onClear} aria-label={`Ganti ${label}`} title={`Ganti ${label}`}><X size={15} /></button>}
         </div>
-      ) : (
+      )}
+      {(!selected || keepSearchWhenSelected) && (
         <>
           <label className="master-search loan-picker-search">
             <Search size={16} />
             <input
+              ref={inputRef}
               value={query}
               onChange={(event) => onQueryChange(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === 'Enter') {
                   event.preventDefault();
-                  if (matchingResult || results.length === 1) onChoose(matchingResult || results[0]);
+                  const exactMatch = barcodeMatch || matchingResult || (results.length === 1 ? results[0] : null);
+                  if (exactMatch) {
+                    if (barcodeMatch && onBarcodeScan) onBarcodeScan(exactMatch);
+                    else onChoose(exactMatch);
+                  }
                 }
               }}
               placeholder={placeholder}
@@ -70,7 +81,7 @@ function LoanSearchPicker({
   );
 }
 
-function NewLoanModal({ account, role, durationDays, onClose, onSave }) {
+function NewLoanModal({ account, role, durationDays, scanBehavior, onClose, onSave }) {
   const isMember = role === 'member';
   const [memberSearch, setMemberSearch] = useState('');
   const [memberResults, setMemberResults] = useState([]);
@@ -82,6 +93,8 @@ function NewLoanModal({ account, role, durationDays, onClose, onSave }) {
   const [itemResults, setItemResults] = useState([]);
   const [itemLoading, setItemLoading] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
+  const itemSearchInputRef = useRef(null);
+  const scanPendingRef = useRef(false);
   const [quantity, setQuantity] = useState('1');
   const [manualDuration, setManualDuration] = useState(String(durationDays));
   const [error, setError] = useState('');
@@ -138,16 +151,23 @@ function NewLoanModal({ account, role, durationDays, onClose, onSave }) {
         .then((results) => {
           setItemResults(results);
           const term = itemSearch.trim().toLocaleLowerCase('id-ID');
-          const exactMatches = results.filter((item) => String(item.serial_number || '').toLocaleLowerCase('id-ID') === term);
+          const exactMatches = results.filter((item) => [item.serial_number, item.barcode_value]
+            .some((value) => String(value || '').toLocaleLowerCase('id-ID') === term));
           if (exactMatches.length === 1) {
             setSelectedItem(exactMatches[0]);
             setQuantity('1');
             setItemSearch('');
             setItemResults([]);
+          } else if (scanPendingRef.current && exactMatches.length === 0) {
+            scanPendingRef.current = false;
+            setError('Barcode tidak cocok dengan eksemplar yang tersedia.');
           }
         })
         .catch((searchError) => {
-          if (searchError.name !== 'AbortError') setError(searchError.message);
+          if (searchError.name !== 'AbortError') {
+            scanPendingRef.current = false;
+            setError(searchError.message);
+          }
         })
         .finally(() => {
           if (!controller.signal.aborted) setItemLoading(false);
@@ -159,6 +179,46 @@ function NewLoanModal({ account, role, durationDays, onClose, onSave }) {
     };
   }, [itemSearch]);
 
+  async function submitLoan() {
+    if (!selectedMember || !selectedItem) {
+      setError('Pilih anggota dan eksemplar yang akan dipinjam.');
+      return;
+    }
+    const count = Number(quantity);
+    if (!Number.isInteger(count) || count < 1 || count > Number(selectedItem.available_count || 1)) {
+      setError(`Jumlah pinjam harus antara 1 dan ${selectedItem.available_count || 1} eksemplar yang tersedia.`);
+      return;
+    }
+    if (!Number.isInteger(duration) || duration < 1 || duration > 365) {
+      setError('Durasi peminjaman harus antara 1 sampai 365 hari.');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      await onSave({ userId: selectedMember.id, bookItemId: selectedItem.id, quantity: count, durationDays: duration });
+    } catch (saveError) {
+      setError(saveError.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!scanPendingRef.current || !selectedItem) return;
+    if (scanBehavior === 'focus') {
+      scanPendingRef.current = false;
+      window.requestAnimationFrame(() => itemSearchInputRef.current?.focus());
+      return;
+    }
+    if (!selectedMember) {
+      setError('Pilih anggota agar peminjaman dapat dikirim otomatis.');
+      return;
+    }
+    scanPendingRef.current = false;
+    void submitLoan();
+  }, [selectedItem, selectedMember, scanBehavior]);
+
   useEffect(() => {
     function closeOnEscape(event) {
       if (event.key === 'Escape' && !saving) onClose();
@@ -169,30 +229,7 @@ function NewLoanModal({ account, role, durationDays, onClose, onSave }) {
 
   async function submit(event) {
     event.preventDefault();
-    if (!selectedMember || !selectedItem) {
-      setError('Pilih anggota dan eksemplar yang akan dipinjam.');
-      return;
-    }
-    setSaving(true);
-    setError('');
-    try {
-      const count = Number(quantity);
-      if (!Number.isInteger(count) || count < 1 || count > Number(selectedItem.available_count || 1)) {
-        setError(`Jumlah pinjam harus antara 1 dan ${selectedItem.available_count || 1} eksemplar yang tersedia.`);
-        setSaving(false);
-        return;
-      }
-      if (!Number.isInteger(duration) || duration < 1 || duration > 365) {
-        setError('Durasi peminjaman harus antara 1 sampai 365 hari.');
-        setSaving(false);
-        return;
-      }
-      await onSave({ userId: selectedMember.id, bookItemId: selectedItem.id, quantity: count, durationDays: duration });
-    } catch (saveError) {
-      setError(saveError.message);
-    } finally {
-      setSaving(false);
-    }
+    await submitLoan();
   }
 
   return createPortal(
@@ -225,12 +262,37 @@ function NewLoanModal({ account, role, durationDays, onClose, onSave }) {
             selected={selectedItem}
             results={itemResults}
             loading={itemLoading}
-            onQueryChange={(value) => { setItemSearch(value); setSelectedItem(null); setError(''); }}
+            onQueryChange={(value) => {
+              scanPendingRef.current = false;
+              setItemSearch(value);
+              setItemResults([]);
+              setSelectedItem(null);
+              setQuantity('1');
+              setError('');
+            }}
             onChoose={(item) => { setSelectedItem(item); setItemSearch(''); setItemResults([]); setQuantity('1'); }}
-            onClear={() => { setSelectedItem(null); setQuantity('1'); }}
-            onScan={(value) => { setItemSearch(value); setSelectedItem(null); setError(''); }}
+            onClear={() => { scanPendingRef.current = false; setSelectedItem(null); setQuantity('1'); }}
+            onScan={(value) => {
+              scanPendingRef.current = true;
+              setItemSearch(value);
+              setItemResults([]);
+              setSelectedItem(null);
+              setQuantity('1');
+              setError('');
+            }}
+            onBarcodeScan={(item) => {
+              scanPendingRef.current = true;
+              setSelectedItem(item);
+              setItemSearch('');
+              setItemResults([]);
+              setQuantity('1');
+              setError('');
+            }}
+            getExactValues={(item) => [item.serial_number, item.barcode_value]}
+            inputRef={itemSearchInputRef}
+            keepSearchWhenSelected
             getTitle={(item) => item.book_title}
-            getSubtitle={(item) => `${item.serial_number}${item.kode_buku ? ` · ${item.kode_buku}` : ''}`}
+            getSubtitle={(item) => `${item.serial_number} · Barcode ${item.barcode_value}${item.kode_buku ? ` · ${item.kode_buku}` : ''}`}
           />
           {selectedItem && <label className="loan-form-field">
             <span className="loan-form-label">Jumlah dipinjam</span>
@@ -289,6 +351,22 @@ export default function SchoolLoansPage({ rights, role, account }) {
   const [createOpen, setCreateOpen] = useState(false);
   const [loanDurationDays, setLoanDurationDays] = useState(7);
   const [finePerDay, setFinePerDay] = useState(1000);
+  const [scanBehavior, setScanBehavior] = useState('focus');
+  const [scanSettingsError, setScanSettingsError] = useState('');
+  const [scanSettingsRefresh, setScanSettingsRefresh] = useState(0);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setScanSettingsError('');
+    fetchBarcodeLabelSettings(controller.signal)
+      .then(({ settings }) => {
+        if (!controller.signal.aborted) setScanBehavior(settings.scanBehavior);
+      })
+      .catch((settingsError) => {
+        if (!controller.signal.aborted) setScanSettingsError(settingsError.message);
+      });
+    return () => controller.abort();
+  }, [scanSettingsRefresh]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -366,6 +444,10 @@ export default function SchoolLoansPage({ rights, role, account }) {
 
       {notice && <div className="book-stock-success" role="status"><Check size={16} />{notice}</div>}
       {error && <div className="library-error" role="alert"><span>{error}</span><button type="button" onClick={() => setRefreshKey((current) => current + 1)}><RefreshCw size={14} />Coba lagi</button></div>}
+      {scanSettingsError && <div className="library-error" role="alert">
+        <span>Pengaturan scan tidak dapat dimuat; pemindaian memakai fokus ulang. {scanSettingsError}</span>
+        <button type="button" onClick={() => setScanSettingsRefresh((current) => current + 1)}>Coba lagi</button>
+      </div>}
 
       <section className="catalog-toolbar-panel loan-toolbar">
         <div className="loan-toolbar-top">
@@ -458,6 +540,7 @@ export default function SchoolLoansPage({ rights, role, account }) {
         account={account}
         role={role}
         durationDays={loanDurationDays}
+        scanBehavior={scanBehavior}
         onClose={() => setCreateOpen(false)}
         onSave={submitLoan}
       />}

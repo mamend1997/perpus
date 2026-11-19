@@ -2,6 +2,9 @@ import { Router } from 'express';
 import { pool } from '../config/database.js';
 import { requireSchool } from '../middleware/require-school.js';
 import { encryptSchoolSecret, readLibrarySettings } from '../utils/school-settings.js';
+import {
+  normalizeBarcodeLabelSettings, readBarcodeLabelSettings
+} from '../utils/barcode-label-settings.js';
 
 const router = Router();
 router.use(requireSchool);
@@ -125,6 +128,31 @@ function canManageSettings(req, res, next) {
   }
   return next();
 }
+
+router.get('/barcode-label', async (req, res, next) => {
+  try {
+    const settings = await readBarcodeLabelSettings(pool, req.school.id);
+    return res.json({ settings });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.put('/barcode-label', canManageSettings, async (req, res, next) => {
+  const { value, error } = normalizeBarcodeLabelSettings(req.body);
+  if (error) return res.status(400).json({ message: error });
+  try {
+    await pool.execute(
+      `INSERT INTO school_settings (school_id, \`key\`, \`value\`)
+       VALUES (?, 'barcode_label', ?)
+       ON DUPLICATE KEY UPDATE \`value\` = VALUES(\`value\`)`,
+      [req.school.id, JSON.stringify(value)]
+    );
+    return res.json({ settings: value, message: 'Pengaturan barcode dan label berhasil disimpan.' });
+  } catch (saveError) {
+    return next(saveError);
+  }
+});
 
 router.get('/library', canManageSettings, async (req, res, next) => {
   try {

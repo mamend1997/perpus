@@ -5,8 +5,9 @@ import {
   BookOpen, Check, ChevronLeft, ChevronRight, Download, LoaderCircle,
   Pencil, Printer, Search, Trash2, X
 } from 'lucide-react';
-import { deleteBookItem, fetchBookItems, updateBookItem } from './schoolBookApi.js';
+import { deleteBookItem, fetchBookItems, searchBookItemsBooks, updateBookItem } from './schoolBookApi.js';
 import { downloadBookItemsExcel } from './schoolBookItemsExcel.js';
+import { fetchBarcodeLabelSettings } from './schoolSettingsApi.js';
 import SchoolConfirmDialog from './SchoolConfirmDialog.jsx';
 
 const pageSize = 25;
@@ -82,17 +83,23 @@ function EditBookItemModal({ item, onClose, onSave }) {
 }
 
 function itemBarcodeValue(item) {
-  return String(item.serial_number || `I${item.id}`).replace(/[^\x20-\x7e]/g, '').trim().slice(0, 80) || `I${item.id}`;
+  return String(item.barcode_value || item.serial_number || `I${item.id}`).replace(/[^\x20-\x7e]/g, '').trim().slice(0, 80) || `I${item.id}`;
 }
 
-function BookItemBarcodePrint({ items, schoolName, onClose }) {
+function BookItemBarcodePrint({ items, schoolName, settings, onClose }) {
   const svgRefs = useRef({});
 
   useEffect(() => {
     document.body.classList.add('is-printing-barcode');
     items.forEach((item) => {
       const svg = svgRefs.current[String(item.id)];
-      if (svg) JsBarcode(svg, itemBarcodeValue(item), { format: 'CODE128', displayValue: false, height: 42, width: 1.5, margin: 0 });
+      if (svg) JsBarcode(svg, itemBarcodeValue(item), {
+        format: settings.barcodeFormat,
+        displayValue: false,
+        height: settings.labelSize === 'thermal' ? 24 : 38,
+        width: 1.5,
+        margin: 0
+      });
     });
     const printTimer = window.setTimeout(() => window.print(), 250);
     const afterPrint = () => onClose();
@@ -102,19 +109,20 @@ function BookItemBarcodePrint({ items, schoolName, onClose }) {
       window.removeEventListener('afterprint', afterPrint);
       document.body.classList.remove('is-printing-barcode');
     };
-  }, [items, onClose]);
+  }, [items, onClose, settings]);
 
   return createPortal(
-    <div className="barcode-print-layout">
+    <div className={`barcode-print-layout is-${settings.labelSize}`}>
       <div className="barcode-print-controls"><button type="button" onClick={onClose}>Tutup</button></div>
-      <div className="barcode-print-grid">
+      <div className="barcode-print-grid" style={{ gridTemplateColumns: `repeat(${settings.labelSize === 'thermal' ? 1 : settings.columns}, minmax(0, 1fr))` }}>
         {items.map((item) => (
           <article className="barcode-print-label" key={item.id}>
-            <small className="barcode-print-kicker">PERPUSTAKAAN SEKOLAH</small>
-            <b>{schoolName}</b>
-            <span>{item.book_title}</span>
+            {settings.showLibraryName && <b>{schoolName}</b>}
+            {settings.showBookTitle && <span className="barcode-print-book-title">{item.book_title}</span>}
             <svg ref={(element) => { if (element) svgRefs.current[String(item.id)] = element; }} aria-label={`Barcode ${item.serial_number}`} />
-            <small>{itemBarcodeValue(item)}</small>
+            {settings.showBarcodeValue && <small>Kode Barcode: {itemBarcodeValue(item)}</small>}
+            {settings.showSerialNumber && <small>Serial: {item.serial_number}</small>}
+            {settings.showRackCode && <small>Rak: {item.rack_code || item.rack_name || 'Belum ditempatkan'}</small>}
           </article>
         ))}
       </div>
@@ -129,6 +137,11 @@ export default function SchoolBookItemsPage({ rights, schoolName }) {
   const [page, setPage] = useState(1);
   const [query, setQuery] = useState('');
   const [search, setSearch] = useState('');
+  const [bookQuery, setBookQuery] = useState('');
+  const [bookResults, setBookResults] = useState([]);
+  const [bookSearchLoading, setBookSearchLoading] = useState(false);
+  const [bookSearchError, setBookSearchError] = useState('');
+  const [selectedBook, setSelectedBook] = useState(null);
   const [sort, setSort] = useState('serial');
   const [direction, setDirection] = useState('asc');
   const [status, setStatus] = useState('');
@@ -142,11 +155,28 @@ export default function SchoolBookItemsPage({ rights, schoolName }) {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
+  const [barcodeSettings, setBarcodeSettings] = useState(null);
+  const [barcodeSettingsError, setBarcodeSettingsError] = useState('');
+  const [barcodeSettingsRefresh, setBarcodeSettingsRefresh] = useState(0);
   const selectAllRef = useRef(null);
   const canEdit = Boolean(rights?.edit);
   const canDelete = Boolean(rights?.delete);
   const allSelected = items.length > 0 && items.every((item) => selectedIds.has(String(item.id)));
   const partiallySelected = !allSelected && items.some((item) => selectedIds.has(String(item.id)));
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setBarcodeSettings(null);
+    setBarcodeSettingsError('');
+    fetchBarcodeLabelSettings(controller.signal)
+      .then(({ settings }) => {
+        if (!controller.signal.aborted) setBarcodeSettings(settings);
+      })
+      .catch((settingsError) => {
+        if (!controller.signal.aborted) setBarcodeSettingsError(settingsError.message);
+      });
+    return () => controller.abort();
+  }, [barcodeSettingsRefresh]);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -157,6 +187,38 @@ export default function SchoolBookItemsPage({ rights, schoolName }) {
   }, [query]);
 
   useEffect(() => {
+    const term = bookQuery.trim();
+    if (selectedBook || term.length < 2) {
+      setBookResults([]);
+      setBookSearchLoading(false);
+      setBookSearchError('');
+      return undefined;
+    }
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => {
+      setBookSearchLoading(true);
+      setBookSearchError('');
+      searchBookItemsBooks(term, controller.signal)
+        .then((books) => {
+          if (!controller.signal.aborted) setBookResults(books);
+        })
+        .catch((searchError) => {
+          if (!controller.signal.aborted) {
+            setBookResults([]);
+            setBookSearchError(searchError.message);
+          }
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setBookSearchLoading(false);
+        });
+    }, 220);
+    return () => {
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [bookQuery, selectedBook]);
+
+  useEffect(() => {
     if (selectAllRef.current) selectAllRef.current.indeterminate = partiallySelected;
   }, [partiallySelected]);
 
@@ -165,7 +227,7 @@ export default function SchoolBookItemsPage({ rights, schoolName }) {
     setLoading(true);
     setError('');
     setSelectedIds(new Set());
-    fetchBookItems({ page, limit: pageSize, search, sort, direction, status, signal: controller.signal })
+    fetchBookItems({ page, limit: pageSize, search, sort, direction, status, bookId: selectedBook?.id || '', signal: controller.signal })
       .then((result) => {
         if (controller.signal.aborted) return;
         setItems(result.items || []);
@@ -178,7 +240,7 @@ export default function SchoolBookItemsPage({ rights, schoolName }) {
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [page, search, sort, direction, status, refreshKey]);
+  }, [page, search, sort, direction, status, selectedBook, refreshKey]);
 
   function toggleItem(itemId) {
     const id = String(itemId);
@@ -228,11 +290,12 @@ export default function SchoolBookItemsPage({ rights, schoolName }) {
     setError('');
     setNotice('');
     try {
-      const firstPage = await fetchBookItems({ page: 1, limit: 100, search, sort, direction, status });
+      const bookId = selectedBook?.id || '';
+      const firstPage = await fetchBookItems({ page: 1, limit: 100, search, sort, direction, status, bookId });
       const allItems = [...(firstPage.items || [])];
       const totalPages = firstPage.pagination?.totalPages || 0;
       for (let currentPage = 2; currentPage <= totalPages; currentPage += 1) {
-        const result = await fetchBookItems({ page: currentPage, limit: 100, search, sort, direction, status });
+        const result = await fetchBookItems({ page: currentPage, limit: 100, search, sort, direction, status, bookId });
         allItems.push(...(result.items || []));
       }
       await downloadBookItemsExcel(allItems);
@@ -256,13 +319,58 @@ export default function SchoolBookItemsPage({ rights, schoolName }) {
 
       {notice && <div className="book-stock-success" role="status"><Check size={16} />{notice}</div>}
       {error && <div className="library-error" role="alert"><span>{error}</span><button type="button" onClick={() => setRefreshKey((key) => key + 1)}>Coba lagi</button></div>}
+      {barcodeSettingsError && <div className="library-error" role="alert">
+        <span>Pengaturan barcode/label tidak dapat dimuat. {barcodeSettingsError}</span>
+        <button type="button" onClick={() => setBarcodeSettingsRefresh((key) => key + 1)}>Coba lagi</button>
+      </div>}
+      {bookSearchError && <div className="library-error" role="alert">{bookSearchError}</div>}
 
       <section className="catalog-toolbar-panel book-items-toolbar">
         <div className="book-items-toolbar-top">
-          <label className="master-search book-items-search">
-            <Search size={16} />
-            <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cari di sini..." maxLength={100} />
-          </label>
+          <div className="book-items-toolbar-searches">
+            <label className="master-search book-items-search">
+              <Search size={16} />
+              <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cari serial atau judul..." maxLength={100} />
+            </label>
+            <div className="book-items-book-picker">
+              <label htmlFor="book-items-book-search">Pilih buku untuk melihat eksemplar</label>
+              <div className="master-search book-items-book-search">
+                <Search size={16} />
+                <input
+                  id="book-items-book-search"
+                  type="search"
+                  value={bookQuery}
+                  onChange={(event) => {
+                    setBookQuery(event.target.value);
+                    setBookSearchLoading(true);
+                    setSelectedBook(null);
+                    setPage(1);
+                  }}
+                  placeholder="Cari judul, kode, atau nomor induk..."
+                  autoComplete="off"
+                  maxLength={100}
+                />
+                {selectedBook && <button type="button" onClick={() => {
+                  setSelectedBook(null);
+                  setBookQuery('');
+                  setPage(1);
+                }} aria-label="Hapus pilihan buku"><X size={14} /></button>}
+              </div>
+              {!selectedBook && bookQuery.trim().length >= 2 && <div className="book-stock-results book-items-book-options" role="listbox" aria-label="Pilih buku katalog">
+                {bookSearchLoading ? <div className="book-stock-result-message"><LoaderCircle size={15} className="book-stock-spinner" />Mencari buku...</div>
+                  : bookResults.length ? bookResults.map((book) => (
+                    <button type="button" role="option" key={book.id} onClick={() => {
+                      setSelectedBook(book);
+                      setBookQuery(book.title);
+                      setBookResults([]);
+                      setPage(1);
+                    }}>
+                      <b>{book.title}</b><small>{book.kode_buku || book.nomor_induk || 'Kode belum tersedia'} · {Number(book.item_count).toLocaleString('id-ID')} eksemplar</small>
+                    </button>
+                  )) : <div className="book-stock-result-message">Tidak ada buku yang cocok.</div>}
+              </div>}
+            </div>
+          </div>
           <div className="book-items-toolbar-actions">
             <label className="book-items-sort">
               <span>Urutkan</span>
@@ -294,8 +402,8 @@ export default function SchoolBookItemsPage({ rights, schoolName }) {
               {exporting ? <LoaderCircle size={15} className="book-stock-spinner" /> : <Download size={15} />}
               {exporting ? 'Mengekspor...' : 'Export Excel'}
             </button>
-            <button type="button" className="master-button master-button-primary" onClick={() => setPrintItems(selectedItems)} disabled={selectedItems.length === 0}>
-              <Printer size={15} />Cetak Label ({selectedItems.length})
+            <button type="button" className="master-button master-button-primary" onClick={() => setPrintItems(selectedItems)} disabled={!barcodeSettings || selectedItems.length === 0}>
+              <Printer size={15} />Generate &amp; Cetak Label ({selectedItems.length})
             </button>
           </div>
         </div>
@@ -347,8 +455,8 @@ export default function SchoolBookItemsPage({ rights, schoolName }) {
                     </div>
                   </td>}
                 </tr>
-              )) : (
-                <tr><td colSpan={canEdit || canDelete ? 6 : 5} className="book-items-empty"><BookOpen size={20} />{search || status ? 'Tidak ada eksemplar yang cocok dengan pencarian atau filter.' : 'Belum ada data eksemplar buku.'}</td></tr>
+              )              ) : (
+                <tr><td colSpan={canEdit || canDelete ? 6 : 5} className="book-items-empty"><BookOpen size={20} />{search || status || selectedBook ? 'Tidak ada eksemplar yang cocok dengan pencarian atau filter.' : 'Belum ada data eksemplar buku.'}</td></tr>
               )}
             </tbody>
           </table>
@@ -363,7 +471,7 @@ export default function SchoolBookItemsPage({ rights, schoolName }) {
       </section>
 
       {editingItem && <EditBookItemModal item={editingItem} onClose={() => setEditingItem(null)} onSave={saveItem} />}
-      {printItems && <BookItemBarcodePrint items={printItems} schoolName={schoolName || 'Perpustakaan Sekolah'} onClose={() => setPrintItems(null)} />}
+      {printItems && barcodeSettings && <BookItemBarcodePrint items={printItems} schoolName={schoolName || 'Perpustakaan Sekolah'} settings={barcodeSettings} onClose={() => setPrintItems(null)} />}
       {deleteRequest && <SchoolConfirmDialog
         title="Hapus Eksemplar?"
         message="Menghapus eksemplar akan mengurangi jumlah stok buku tersebut satu."

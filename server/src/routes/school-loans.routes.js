@@ -88,7 +88,7 @@ router.get('/items', requireSchoolPermission('circulation.loans', 'view'), async
 
   try {
     const [items] = await pool.execute(
-      `SELECT bi.id, bi.book_id, bi.serial_number, b.title AS book_title,
+      `SELECT bi.id, bi.book_id, bi.serial_number, bi.barcode_value, b.title AS book_title,
               b.kode_buku, b.nomor_induk,
               (SELECT COUNT(*) FROM book_items available
                WHERE available.school_id = bi.school_id AND available.book_id = bi.book_id
@@ -102,16 +102,17 @@ router.get('/items', requireSchoolPermission('circulation.loans', 'view'), async
        FROM book_items bi
        JOIN books b ON b.school_id = bi.school_id AND b.id = bi.book_id
        WHERE bi.school_id = ? AND bi.status = 'Tersedia'
-         AND (? = '' OR b.title LIKE ? OR bi.serial_number LIKE ?
+         AND (? = '' OR b.title LIKE ? OR bi.serial_number LIKE ? OR bi.barcode_value LIKE ?
               OR b.kode_buku LIKE ? OR b.nomor_induk LIKE ?)
          AND NOT EXISTS (
            SELECT 1 FROM loans l
            WHERE l.school_id = bi.school_id AND l.book_item_id = bi.id
              AND l.status IN ('Pending', 'Borrowed')
          )
-       ORDER BY b.title ASC, bi.serial_number ASC
+       ORDER BY CASE WHEN bi.barcode_value = ? OR bi.serial_number = ? THEN 0 ELSE 1 END,
+                b.title ASC, bi.serial_number ASC
        LIMIT 20`,
-      [req.school.id, search, ...Array(4).fill(`%${search}%`)]
+      [req.school.id, search, ...Array(5).fill(`%${search}%`), search, search]
     );
     return res.json({ items });
   } catch (error) {

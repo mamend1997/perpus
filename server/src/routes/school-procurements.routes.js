@@ -226,7 +226,7 @@ router.post('/', requireSchoolPermission('procurements', 'edit'), async (req, re
   if (year != null && year !== '' && !['string', 'number'].includes(typeof year)) {
     return res.status(400).json({ message: 'Tahun terbit harus berupa angka.' });
   }
-  if (typeof year === 'string' && !/^\d{4}$/.test(year)) {
+  if (typeof year === 'string' && year !== '' && !/^\d{4}$/.test(year)) {
     return res.status(400).json({ message: 'Tahun terbit harus berupa 4 digit angka.' });
   }
   const normalizedYear = year == null || year === '' ? null : Number(year);

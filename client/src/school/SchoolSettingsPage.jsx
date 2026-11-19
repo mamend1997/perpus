@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   AlertCircle, Bell, BookOpen, Check, Clock3, MoveDown, MoveUp, Pencil, Plus,
-  Save, ShieldCheck, Smartphone, Star, Trash2, UserPlus, Users, Wallet, X
+  Save, ScanLine, ShieldCheck, Smartphone, Star, Trash2, UserPlus, Users, Wallet, X
 } from 'lucide-react';
 import {
   createSchoolUser, deleteSchoolUser, fetchLibrarySettings, fetchMobileNavbarSettings,
@@ -14,6 +14,7 @@ import {
 } from './schoolPermissions.js';
 import { defaultMobileNavbarSettings, mobileNavbarOptions } from './schoolNavigation.js';
 import SchoolConfirmDialog from './SchoolConfirmDialog.jsx';
+import BarcodeLabelSettingsPanel from './BarcodeLabelSettingsPanel.jsx';
 
 const roleLabels = Object.fromEntries(schoolPermissionRoles.map(({ key, label }) => [key, label]));
 
@@ -503,6 +504,9 @@ export default function SchoolSettingsPage({ onMobileNavbarSettingsSaved }) {
         <button type="button" role="tab" aria-selected={tab === 'navbar'} className={tab === 'navbar' ? 'selected' : ''} onClick={() => setTab('navbar')}>
           <Smartphone size={16} />Navbar Ponsel
         </button>
+        <button type="button" role="tab" aria-selected={tab === 'barcode'} className={tab === 'barcode' ? 'selected' : ''} onClick={() => setTab('barcode')}>
+          <ScanLine size={16} />Barcode &amp; Label
+        </button>
       </div>
 
       {tab === 'accounts' ? (
@@ -583,6 +587,8 @@ export default function SchoolSettingsPage({ onMobileNavbarSettingsSaved }) {
         </section>
       ) : tab === 'navbar' ? (
         <MobileNavbarSettingsPanel onSettingsSaved={onMobileNavbarSettingsSaved} />
+      ) : tab === 'barcode' ? (
+        <BarcodeLabelSettingsPanel />
       ) : <LibrarySettingsPanel />}
 
       {accountModalOpen && <AccountModal key={editingAccount?.id || 'new-account'} account={editingAccount} onClose={() => { setAccountModalOpen(false); setEditingAccount(null); }} onSaved={handleAccountSaved} />}

@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import mysql from 'mysql2/promise';
 import { generateSchoolCode } from '../src/utils/school-code.js';
+import { barcodeValueFromItemId } from '../src/utils/barcode-label-settings.js';
 import { classDetailsFromRombel } from '../src/utils/school-year-promotion.js';
 
 const connectionString = process.env.DATABASE_URL || process.env.MYSQL_URL;
@@ -41,6 +42,49 @@ try {
     `SELECT COLUMN_NAME FROM information_schema.COLUMNS
      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'book_items'`
   );
+  if (!bookItemColumns.some((column) => column.COLUMN_NAME === 'barcode_value')) {
+    await connection.query('ALTER TABLE book_items ADD COLUMN barcode_value VARCHAR(80) NULL AFTER serial_number');
+  }
+  let lastBarcodeItemId = '0';
+  while (true) {
+    const [itemsNeedingBarcode] = await connection.execute(
+      `SELECT id FROM book_items
+       WHERE id > ? AND (barcode_value IS NULL OR barcode_value = '')
+       ORDER BY id LIMIT 500`,
+      [lastBarcodeItemId]
+    );
+    if (!itemsNeedingBarcode.length) break;
+    const cases = itemsNeedingBarcode.map(() => 'WHEN ? THEN ?').join(' ');
+    const ids = itemsNeedingBarcode.map((item) => String(item.id));
+    const placeholders = ids.map(() => '?').join(', ');
+    const values = itemsNeedingBarcode.flatMap((item) => [
+      String(item.id),
+      barcodeValueFromItemId(item.id)
+    ]);
+    await connection.execute(
+      `UPDATE book_items
+       SET barcode_value = CASE id ${cases} ELSE barcode_value END
+       WHERE id IN (${placeholders})`,
+      [...values, ...ids]
+    );
+    lastBarcodeItemId = ids[ids.length - 1];
+  }
+  const [bookItemBarcodeColumns] = await connection.execute(
+    `SELECT IS_NULLABLE FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'book_items'
+       AND COLUMN_NAME = 'barcode_value'`
+  );
+  if (bookItemBarcodeColumns[0]?.IS_NULLABLE === 'YES') {
+    await connection.query('ALTER TABLE book_items MODIFY barcode_value VARCHAR(80) NOT NULL');
+  }
+  const [bookItemBarcodeIndexes] = await connection.execute(
+    `SELECT INDEX_NAME FROM information_schema.STATISTICS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'book_items'
+       AND INDEX_NAME = 'uq_book_items_school_barcode'`
+  );
+  if (!bookItemBarcodeIndexes.length) {
+    await connection.query('ALTER TABLE book_items ADD UNIQUE KEY uq_book_items_school_barcode (school_id, barcode_value)');
+  }
   if (!bookItemColumns.some((column) => column.COLUMN_NAME === 'rack_id')) {
     await connection.query('ALTER TABLE book_items ADD COLUMN rack_id BIGINT UNSIGNED NULL AFTER serial_number');
     await connection.query(

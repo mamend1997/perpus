@@ -1737,14 +1737,28 @@
 .catalog-file-link { width: max-content; display: inline-flex; align-items: center; gap: 6px; padding: 8px 10px; border-radius: 8px; background: linear-gradient(110deg, #f97316, #3b82f6); color: #fff; font-size: 10px; font-weight: 700; text-decoration: none; }
 
 .barcode-print-layout { display: none; }
-.barcode-print-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8mm; }
-.barcode-print-label { min-height: 40mm; display: grid; align-content: center; justify-items: center; gap: 3mm; padding: 5mm; border: 1px dashed #aab0ba; text-align: center; }
+.barcode-print-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6mm; }
+.barcode-print-label { min-height: 34mm; display: grid; align-content: center; justify-items: center; gap: 2mm; padding: 4mm; border: 1px dashed #aab0ba; text-align: center; }
 .barcode-print-label b { font-size: 10pt; }
-.barcode-print-kicker { color: #555; font-size: 7pt !important; letter-spacing: 0.6px; }
 .barcode-print-label span { max-width: 100%; font-size: 9pt; font-weight: 600; overflow-wrap: anywhere; }
+.barcode-print-book-title { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .barcode-print-label svg { max-width: 100%; height: auto; }
 .barcode-print-label small { font-size: 8pt; letter-spacing: 0.5px; }
 .barcode-print-controls { display: none; }
+.barcode-print-layout.is-thermal { page: barcode-thermal; }
+.barcode-print-layout.is-A4 { page: barcode-a4; }
+.barcode-print-layout.is-F4 { page: barcode-f4; }
+.barcode-print-layout.is-thermal .barcode-print-grid { display: block; }
+.barcode-print-layout.is-thermal .barcode-print-label { box-sizing: border-box; width: 50mm; height: 30mm; min-height: 0; gap: 1mm; padding: 2mm; border-style: dotted; break-after: page; }
+.barcode-print-layout.is-thermal .barcode-print-label:last-child { break-after: auto; }
+.barcode-print-layout.is-thermal .barcode-print-label b { font-size: 7pt; }
+.barcode-print-layout.is-thermal .barcode-print-label span,
+.barcode-print-layout.is-thermal .barcode-print-label small { font-size: 6pt; }
+.barcode-print-layout.is-thermal .barcode-print-book-title { -webkit-line-clamp: 1; }
+.barcode-print-layout.is-thermal .barcode-print-label svg { max-height: 10mm; }
+@page barcode-thermal { size: 50mm 30mm; margin: 0; }
+@page barcode-a4 { size: A4; margin: 6mm; }
+@page barcode-f4 { size: 215.9mm 330.2mm; margin: 6mm; }
 
 @media (max-width: 900px) {
   .catalog-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -1789,8 +1803,9 @@
   .school-page-content { background: #fff !important; }
   body.is-printing-barcode > #root { display: none !important; }
   body > .barcode-print-layout { display: block !important; padding: 0; color: #111; }
-  .barcode-print-grid { grid-template-columns: repeat(3, 1fr); gap: 6mm; }
-  .barcode-print-label { min-height: 38mm; break-inside: avoid; }
+  .barcode-print-label { break-inside: avoid; }
+  .barcode-print-layout.is-A4 .barcode-print-grid,
+  .barcode-print-layout.is-F4 .barcode-print-grid { gap: 4mm; }
 }
 
 .book-stock-page .library-module-heading h1 { font-size: 25px; }
@@ -1987,7 +2002,17 @@
 
 .book-items-toolbar { gap: 10px; }
 .book-items-toolbar-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.book-items-toolbar-searches { min-width: 0; display: flex; align-items: end; flex: 1; gap: 9px; }
 .book-items-search { box-sizing: border-box; width: min(320px, 100%); height: 39px; }
+.book-items-book-picker { position: relative; width: min(350px, 100%); display: grid; gap: 4px; color: #788499; font-size: 9px; font-weight: 700; }
+.book-items-book-search { box-sizing: border-box; width: 100%; min-width: 0; height: 39px; }
+.book-items-book-search input { font-size: 10px; }
+.book-items-book-search > button { display: grid; width: 26px; height: 26px; flex: 0 0 26px; place-items: center; border: 0; border-radius: 6px; background: transparent; color: #8994a6; cursor: pointer; }
+.book-items-book-search > button:hover { background: #f3f5f8; color: #35415a; }
+.book-items-book-options button { width: 100%; display: grid; gap: 4px; padding: 9px; border: 0; border-radius: 7px; background: #fff; color: #35415a; cursor: pointer; font: inherit; text-align: left; }
+.book-items-book-options button:hover { background: #fff7ed; }
+.book-items-book-options button b { font-size: 10px; }
+.book-items-book-options button small { color: #8994a6; font-size: 9px; }
 .book-items-toolbar-actions { display: flex; align-items: end; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .book-items-sort { display: grid; gap: 4px; color: #788499; font-size: 9px; font-weight: 700; }
 .book-items-sort select {
@@ -2055,7 +2080,9 @@
 
 @media (max-width: 900px) {
   .book-items-toolbar-top { align-items: stretch; flex-direction: column; }
-  .book-items-search { width: 100%; }
+  .book-items-toolbar-searches { align-items: stretch; flex-direction: column; }
+  .book-items-search,
+  .book-items-book-picker { width: 100%; }
   .book-items-toolbar-actions { justify-content: flex-start; }
 }
 
@@ -2433,6 +2460,50 @@
 .school-library-settings-savebar > span { display: flex; align-items: center; gap: 6px; color: #8792a4; }
 .school-settings-clear-token { color: #b42332; }
 
+.barcode-label-settings-panel { display: grid; gap: 0; padding: 0; }
+.barcode-label-settings-layout { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(240px, 0.7fr); align-items: start; gap: 18px; padding: 18px; }
+.barcode-label-settings-fields { min-width: 0; }
+.barcode-label-settings-fields .school-library-settings-section:first-child { padding-top: 0; border-top: 0; }
+.school-library-settings-grid select {
+  width: 100%;
+  min-height: 39px;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid #e0e5ed;
+  border-radius: 8px;
+  outline: 0;
+  background: #fff;
+  color: #35415a;
+}
+.school-library-settings-grid select:focus { border-color: #f97316; box-shadow: 0 0 0 3px #f973161c; }
+.barcode-label-element-options { display: grid; gap: 9px; margin-top: 15px; color: #59657b; font-size: 10px; font-weight: 700; }
+.barcode-label-element-options > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; }
+.barcode-label-element-options label { display: flex; align-items: center; gap: 7px; color: #647087; font-size: 9px; font-weight: 550; }
+.barcode-label-element-options input { width: 14px; height: 14px; accent-color: #ed741d; }
+.barcode-label-preview-panel { min-width: 0; display: grid; justify-items: center; gap: 13px; padding: 15px; border: 1px solid #e8ebf2; border-radius: 12px; background: #f8f9fc; }
+.barcode-label-preview-panel > div:first-child { width: 100%; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.barcode-label-preview-panel h3 { margin: 0; color: #35415a; font-size: 12px; }
+.barcode-label-preview-panel small { color: #8994a6; font-size: 9px; }
+.barcode-label-preview {
+  width: min(100%, 300px);
+  min-height: 165px;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 7px;
+  box-sizing: border-box;
+  padding: 14px;
+  border: 1px dashed #aab0ba;
+  background: #fff;
+  color: #35415a;
+  text-align: center;
+}
+.barcode-label-preview.is-thermal { width: min(100%, 50mm); min-height: 30mm; padding: 7px; gap: 3px; }
+.barcode-label-preview > b { max-width: 100%; font-size: 10px; overflow-wrap: anywhere; }
+.barcode-label-preview > span { max-width: 100%; font-size: 9px; font-weight: 650; overflow-wrap: anywhere; }
+.barcode-label-preview svg { max-width: 100%; height: auto; }
+.barcode-label-preview > small { color: #647087; font-size: 8px; overflow-wrap: anywhere; }
+
 .school-report-tabs { display: flex; gap: 7px; margin-bottom: 12px; overflow-x: auto; }
 .school-report-tabs button { display: inline-flex; align-items: center; gap: 7px; padding: 9px 12px; border: 1px solid #e2e7f0; border-radius: 9px; background: #fff; color: #647087; cursor: pointer; white-space: nowrap; }
 .school-report-tabs button.selected { border-color: #fed7aa; background: #fff7ed; color: #c2410c; }
@@ -2514,6 +2585,9 @@
 
 @media (max-width: 760px) {
   .school-library-settings-grid { grid-template-columns: 1fr; }
+  .barcode-label-settings-layout { grid-template-columns: 1fr; padding: 13px; }
+  .barcode-label-preview-panel { justify-items: stretch; }
+  .barcode-label-preview { justify-self: center; }
   .school-report-filter-panel { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .school-report-actions { grid-column: 1 / -1; }
   .school-report-actions .master-button { flex: 1; }
@@ -2522,6 +2596,7 @@
 
 @media (max-width: 520px) {
   .school-report-filter-panel { grid-template-columns: 1fr; }
+  .barcode-label-element-options > div { grid-template-columns: 1fr; }
   .school-report-actions { grid-column: auto; }
   .announcement-editor-grid { grid-template-columns: 1fr; }
   .school-library-settings-savebar { align-items: stretch; flex-direction: column; }
@@ -2720,6 +2795,11 @@
 }
 .student-form-grid input:focus, .student-form-grid select:focus { border-color: #f97316; box-shadow: 0 0 0 3px #f973161c; }
 .student-form-grid small { color: #8994a6; font-weight: 450; }
+.student-class-field { min-width: 0; display: grid; align-content: start; gap: 6px; color: #59657b; font-weight: 700; }
+.student-class-field > label { cursor: pointer; }
+.student-class-field small { line-height: 1.4; }
+.student-class-field .master-form-error { display: block; color: #b42332; }
+.student-class-field .master-form-error button { margin-left: 4px; padding: 0; border: 0; background: transparent; color: #b42332; cursor: pointer; font: inherit; font-weight: 750; text-decoration: underline; }
 .student-form-wide { grid-column: 1 / -1; }
 .student-photo-field { display: grid; align-content: start; gap: 8px; color: #475569; font-size: 13px; font-weight: 650; }
 .student-photo-field > span small { font-size: 12px; }

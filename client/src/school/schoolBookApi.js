@@ -90,7 +90,13 @@ export function deleteBookStockMovements(movementIds) {
   });
 }
 
-export function fetchBookItems({ page = 1, limit = 25, search = '', sort = 'serial', direction = 'asc', status = '', signal } = {}) {
+export async function searchBookItemsBooks(search, signal) {
+  const query = new URLSearchParams({ search });
+  const result = await requestBookApi(`/items/books?${query}`, { signal });
+  return result.books || [];
+}
+
+export function fetchBookItems({ page = 1, limit = 25, search = '', sort = 'serial', direction = 'asc', status = '', bookId = '', signal } = {}) {
   const query = new URLSearchParams({
     page: String(page),
     limit: String(limit),
@@ -99,6 +105,7 @@ export function fetchBookItems({ page = 1, limit = 25, search = '', sort = 'seri
   });
   if (search) query.set('search', search);
   if (status) query.set('status', status);
+  if (bookId) query.set('bookId', bookId);
   return requestBookApi(`/items?${query}`, { signal });
 }
 

@@ -44,12 +44,14 @@ function cellText(cell) {
   return String(cell.value).trim();
 }
 
-function StudentForm({ student, onClose, onSave }) {
+function StudentForm({ student, classes, classesLoading, classesError, onRetryClasses, onClose, onSave }) {
   const [form, setForm] = useState(student ? { ...emptyStudent, ...student } : emptyStudent);
   const [error, setError] = useState('');
   const [photoError, setPhotoError] = useState('');
   const [photoLoading, setPhotoLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const classOptions = classes.filter((item) => item.id && !item.isUnassigned);
+  const hasSavedClass = classOptions.some((item) => item.className === form.rombel);
 
   async function choosePhoto(file) {
     if (!file) return;
@@ -86,7 +88,17 @@ function StudentForm({ student, onClose, onSave }) {
         <form className="student-form-grid" onSubmit={submit}>
           <label>NIS / NISN<input value={form.nis_nisn || ''} onChange={(event) => setForm((value) => ({ ...value, nis_nisn: event.target.value }))} maxLength={40} required /></label>
           <label>Nama Lengkap<input value={form.name || ''} onChange={(event) => setForm((value) => ({ ...value, name: event.target.value }))} maxLength={180} required /></label>
-          <label>Kelas / Rombel<input value={form.rombel || ''} onChange={(event) => setForm((value) => ({ ...value, rombel: event.target.value }))} maxLength={80} placeholder="Contoh: X TKJ 1" /></label>
+          <div className="student-class-field">
+            <label htmlFor="student-rombel">Kelas / Rombel</label>
+            <select id="student-rombel" value={form.rombel || ''} onChange={(event) => setForm((value) => ({ ...value, rombel: event.target.value }))} disabled={classesLoading}>
+              <option value="">{classesLoading ? 'Memuat data kelas...' : 'Pilih kelas / rombel'}</option>
+              {form.rombel && !hasSavedClass && <option value={form.rombel}>{form.rombel} (kelas lama)</option>}
+              {classOptions.map((item) => <option value={item.className} key={item.id}>{item.className}</option>)}
+            </select>
+            {classesError
+              ? <small className="master-form-error" role="alert">Data kelas tidak dapat dimuat: {classesError} <button type="button" onClick={onRetryClasses}>Coba lagi</button></small>
+              : !classesLoading && classOptions.length === 0 && <small>Belum ada kelas. Tambahkan kelas di tab Data Rombel terlebih dahulu.</small>}
+          </div>
           <label>Jenis Kelamin<select value={form.gender || ''} onChange={(event) => setForm((value) => ({ ...value, gender: event.target.value }))}><option value="">Pilih</option><option value="male">Laki-laki</option><option value="female">Perempuan</option><option value="other">Lainnya</option></select></label>
           <label>Kontak WhatsApp<input type="tel" value={form.phone || ''} onChange={(event) => setForm((value) => ({ ...value, phone: event.target.value }))} maxLength={30} /></label>
           <label>Status Siswa<select value={form.status || 'active'} onChange={(event) => setForm((value) => ({ ...value, status: event.target.value }))}><option value="active">Aktif</option><option value="inactive">Nonaktif</option></select></label>
@@ -403,6 +415,7 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
   const [tab, setTab] = useState('students');
   const [students, setStudents] = useState([]);
   const [classes, setClasses] = useState([]);
+  const [classesLoading, setClassesLoading] = useState(true);
   const [gradeLevels, setGradeLevels] = useState([]);
   const [classesError, setClassesError] = useState('');
   const [academicYears, setAcademicYears] = useState([]);
@@ -460,6 +473,7 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
 
   useEffect(() => {
     const controller = new AbortController();
+    setClassesLoading(true);
     setClassesError('');
     fetchStudentClasses(controller.signal)
       .then((result) => {
@@ -467,7 +481,8 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
         setClasses(result.classes || []);
         setGradeLevels(result.gradeLevels || []);
       })
-      .catch((loadError) => { if (!controller.signal.aborted) setClassesError(loadError.message); });
+      .catch((loadError) => { if (!controller.signal.aborted) setClassesError(loadError.message); })
+      .finally(() => { if (!controller.signal.aborted) setClassesLoading(false); });
     return () => controller.abort();
   }, [refreshKey]);
 
@@ -891,7 +906,15 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
           </article>;
         })}
       </section>}
-      {editor && <StudentForm student={editor.id ? editor : null} onClose={() => setEditor(null)} onSave={saveStudent} />}
+      {editor && <StudentForm
+        student={editor.id ? editor : null}
+        classes={classes}
+        classesLoading={classesLoading}
+        classesError={classesError}
+        onRetryClasses={() => setRefreshKey((value) => value + 1)}
+        onClose={() => setEditor(null)}
+        onSave={saveStudent}
+      />}
       {importOpen && <ImportStudentsModal onClose={() => setImportOpen(false)} onImport={runImport} />}
       {classEditor && <SchoolClassForm schoolClass={classEditor.id ? classEditor : null} gradeLevels={gradeLevels} onClose={() => setClassEditor(null)} onSave={saveSchoolClass} />}
       {classAssignment && <ClassStudentsModal schoolClass={classAssignment} onClose={() => setClassAssignment(null)} onSave={saveClassAssignments} />}

@@ -115,7 +115,6 @@ export default function SchoolBookStockPage({ rights }) {
   const [deletingHistory, setDeletingHistory] = useState(false);
   const [deleteHistoryError, setDeleteHistoryError] = useState('');
   const searchRef = useRef(null);
-  const barcodeRef = useRef(null);
   const canEdit = Boolean(rights?.edit);
   const canDelete = Boolean(rights?.delete);
   const currentQuantity = Number(selectedBook?.qty || 0);
@@ -127,7 +126,7 @@ export default function SchoolBookStockPage({ rights }) {
 
   useEffect(() => {
     function closeSearch(event) {
-      if (!searchRef.current?.contains(event.target) && !barcodeRef.current?.contains(event.target)) {
+      if (!searchRef.current?.contains(event.target)) {
         setLookupOpen(false);
         setBarcodeLookupOpen(false);
       }
@@ -209,7 +208,7 @@ export default function SchoolBookStockPage({ rights }) {
         const books = result.books || [];
         setBarcodeMatches(books);
         if (books.length === 1) {
-          chooseBook(books[0], 'barcode');
+          chooseBook(books[0]);
         } else if (books.length > 1) {
           setBarcodeLookupOpen(true);
         } else {
@@ -232,10 +231,10 @@ export default function SchoolBookStockPage({ rights }) {
     };
   }, [barcode]);
 
-  function chooseBook(book, selectedBy = 'name') {
+  function chooseBook(book) {
     setSelectedBook(book);
     setQuery(book.title);
-    if (selectedBy === 'name') setBarcode(book.kode_buku || book.nomor_induk || '');
+    setBarcode('');
     setQuantity('');
     setLookupOpen(false);
     setBarcodeLookupOpen(false);
@@ -289,6 +288,7 @@ export default function SchoolBookStockPage({ rights }) {
       const updatedBook = { ...selectedBook, ...result.book };
       setSelectedBook(updatedBook);
       setQuery(updatedBook.title);
+      setBarcode('');
       setQuantity('');
       setNote('');
       setSuccess(`Stok ${addedQuantity} eksemplar berhasil ditambahkan. Total kini ${Number(updatedBook.qty).toLocaleString('id-ID')}.`);
@@ -368,36 +368,58 @@ export default function SchoolBookStockPage({ rights }) {
           </div>
 
           <div className="book-stock-fields">
-            <div className="book-stock-field" ref={barcodeRef}>
-              <label htmlFor="book-stock-barcode">Scan Barcode Buku / Isi Kode Barcode</label>
-              <CameraBarcodeScanner onScan={(value) => {
+            <div className="book-stock-field" ref={searchRef}>
+              <label htmlFor="book-stock-search">Cari nama, kode, nomor induk, atau scan barcode</label>
+              <CameraBarcodeScanner label="Scan barcode" onScan={(value) => {
                 setBarcode(value);
                 setSelectedBook(null);
                 setQuery('');
+                setQuantity('');
+                setLookupOpen(false);
                 setBarcodeLookupOpen(true);
                 setSubmitError('');
+                setSuccess('');
               }} />
               <div className="book-stock-search-box">
-                <div className={`master-search book-stock-search ${barcodeLookupOpen ? 'is-open' : ''}`}>
+                <div className={`master-search book-stock-search ${lookupOpen || barcodeLookupOpen ? 'is-open' : ''}`}>
                   <Search size={16} aria-hidden="true" />
                   <input
-                    id="book-stock-barcode"
-                    type="text"
-                    value={barcode}
-                    placeholder="Scan barcode atau ketik kode..."
+                    id="book-stock-search"
+                    type="search"
+                    value={barcode || query}
+                    placeholder="Nama buku, kode, nomor induk, atau barcode"
                     autoComplete="off"
                     maxLength={100}
-                    onFocus={() => setBarcodeLookupOpen(true)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter') event.preventDefault();
+                    role="combobox"
+                    aria-autocomplete="list"
+                    aria-expanded={lookupOpen && query.trim().length >= 3 || barcodeLookupOpen && barcodeMatches.length > 1}
+                    aria-controls="book-stock-results"
+                    onFocus={() => {
+                      if (barcode) setBarcodeLookupOpen(true);
+                      else setLookupOpen(true);
                     }}
-                    onChange={(event) => {
-                      setBarcode(event.target.value);
-                      setSelectedBook(null);
+                    onKeyDown={(event) => {
+                      if (event.key !== 'Enter') return;
+                      event.preventDefault();
+                      const value = event.currentTarget.value.trim();
+                      const matchingBook = matches.find((book) => book.title.toLocaleLowerCase('id-ID') === value.toLocaleLowerCase('id-ID'));
+                      if (matchingBook) {
+                        chooseBook(matchingBook);
+                        return;
+                      }
+                      if (!value) return;
+                      setBarcode(value);
                       setQuery('');
-                      setQuantity('');
                       setLookupOpen(false);
                       setBarcodeLookupOpen(true);
+                    }}
+                    onChange={(event) => {
+                      setBarcode('');
+                      setQuery(event.target.value);
+                      setSelectedBook(null);
+                      setQuantity('');
+                      setLookupOpen(true);
+                      setBarcodeLookupOpen(false);
                       setSubmitError('');
                       setSuccess('');
                     }}
@@ -406,7 +428,7 @@ export default function SchoolBookStockPage({ rights }) {
                 {barcodeSearching && <small className="book-stock-barcode-status"><LoaderCircle size={13} className="book-stock-spinner" />Mencari barcode...</small>}
                 {barcodeLookupError && <small className="book-stock-barcode-status is-error" role="status">{barcodeLookupError}</small>}
                 {barcodeLookupOpen && barcodeMatches.length > 1 && (
-                  <div className="book-stock-results" role="listbox" aria-label="Buku dengan barcode yang cocok">
+                  <div className="book-stock-results" id="book-stock-results" role="listbox" aria-label="Buku dengan barcode yang cocok">
                     {barcodeMatches.map((book) => (
                       <button
                         type="button"
@@ -414,7 +436,7 @@ export default function SchoolBookStockPage({ rights }) {
                         aria-selected={selectedBook?.id === book.id}
                         className="book-stock-result"
                         key={book.id}
-                        onClick={() => chooseBook(book, 'barcode')}
+                        onClick={() => chooseBook(book)}
                       >
                         <span className="book-stock-result-icon"><BookOpen size={16} /></span>
                         <span className="book-stock-result-copy">
@@ -426,37 +448,6 @@ export default function SchoolBookStockPage({ rights }) {
                     ))}
                   </div>
                 )}
-              </div>
-              <small>Barcode yang dipindai atau dimasukkan akan memilih buku secara otomatis.</small>
-            </div>
-
-            <div className="book-stock-field" ref={searchRef}>
-              <label htmlFor="book-stock-search">Nama Barang</label>
-              <div className="book-stock-search-box">
-                <div className={`master-search book-stock-search ${lookupOpen ? 'is-open' : ''}`}>
-                  <Search size={16} aria-hidden="true" />
-                  <input
-                    id="book-stock-search"
-                    type="search"
-                    value={query}
-                    placeholder="Ketik minimal 3 huruf..."
-                    autoComplete="off"
-                    role="combobox"
-                    aria-autocomplete="list"
-                    aria-expanded={lookupOpen && query.trim().length >= 3}
-                    aria-controls="book-stock-results"
-                    onFocus={() => setLookupOpen(true)}
-                    onChange={(event) => {
-                      setQuery(event.target.value);
-                      setBarcode('');
-                      setSelectedBook(null);
-                      setQuantity('');
-                      setLookupOpen(true);
-                      setSubmitError('');
-                      setSuccess('');
-                    }}
-                  />
-                </div>
                 {lookupOpen && query.trim().length >= 3 && (
                   <div className="book-stock-results" id="book-stock-results" role="listbox" aria-label="Hasil pencarian buku">
                     {searching ? (
@@ -470,7 +461,7 @@ export default function SchoolBookStockPage({ rights }) {
                         aria-selected={selectedBook?.id === book.id}
                         className="book-stock-result"
                         key={book.id}
-                        onClick={() => chooseBook(book, 'name')}
+                        onClick={() => chooseBook(book)}
                       >
                         <span className="book-stock-result-icon"><BookOpen size={16} /></span>
                         <span className="book-stock-result-copy">
@@ -480,12 +471,12 @@ export default function SchoolBookStockPage({ rights }) {
                         <span className="book-stock-result-qty">{Number(book.qty).toLocaleString('id-ID')} stok</span>
                       </button>
                     )) : (
-                      <div className="book-stock-result-message">Tidak ada judul yang cocok.</div>
+                      <div className="book-stock-result-message">Tidak ada buku yang cocok.</div>
                     )}
                   </div>
                 )}
               </div>
-              <small>Daftar buku yang sesuai muncul setelah mengetik minimal 3 huruf.</small>
+              <small>Gunakan tombol scan atau cari berdasarkan nama, kode, maupun nomor induk.</small>
             </div>
 
             {selectedBook && (

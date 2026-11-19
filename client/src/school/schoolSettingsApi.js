@@ -63,6 +63,17 @@ export async function saveLibrarySettings(settings) {
   });
 }
 
+export async function fetchBarcodeLabelSettings(signal) {
+  return schoolRequest('/settings/barcode-label', { signal });
+}
+
+export async function saveBarcodeLabelSettings(settings) {
+  return schoolRequest('/settings/barcode-label', {
+    method: 'PUT',
+    body: JSON.stringify(settings)
+  });
+}
+
 export async function fetchMobileNavbarSettings() {
   return schoolRequest('/settings/mobile-navbar');
 }

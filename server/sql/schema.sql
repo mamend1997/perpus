@@ -199,11 +199,13 @@ CREATE TABLE IF NOT EXISTS book_items (
   school_id BIGINT UNSIGNED NOT NULL,
   book_id BIGINT UNSIGNED NOT NULL,
   serial_number VARCHAR(50) NOT NULL,
+  barcode_value VARCHAR(80) NOT NULL,
   rack_id BIGINT UNSIGNED NULL,
   status ENUM('Tersedia', 'Dipinjam', 'Rusak') NOT NULL DEFAULT 'Tersedia',
   PRIMARY KEY (id),
   UNIQUE KEY uq_book_items_serial (book_id, serial_number),
   UNIQUE KEY uq_book_items_school_id_id (school_id, id),
+  UNIQUE KEY uq_book_items_school_barcode (school_id, barcode_value),
   KEY idx_book_items_school_status (school_id, status),
   KEY idx_book_items_rack_status (school_id, rack_id, status),
   CONSTRAINT fk_book_items_school FOREIGN KEY (school_id) REFERENCES tenants_schools (id)
