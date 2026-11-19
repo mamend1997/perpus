@@ -376,7 +376,7 @@ export default function SchoolPortal({ account, onLogout, onAccountUpdated }) {
             ) : active === 'Member' ? (
               <SchoolPageErrorBoundary pageLabel="Halaman Member">
                 <Suspense fallback={<div className="library-empty-state">Memuat data member...</div>}>
-                  <SchoolMembersPage rights={activeRights} />
+                  <SchoolMembersPage rights={activeRights} schoolIdentity={printIdentity} />
                 </Suspense>
               </SchoolPageErrorBoundary>
             ) : active === 'Analitik Sirkulasi' ? (

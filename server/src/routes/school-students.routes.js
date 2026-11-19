@@ -120,6 +120,12 @@ function normalizeMemberCredentials(body, { passwordRequired = false } = {}) {
   const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
   const phone = typeof body.phone === 'string' ? body.phone.trim() : '';
   const password = typeof body.password === 'string' ? body.password : '';
+  const hasPhoto = Object.prototype.hasOwnProperty.call(body, 'photo');
+  const photo = body.photo == null || body.photo === '' ? null : body.photo;
+  if (hasPhoto && photo !== null && (typeof photo !== 'string' || photo.length > 700000
+    || !/^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(photo))) {
+    return { error: 'Foto member harus berupa gambar JPG, PNG, atau WebP dengan ukuran hasil kompresi maksimal 500 KB.' };
+  }
   if (!/^[a-z0-9._-]{3,32}$/.test(username)
       || (email && (email.length > 190 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)))
       || phone.length > 30
@@ -128,7 +134,15 @@ function normalizeMemberCredentials(body, { passwordRequired = false } = {}) {
         || !/\d/.test(password) || !/[^A-Za-z0-9]/.test(password)))) {
     return { error: 'Username wajib 3-32 karakter. Periksa email, nomor telepon, dan kata sandi (minimal 8 karakter, huruf besar, angka, dan simbol).' };
   }
-  return { value: { username, email: email || null, phone: phone || null, password } };
+  return {
+    value: {
+      username,
+      email: email || null,
+      phone: phone || null,
+      password,
+      ...(hasPhoto ? { photo } : {})
+    }
+  };
 }
 
 function staffOnly(req, res, next) {
@@ -805,14 +819,30 @@ router.patch('/members/:id/credentials', staffOnly, requireSchoolPermission('mas
     const { value, error } = normalizeMemberCredentials(req.body, { passwordRequired: !members[0].password });
     if (error) return res.status(400).json({ message: error });
     const passwordHash = value.password ? await bcrypt.hash(value.password, 12) : null;
+    const hasPhoto = Object.prototype.hasOwnProperty.call(value, 'photo');
     await pool.execute(
       `UPDATE users
-       SET username = ?, email = ?, phone = ?, password = COALESCE(?, password)
+       SET username = ?, email = ?, phone = ?${hasPhoto ? ', photo = ?' : ''}, password = COALESCE(?, password)
        WHERE id = ? AND school_id = ? AND role = 'member' AND is_library_member = 1`,
-      [value.username, value.email, value.phone, passwordHash, id, req.school.id]
+      [
+        value.username,
+        value.email,
+        value.phone,
+        ...(hasPhoto ? [value.photo] : []),
+        passwordHash,
+        id,
+        req.school.id
+      ]
     );
     return res.json({
-      member: { id, username: value.username, email: value.email, phone: value.phone, has_login_password: true },
+      member: {
+        id,
+        username: value.username,
+        email: value.email,
+        phone: value.phone,
+        ...(hasPhoto ? { photo: value.photo } : {}),
+        has_login_password: true
+      },
       message: 'Akun login member berhasil disimpan.'
     });
   } catch (error) {

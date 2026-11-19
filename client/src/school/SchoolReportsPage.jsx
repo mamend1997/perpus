@@ -28,10 +28,15 @@ function monthEnd(value) {
 
 function formatValue(value, key) {
   if (value == null || value === '') return '—';
+  if (key === 'transaction_id') return `TRX-${String(value).padStart(8, '0')}`;
+  if (['borrow_date', 'due_date', 'return_date'].includes(key)) {
+    const date = new Date(`${String(value).slice(0, 10)}T00:00:00`);
+    return Number.isNaN(date.getTime()) ? '—' : new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium' }).format(date);
+  }
   if (['fine_amount', 'total_fine', 'collected', 'outstanding'].includes(key)) {
     return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(Number(value));
   }
-  if (key === 'fine_status') return ({ paid: 'Lunas', unpaid: 'Belum lunas', waived: 'Dibebaskan' })[value] || value;
+  if (key === 'fine_status') return ({ paid: 'Lunas', unpaid: 'Belum lunas', waived: 'Dibebaskan', none: 'Tidak ada' })[value] || value;
   return value;
 }
 
@@ -70,6 +75,7 @@ export default function SchoolReportsPage({ rights }) {
   const [periodMonth, setPeriodMonth] = useState('');
   const [academicYearId, setAcademicYearId] = useState('');
   const [className, setClassName] = useState('');
+  const [printOrientation, setPrintOrientation] = useState('landscape');
   const [queryInput, setQueryInput] = useState('');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -102,8 +108,12 @@ export default function SchoolReportsPage({ rights }) {
   function printReport() {
     const cleanup = () => {
       document.body.classList.remove('is-printing-school-reports');
+      pageStyle.remove();
       window.removeEventListener('afterprint', cleanup);
     };
+    const pageStyle = document.createElement('style');
+    pageStyle.textContent = `@media print { @page { size: A4 ${printOrientation}; margin: 10mm; } }`;
+    document.head.appendChild(pageStyle);
     document.body.classList.add('is-printing-school-reports');
     window.addEventListener('afterprint', cleanup);
     window.print();
@@ -253,6 +263,12 @@ export default function SchoolReportsPage({ rights }) {
         </label>}
         {supportsClassAndSearch && <label className="school-report-search"><span>Cari data</span><span className="master-search"><Search size={15} /><input value={queryInput} onChange={(event) => setQueryInput(event.target.value)} placeholder="Kata kunci..." maxLength={100} /></span></label>}
         <div className="school-report-actions">
+          <label className="school-report-orientation">Orientasi Cetak
+            <select value={printOrientation} onChange={(event) => setPrintOrientation(event.target.value)}>
+              <option value="landscape">Landscape</option>
+              <option value="portrait">Potret</option>
+            </select>
+          </label>
           <button type="button" className="master-button master-button-light" onClick={printReport} disabled={!report}><Printer size={15} />Cetak / PDF</button>
           <button type="button" className="master-button master-button-primary" onClick={exportExcel} disabled={exporting || loading || !report}>
             {exporting ? <LoaderCircle size={15} className="book-stock-spinner" /> : <Download size={15} />}{exporting ? 'Mengekspor...' : 'Export Excel'}

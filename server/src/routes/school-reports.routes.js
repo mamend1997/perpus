@@ -119,13 +119,14 @@ router.get('/', requireSchoolPermission('reports.monthly', 'view'), async (req, 
         values.push(...Array(4).fill(`%${search}%`));
       }
       countSql = `SELECT COUNT(*) AS total ${from} WHERE ${conditions.join(' AND ')}`;
-      rowsSql = `SELECT l.id, u.name AS member_name, u.nis_nisn, u.rombel, b.title AS book_title,
+      rowsSql = `SELECT l.id, l.id AS transaction_id, u.name AS member_name, u.nis_nisn, u.rombel, b.title AS book_title,
           bi.serial_number, l.borrow_date, l.due_date, l.return_date,
           CASE WHEN l.status = 'Borrowed' AND l.due_date < CURRENT_DATE THEN 'Terlambat'
                WHEN l.status = 'Borrowed' THEN 'Dipinjam'
                WHEN l.status = 'Returned' THEN 'Dikembalikan'
                WHEN l.status = 'Rejected' THEN 'Ditolak' ELSE l.status END AS status,
-          l.fine_amount, l.fine_status
+          l.fine_amount,
+          CASE WHEN l.status = 'Borrowed' THEN 'none' ELSE l.fine_status END AS fine_status
         ${from} WHERE ${conditions.join(' AND ')}
         ORDER BY l.borrow_date DESC, l.id DESC LIMIT ? OFFSET ?`;
       summarySql = `SELECT COUNT(*) AS total,
@@ -134,7 +135,7 @@ router.get('/', requireSchoolPermission('reports.monthly', 'view'), async (req, 
           SUM(l.status = 'Borrowed' AND l.due_date < CURRENT_DATE) AS overdue
         ${from} WHERE ${conditions.join(' AND ')}`;
       columns = [
-        ['id', 'ID Transaksi'], ['member_name', 'Nama Anggota'], ['nis_nisn', 'NIS/NISN'],
+        ['transaction_id', 'ID Transaksi'], ['member_name', 'Nama Anggota'], ['nis_nisn', 'NIS/NISN'],
         ['rombel', 'Kelas'], ['book_title', 'Judul Buku'], ['serial_number', 'Nomor Eksemplar'],
         ['borrow_date', 'Tanggal Pinjam'], ['due_date', 'Batas Kembali'], ['return_date', 'Tanggal Kembali'],
         ['status', 'Status'], ['fine_amount', 'Denda'], ['fine_status', 'Status Denda']
@@ -160,7 +161,7 @@ router.get('/', requireSchoolPermission('reports.monthly', 'view'), async (req, 
         values.push(...Array(4).fill(`%${search}%`));
       }
       countSql = `SELECT COUNT(*) AS total ${from} WHERE ${conditions.join(' AND ')}`;
-      rowsSql = `SELECT l.id, u.name AS member_name, u.nis_nisn, u.rombel, b.title AS book_title,
+      rowsSql = `SELECT l.id, l.id AS transaction_id, u.name AS member_name, u.nis_nisn, u.rombel, b.title AS book_title,
           l.return_date, GREATEST(DATEDIFF(l.return_date, l.due_date), 0) AS days_late,
           l.fine_amount, l.fine_status
         ${from} WHERE ${conditions.join(' AND ')}
@@ -171,7 +172,7 @@ router.get('/', requireSchoolPermission('reports.monthly', 'view'), async (req, 
           COALESCE(SUM(CASE WHEN l.fine_status = 'unpaid' THEN l.fine_amount ELSE 0 END), 0) AS outstanding
         ${from} WHERE ${conditions.join(' AND ')}`;
       columns = [
-        ['id', 'ID Transaksi'], ['member_name', 'Nama Anggota'], ['nis_nisn', 'NIS/NISN'],
+        ['transaction_id', 'ID Transaksi'], ['member_name', 'Nama Anggota'], ['nis_nisn', 'NIS/NISN'],
         ['rombel', 'Kelas'], ['book_title', 'Judul Buku'], ['return_date', 'Tanggal Kembali'],
         ['days_late', 'Terlambat (Hari)'], ['fine_amount', 'Jumlah Denda'], ['fine_status', 'Status Pembayaran']
       ];

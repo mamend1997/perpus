@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, LoaderCircle, Pencil, Plus, Search, Trash2, Users, X } from 'lucide-react';
+import JsBarcode from 'jsbarcode';
+import { Camera, Check, LoaderCircle, Pencil, Plus, Printer, Search, Trash2, Upload, Users, X } from 'lucide-react';
 import { fetchStudentClasses } from './schoolStudentApi.js';
 import {
   addMembers, deleteMembers, fetchMemberCandidates, fetchMembers, updateMemberCredentials
 } from './schoolMemberApi.js';
+import { resizeSchoolImage } from './schoolImageUtils.js';
 import SchoolConfirmDialog from './SchoolConfirmDialog.jsx';
 
 const pageSize = 25;
@@ -157,10 +159,27 @@ function MemberCredentialsModal({ member, onClose, onSave }) {
     username: member.username || '',
     email: member.email || '',
     phone: member.phone || '',
+    photo: member.photo || null,
     password: ''
   });
   const [saving, setSaving] = useState(false);
+  const [photoLoading, setPhotoLoading] = useState(false);
   const [error, setError] = useState('');
+  const [photoError, setPhotoError] = useState('');
+
+  async function choosePhoto(file) {
+    if (!file) return;
+    setPhotoLoading(true);
+    setPhotoError('');
+    try {
+      const photo = await resizeSchoolImage(file);
+      setForm((current) => ({ ...current, photo }));
+    } catch (loadError) {
+      setPhotoError(loadError.message);
+    } finally {
+      setPhotoLoading(false);
+    }
+  }
 
   async function submit(event) {
     event.preventDefault();
@@ -183,6 +202,22 @@ function MemberCredentialsModal({ member, onClose, onSave }) {
       </header>
       <p className="member-dialog-intro"><b>{member.name}</b> · {member.nis_nisn}</p>
       <form className="member-credentials-form" onSubmit={submit}>
+        <div className="member-photo-field member-credentials-wide">
+          <span>Foto Member <small>(opsional)</small></span>
+          <div className="member-photo-control">
+            {form.photo
+              ? <img src={form.photo} alt={`Pratinjau foto ${member.name}`} />
+              : <div className="member-photo-placeholder"><Camera size={22} /><span>Belum ada foto</span></div>}
+            <div>
+              <label className="master-button master-button-light">{photoLoading ? <LoaderCircle size={15} className="book-stock-spinner" /> : <Upload size={15} />}Pilih Foto
+                <input type="file" accept="image/jpeg,image/png,image/webp" disabled={photoLoading || saving} onChange={(event) => { void choosePhoto(event.target.files?.[0]); event.target.value = ''; }} />
+              </label>
+              {form.photo && <button type="button" className="master-button master-button-muted" onClick={() => setForm((current) => ({ ...current, photo: null }))} disabled={photoLoading || saving}><X size={15} />Hapus Foto</button>}
+              <small>JPG, PNG, atau WebP; maksimal 5 MB.</small>
+            </div>
+          </div>
+          {photoError && <small className="library-error" role="alert">{photoError}</small>}
+        </div>
         <label>Username
           <input value={form.username} onChange={(event) => setForm((current) => ({ ...current, username: event.target.value }))} autoComplete="username" minLength={3} maxLength={32} required />
         </label>
@@ -198,10 +233,10 @@ function MemberCredentialsModal({ member, onClose, onSave }) {
         </label>
         {error && <div className="library-error member-credentials-wide" role="alert">{error}</div>}
         <footer className="master-modal-actions member-credentials-wide">
-          <button type="button" className="master-button master-button-muted" onClick={onClose} disabled={saving}>Batal</button>
-          <button type="submit" className="master-button master-button-primary" disabled={saving}>
-            {saving ? <LoaderCircle size={15} className="book-stock-spinner" /> : <Check size={15} />}
-            {saving ? 'Menyimpan...' : 'Simpan Akun Login'}
+          <button type="button" className="master-button master-button-muted" onClick={onClose} disabled={saving || photoLoading}>Batal</button>
+          <button type="submit" className="master-button master-button-primary" disabled={saving || photoLoading}>
+            {saving || photoLoading ? <LoaderCircle size={15} className="book-stock-spinner" /> : <Check size={15} />}
+            {saving ? 'Menyimpan...' : photoLoading ? 'Memproses Foto...' : 'Simpan Akun Login'}
           </button>
         </footer>
       </form>
@@ -209,7 +244,60 @@ function MemberCredentialsModal({ member, onClose, onSave }) {
   );
 }
 
-export default function SchoolMembersPage({ rights }) {
+function MemberCardPrint({ members, schoolIdentity, onClose }) {
+  const barcodeRefs = useRef({});
+
+  useEffect(() => {
+    document.body.classList.add('is-printing-member-cards');
+    members.forEach((member) => {
+      const code = member.member_code || `MBR-${member.id}`;
+      const svg = barcodeRefs.current[String(member.id)];
+      if (svg) JsBarcode(svg, code, { format: 'CODE128', displayValue: false, height: 35, width: 1.35, margin: 0 });
+    });
+    const timer = window.setTimeout(() => window.print(), 250);
+    window.addEventListener('afterprint', onClose);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener('afterprint', onClose);
+      document.body.classList.remove('is-printing-member-cards');
+    };
+  }, [members, onClose]);
+
+  return (
+    <section className="member-card-print-sheet" aria-label="Kartu member perpustakaan">
+      {members.map((member) => {
+        const code = member.member_code || `MBR-${member.id}`;
+        return <article className="member-id-card" key={member.id}>
+          <header>
+            {schoolIdentity?.logo && <img src={schoolIdentity.logo} alt="" />}
+            <div><small>PERPUSTAKAAN SEKOLAH</small><b>{schoolIdentity?.name || 'Perpustakaan Sekolah'}</b></div>
+            <span className="member-id-card-mark">MEMBER</span>
+          </header>
+          <main>
+            {member.photo
+              ? <img className="member-id-card-photo" src={member.photo} alt={`Foto ${member.name}`} />
+              : <div className="member-id-card-photo member-id-card-photo-empty">{member.name?.trim()?.[0]?.toUpperCase() || '?'}</div>}
+            <div className="member-id-card-details">
+              <h2>{member.name || '—'}</h2>
+              <div><span>NIS/NISN</span><b>{member.nis_nisn || '—'}</b></div>
+              <div><span>Kelas</span><b>{member.rombel || '—'}</b></div>
+              <div><span>Email</span><b>{member.email || '—'}</b></div>
+              <div><span>No. Telepon</span><b>{member.phone || '—'}</b></div>
+            </div>
+          </main>
+          <footer>
+            <svg ref={(element) => {
+              if (element) barcodeRefs.current[String(member.id)] = element;
+            }} aria-label={`Barcode member ${code}`} />
+            <b>{code}</b>
+          </footer>
+        </article>;
+      })}
+    </section>
+  );
+}
+
+export default function SchoolMembersPage({ rights, schoolIdentity }) {
   const canEdit = Boolean(rights?.edit);
   const canDelete = Boolean(rights?.delete);
   const [members, setMembers] = useState([]);
@@ -224,12 +312,15 @@ export default function SchoolMembersPage({ rights }) {
   const [notice, setNotice] = useState('');
   const [addOpen, setAddOpen] = useState(false);
   const [editingMember, setEditingMember] = useState(null);
+  const [memberCards, setMemberCards] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [printingCards, setPrintingCards] = useState(false);
   const [deleteError, setDeleteError] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
   const selectedIds = [...selectedMembers];
   const allVisibleSelected = members.length > 0 && members.every((member) => selectedMembers.has(String(member.id)));
+  const closeMemberCards = useCallback(() => setMemberCards(null), []);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -283,6 +374,27 @@ export default function SchoolMembersPage({ rights }) {
     setRefreshKey((current) => current + 1);
   }
 
+  async function printAllMemberCards() {
+    setPrintingCards(true);
+    setError('');
+    try {
+      const allMembers = [];
+      let currentPage = 1;
+      while (true) {
+        const result = await fetchMembers({ page: currentPage, limit: 100, search });
+        const pageMembers = result.members || [];
+        allMembers.push(...pageMembers);
+        if (pageMembers.length < 100) break;
+        currentPage += 1;
+      }
+      if (allMembers.length) setMemberCards(allMembers);
+    } catch (printError) {
+      setError(printError.message);
+    } finally {
+      setPrintingCards(false);
+    }
+  }
+
   async function removeSelectedMembers() {
     if (!deleteTarget?.length) return;
     setDeleting(true);
@@ -323,6 +435,10 @@ export default function SchoolMembersPage({ rights }) {
       {error && <div className="library-error" role="alert">{error}</div>}
       <section className="catalog-toolbar-panel member-toolbar">
         <label className="master-search"><Search size={16} /><input value={queryInput} onChange={(event) => setQueryInput(event.target.value)} placeholder="Cari member..." maxLength={100} /></label>
+        <button type="button" className="master-button master-button-light" onClick={printAllMemberCards} disabled={loading || printingCards || !pagination.total}>
+          {printingCards ? <LoaderCircle size={15} className="book-stock-spinner" /> : <Printer size={15} />}
+          {printingCards ? 'Menyiapkan kartu...' : `Cetak Kartu Member${search ? '' : ` (${pagination.total})`}`}
+        </button>
         {canEdit && <button type="button" className="master-button master-button-primary" onClick={() => { setNotice(''); setAddOpen(true); }}><Plus size={15} />Tambah Member</button>}
       </section>
       <section className="master-data-panel member-table-panel">
@@ -336,11 +452,11 @@ export default function SchoolMembersPage({ rights }) {
           <table className="master-table member-table">
             <thead><tr>
               {canDelete && <th className="member-table-checkbox"><input type="checkbox" checked={allVisibleSelected} onChange={(event) => toggleVisibleMembers(event.target.checked)} aria-label="Pilih semua member pada halaman ini" /></th>}
-              <th>No</th><th>NIS / NISN</th><th>Nama Siswa</th><th>Kelas / Rombel</th><th>Username</th><th>Email</th><th>No. Telepon</th><th>Status Akun Login</th>{(canEdit || canDelete) && <th>Aksi</th>}
+              <th>No</th><th>NIS / NISN</th><th>Nama Siswa</th><th>Kelas / Rombel</th><th>Username</th><th>Email</th><th>No. Telepon</th><th>Status Akun Login</th><th>Aksi</th>
             </tr></thead>
             <tbody>
-              {loading ? <tr><td className="master-empty-cell" colSpan={8 + (canDelete ? 1 : 0) + (canEdit || canDelete ? 1 : 0)}>Memuat data member...</td></tr>
-                : members.length === 0 ? <tr><td className="master-empty-cell" colSpan={8 + (canDelete ? 1 : 0) + (canEdit || canDelete ? 1 : 0)}>Belum ada siswa yang dipilih sebagai member.</td></tr>
+              {loading ? <tr><td className="master-empty-cell" colSpan={9 + (canDelete ? 1 : 0)}>Memuat data member...</td></tr>
+                : members.length === 0 ? <tr><td className="master-empty-cell" colSpan={9 + (canDelete ? 1 : 0)}>Belum ada siswa yang dipilih sebagai member.</td></tr>
                   : members.map((member, index) => <tr key={member.id}>
                     {canDelete && <td className="member-table-checkbox"><input type="checkbox" checked={selectedMembers.has(String(member.id))} onChange={(event) => setSelectedMembers((current) => {
                       const next = new Set(current);
@@ -358,10 +474,11 @@ export default function SchoolMembersPage({ rights }) {
                     <td><span className={`master-status ${member.has_login_password && member.username ? 'is-active' : 'is-inactive'}`}>
                       {member.has_login_password && member.username ? 'Siap login' : 'Belum diatur'}
                     </span></td>
-                    {(canEdit || canDelete) && <td><div className="student-row-actions">
+                    <td><div className="student-row-actions">
+                      <button type="button" className="master-icon-button member-print-row-action" onClick={() => setMemberCards([member])} aria-label={`Cetak kartu ${member.name}`} title="Cetak kartu member"><Printer size={14} /></button>
                       {canEdit && <button type="button" className="master-icon-button" onClick={() => setEditingMember(member)} aria-label={`Edit akun ${member.name}`} title="Edit akun"><Pencil size={14} /></button>}
                       {canDelete && <button type="button" className="master-icon-button" onClick={() => { setDeleteError(''); setDeleteTarget([String(member.id)]); }} aria-label={`Hapus keanggotaan ${member.name}`} title="Hapus keanggotaan"><Trash2 size={14} /></button>}
-                    </div></td>}
+                    </div></td>
                   </tr>)}
             </tbody>
           </table>
@@ -374,6 +491,7 @@ export default function SchoolMembersPage({ rights }) {
       </section>
       {addOpen && <AddMembersModal classes={classes} onClose={() => setAddOpen(false)} onAdd={addSelectedMembers} />}
       {editingMember && <MemberCredentialsModal key={editingMember.id} member={editingMember} onClose={() => setEditingMember(null)} onSave={saveCredentials} />}
+      {memberCards && <MemberCardPrint members={memberCards} schoolIdentity={schoolIdentity} onClose={closeMemberCards} />}
       {deleteTarget && <SchoolConfirmDialog
         title={deleteTarget.length > 1 ? 'Hapus keanggotaan terpilih?' : 'Hapus keanggotaan member?'}
         message="Siswa akan dilepas dari keanggotaan perpustakaan. Data siswa dan akun login tetap tersimpan; akun tidak dapat digunakan sampai siswa ditambahkan kembali sebagai member."
