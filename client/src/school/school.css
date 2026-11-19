@@ -2341,6 +2341,7 @@
 .loan-action-button.is-approve { border-color: #b7ebcc; background: #effbf4; color: #16834f; }
 .loan-action-button.is-reject { border-color: #fecdd3; background: #fff5f6; color: #c43d4d; }
 .loan-action-button.is-return { border-color: #fed7aa; background: #fff7ed; color: #c2410c; }
+.loan-action-button.is-renew { border-color: #c7d8ff; background: #f0f5ff; color: #3768bd; }
 .loan-action-button.is-paid { border-color: #c7d8ff; background: #f0f5ff; color: #3768bd; }
 .loan-return-backdrop { position: fixed; z-index: 1500; inset: 0; display: grid; place-items: center; box-sizing: border-box; padding: 18px; background: #17203380; backdrop-filter: blur(4px); }
 .loan-return-dialog { position: relative; width: min(460px, 100%); box-sizing: border-box; padding: 25px; border: 1px solid #e8edf4; border-radius: 17px; background: #fff; box-shadow: 0 24px 70px #17203335; animation: book-stock-pop-in 150ms ease-out; }
@@ -2361,6 +2362,13 @@
 .loan-return-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 13px; border-top: 1px solid #edf0f5; }
 .loan-return-confirm { display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid #f97316; background: linear-gradient(120deg, #fb923c, #ea580c); color: #fff; box-shadow: 0 4px 12px #c2410c24; }
 .loan-return-confirm:disabled { cursor: wait; opacity: .65; }
+.loan-renewal-form { display: grid; gap: 12px; margin-top: 15px; }
+.loan-renewal-form label { display: grid; gap: 6px; color: #59657b; font-size: 10px; font-weight: 700; }
+.loan-renewal-form input, .loan-renewal-form textarea { width: 100%; box-sizing: border-box; padding: 9px 10px; border: 1px solid #dfe5ee; border-radius: 8px; color: #35415a; font: inherit; }
+.loan-renewal-form textarea { resize: vertical; }
+.loan-renewal-form input:focus, .loan-renewal-form textarea:focus { outline: 2px solid #c7d8ff; border-color: #7295db; }
+.loan-renewal-confirm { display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid #5277c6; background: linear-gradient(120deg, #6f91de, #496cc2); color: #fff; box-shadow: 0 4px 12px #496cc224; }
+.loan-renewal-confirm:disabled { cursor: wait; opacity: .65; }
 .loan-modal-backdrop { z-index: 1400; display: flex; align-items: flex-start; justify-content: center; overflow-y: auto; overscroll-behavior: contain; box-sizing: border-box; }
 .loan-modal-backdrop .loan-modal { width: min(610px, 100%); margin: auto 0; max-height: calc(100vh - 40px); max-height: calc(100dvh - 40px); overflow-y: auto; overscroll-behavior: contain; }
 .loan-modal-form { display: grid; gap: 14px; }

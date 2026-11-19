@@ -5,7 +5,7 @@ import {
   RotateCcw, Search, Trash2, X
 } from 'lucide-react';
 import {
-  createLoan, fetchLoans, returnLoan, searchLoanItems, searchLoanMembers,
+  createLoan, fetchLoans, renewLoan, returnLoan, searchLoanItems, searchLoanMembers,
   deleteLoans, updateLoanStatus
 } from './schoolLoanApi.js';
 import CameraBarcodeScanner from './CameraBarcodeScanner.jsx';
@@ -365,6 +365,59 @@ function ReturnConfirmDialog({ loan, loading, error, onClose, onConfirm }) {
   );
 }
 
+function RenewLoanDialog({ loan, defaultDays, loading, error, onClose, onConfirm }) {
+  const [days, setDays] = useState(String(defaultDays));
+  const [note, setNote] = useState('');
+
+  useEffect(() => {
+    function closeOnEscape(event) {
+      if (event.key === 'Escape' && !loading) onClose();
+    }
+    document.addEventListener('keydown', closeOnEscape);
+    return () => document.removeEventListener('keydown', closeOnEscape);
+  }, [loading, onClose]);
+
+  function submit(event) {
+    event.preventDefault();
+    onConfirm({ days: Number(days), note: note.trim() });
+  }
+
+  return createPortal(
+    <div className="loan-return-backdrop" onMouseDown={(event) => {
+      if (event.target === event.currentTarget && !loading) onClose();
+    }}>
+      <section className="loan-return-dialog loan-renewal-dialog" role="dialog" aria-modal="true" aria-labelledby="loan-renewal-title">
+        <button type="button" className="loan-return-close" onClick={onClose} disabled={loading} aria-label="Tutup form perpanjangan"><X size={17} /></button>
+        <span className="loan-return-icon"><Clock3 size={22} /></span>
+        <span className="library-eyebrow">PERPANJANGAN PEMINJAMAN</span>
+        <h2 id="loan-renewal-title">Perpanjang masa pinjam</h2>
+        <div className="loan-return-details">
+          <div className="loan-return-detail-book"><BookOpen size={17} /><span><b>{loan.book_title}</b><small>Serial {loan.serial_number || '—'}</small></span></div>
+          <div><small>Peminjam</small><b>{loan.member_name}</b></div>
+          <div><small>Batas pengembalian saat ini</small><b>{formatDate(loan.due_date)}</b></div>
+        </div>
+        <form className="loan-renewal-form" onSubmit={submit}>
+          <label>Perpanjang berapa hari?
+            <input type="number" min="1" max="365" step="1" value={days} onChange={(event) => setDays(event.target.value)} required disabled={loading} />
+          </label>
+          <label>Keterangan
+            <textarea value={note} onChange={(event) => setNote(event.target.value)} maxLength={1000} rows={3} placeholder="Catatan perpanjangan (opsional)" disabled={loading} />
+          </label>
+          {error && <div className="loan-return-error" role="alert">{error}</div>}
+          <footer className="loan-return-actions">
+            <button type="button" className="master-button master-button-muted" onClick={onClose} disabled={loading}>Batal</button>
+            <button type="submit" className="master-button loan-renewal-confirm" disabled={loading || !days}>
+              {loading ? <LoaderCircle size={15} className="book-stock-spinner" /> : <Check size={15} />}
+              {loading ? 'Menyimpan...' : 'Simpan Perpanjangan'}
+            </button>
+          </footer>
+        </form>
+      </section>
+    </div>,
+    document.body
+  );
+}
+
 function statusClass(status) {
   if (status === 'Pending') return 'is-pending';
   if (status === 'Terlambat') return 'is-overdue';
@@ -391,11 +444,16 @@ export default function SchoolLoansPage({ rights, role, account }) {
   const [busyLoanId, setBusyLoanId] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
   const [returnTarget, setReturnTarget] = useState(null);
+  const [renewTarget, setRenewTarget] = useState(null);
+  const [renewalError, setRenewalError] = useState('');
+  const [renewalSaving, setRenewalSaving] = useState(false);
   const [deleteLoansOpen, setDeleteLoansOpen] = useState(false);
   const [deleteLoansError, setDeleteLoansError] = useState('');
   const [deletingLoans, setDeletingLoans] = useState(false);
   const [loanDurationDays, setLoanDurationDays] = useState(7);
   const [finePerDay, setFinePerDay] = useState(1000);
+  const [renewalsEnabled, setRenewalsEnabled] = useState(false);
+  const [maxRenewals, setMaxRenewals] = useState(0);
   const [scanBehavior, setScanBehavior] = useState('focus');
   const [scanSettingsError, setScanSettingsError] = useState('');
   const [scanSettingsRefresh, setScanSettingsRefresh] = useState(0);
@@ -439,6 +497,8 @@ export default function SchoolLoansPage({ rights, role, account }) {
         setPagination(result.pagination || { page: 1, total: 0, totalPages: 0 });
         setLoanDurationDays(result.loanDurationDays || 7);
         setFinePerDay(result.finePerDay ?? 1000);
+        setRenewalsEnabled(Boolean(result.renewalsEnabled));
+        setMaxRenewals(Number(result.maxRenewals || 0));
         if (result.pagination?.totalPages && page > result.pagination.totalPages) {
           setPage(result.pagination.totalPages);
         }
@@ -492,6 +552,22 @@ export default function SchoolLoansPage({ rights, role, account }) {
     if (!returnTarget) return;
     const success = await runAction(returnTarget.id, () => returnLoan(returnTarget.id));
     if (success) setReturnTarget(null);
+  }
+
+  async function confirmRenewal({ days, note }) {
+    if (!renewTarget) return;
+    setRenewalSaving(true);
+    setRenewalError('');
+    try {
+      const result = await renewLoan(renewTarget.id, { days, note });
+      setNotice(result.message);
+      setRenewTarget(null);
+      setRefreshKey((current) => current + 1);
+    } catch (renewError) {
+      setRenewalError(renewError.message);
+    } finally {
+      setRenewalSaving(false);
+    }
   }
 
   async function confirmDeleteLoans() {
@@ -612,7 +688,23 @@ export default function SchoolLoansPage({ rights, role, account }) {
                         </>
                       )}
                       {canManage && ['Dipinjam', 'Terlambat'].includes(loan.status) && (
-                        <button type="button" className="loan-action-button is-return" title="Proses pengembalian" aria-label={`Proses pengembalian ${loan.id}`} disabled={busyLoanId === loan.id} onClick={() => processReturn(loan)}><RotateCcw size={15} /></button>
+                        <>
+                          <button
+                            type="button"
+                            className="loan-action-button is-renew"
+                            title={!renewalsEnabled
+                              ? 'Perpanjangan dinonaktifkan di pengaturan'
+                              : loan.renewal_count >= maxRenewals
+                                ? 'Batas perpanjangan sudah tercapai'
+                                : loan.status === 'Terlambat'
+                                  ? 'Peminjaman terlambat tidak dapat diperpanjang'
+                                  : 'Perpanjang masa pinjam'}
+                            aria-label={`Perpanjang masa pinjam ${loan.id}`}
+                            disabled={busyLoanId === String(loan.id) || !renewalsEnabled || loan.renewal_count >= maxRenewals || loan.status === 'Terlambat' || renewalSaving}
+                            onClick={() => { setRenewalError(''); setRenewTarget(loan); }}
+                          ><Clock3 size={15} /></button>
+                          <button type="button" className="loan-action-button is-return" title="Proses pengembalian" aria-label={`Proses pengembalian ${loan.id}`} disabled={busyLoanId === String(loan.id)} onClick={() => processReturn(loan)}><RotateCcw size={15} /></button>
+                        </>
                       )}
                       {(!canManage || !['Pending', 'Dipinjam', 'Terlambat'].includes(loan.status)) && '—'}
                     </div>
@@ -647,6 +739,14 @@ export default function SchoolLoansPage({ rights, role, account }) {
         error={error}
         onClose={() => { if (busyLoanId !== String(returnTarget.id)) setReturnTarget(null); }}
         onConfirm={confirmReturn}
+      />}
+      {renewTarget && <RenewLoanDialog
+        loan={renewTarget}
+        defaultDays={loanDurationDays}
+        loading={renewalSaving}
+        error={renewalError}
+        onClose={() => { if (!renewalSaving) { setRenewTarget(null); setRenewalError(''); } }}
+        onConfirm={confirmRenewal}
       />}
       {deleteLoansOpen && <SchoolConfirmDialog
         title="Hapus transaksi terpilih?"

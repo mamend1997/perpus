@@ -391,6 +391,21 @@ async function insertBook(connection, schoolId, book, files = {}) {
   return result.insertId;
 }
 
+async function lockBookSerialSequence(connection, schoolId) {
+  await connection.execute(
+    `INSERT INTO school_settings (school_id, \`key\`, \`value\`)
+     VALUES (?, 'book_serial_sequence', '0')
+     ON DUPLICATE KEY UPDATE \`value\` = \`value\``,
+    [schoolId]
+  );
+  const [[row]] = await connection.execute(
+    `SELECT \`value\` FROM school_settings
+     WHERE school_id = ? AND \`key\` = 'book_serial_sequence' FOR UPDATE`,
+    [schoolId]
+  );
+  return BigInt(row.value);
+}
+
 async function synchronizeBookItems(connection, schoolId, bookId, desiredQuantity, defaultRackId = null) {
   const [items] = await connection.execute(
     `SELECT id, serial_number, status FROM book_items
@@ -416,16 +431,22 @@ async function synchronizeBookItems(connection, schoolId, bookId, desiredQuantit
   if (!difference) return;
 
   const { serialPrefix } = await readBarcodeLabelSettings(connection, schoolId);
+  let sequence = await lockBookSerialSequence(connection, schoolId);
+  const [schoolSerials] = await connection.execute(
+    `SELECT serial_number FROM book_items
+     WHERE school_id = ? AND serial_number LIKE ? FOR UPDATE`,
+    [schoolId, `${serialPrefix}%`]
+  );
   const escapedPrefix = serialPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const serialPattern = new RegExp(`^${escapedPrefix}(\\d+)$`, 'i');
-  const nextSequence = items.reduce((maximum, item) => {
+  const existingSequence = schoolSerials.reduce((maximum, item) => {
     const match = String(item.serial_number).match(serialPattern);
     if (!match) return maximum;
     const sequence = BigInt(match[1]);
     return sequence > maximum ? sequence : maximum;
   }, -1n);
-  const existingSerials = new Set(items.map((item) => String(item.serial_number).toUpperCase()));
-  let sequence = nextSequence;
+  if (existingSequence > sequence) sequence = existingSequence;
+  const existingSerials = new Set(schoolSerials.map((item) => String(item.serial_number).toUpperCase()));
   const rows = [];
   while (rows.length < difference) {
     sequence += 1n;
@@ -467,6 +488,11 @@ async function synchronizeBookItems(connection, schoolId, bookId, desiredQuantit
       [...values, schoolId, ...ids]
     );
   }
+  await connection.execute(
+    `UPDATE school_settings SET \`value\` = ?
+     WHERE school_id = ? AND \`key\` = 'book_serial_sequence'`,
+    [String(sequence), schoolId]
+  );
 }
 
 router.get('/meta', requireSchoolPermission('books.catalog', 'view'), async (req, res, next) => {
@@ -916,6 +942,17 @@ router.patch('/items/:id', requireSchoolPermission('books.items', 'edit'), async
         await connection.rollback();
         transactionStarted = false;
         return res.status(409).json({ message: 'Serial number tidak dapat diubah karena eksemplar memiliki riwayat peminjaman.' });
+      }
+      await lockBookSerialSequence(connection, req.school.id);
+      const [duplicates] = await connection.execute(
+        `SELECT id FROM book_items
+         WHERE school_id = ? AND serial_number = ? AND id <> ? LIMIT 1 FOR UPDATE`,
+        [req.school.id, serialNumber, id]
+      );
+      if (duplicates.length) {
+        await connection.rollback();
+        transactionStarted = false;
+        return res.status(409).json({ message: 'Serial number sudah digunakan eksemplar lain di sekolah ini.' });
       }
     }
 

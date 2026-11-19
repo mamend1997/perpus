@@ -687,7 +687,18 @@ router.patch('/:id/status', requireSchoolPermission('circulation.loans', 'edit')
 
 router.post('/:id/renew', requireSchoolPermission('circulation.loans', 'edit'), async (req, res, next) => {
   const id = String(req.params.id);
+  const days = Number(req.body?.days);
+  const note = typeof req.body?.note === 'string' ? req.body.note.trim() : '';
   if (!validId(id)) return res.status(400).json({ message: 'ID peminjaman tidak valid.' });
+  if (!Number.isSafeInteger(days) || days < 1 || days > 365) {
+    return res.status(400).json({ message: 'Jumlah hari perpanjangan harus antara 1 sampai 365 hari.' });
+  }
+  if (req.body?.note != null && typeof req.body.note !== 'string') {
+    return res.status(400).json({ message: 'Keterangan perpanjangan harus berupa teks.' });
+  }
+  if (note.length > 1000) {
+    return res.status(400).json({ message: 'Keterangan perpanjangan maksimal 1.000 karakter.' });
+  }
   let connection;
   let transactionStarted = false;
   try {
@@ -733,7 +744,6 @@ router.post('/:id/renew', requireSchoolPermission('circulation.loans', 'edit'), 
     }
     const settings = await readLibrarySettings(req.school.id, connection);
     const maxRenewals = Number(settings.max_renewals);
-    const loanDurationDays = Number(settings.loan_duration_days);
     if (settings.renewals_enabled !== '1' || maxRenewals < 1) {
       await connection.rollback();
       transactionStarted = false;
@@ -757,7 +767,7 @@ router.post('/:id/renew', requireSchoolPermission('circulation.loans', 'edit'), 
     }
     await connection.execute(
       `UPDATE loans
-       SET due_date = DATE_ADD(due_date, INTERVAL ${loanDurationDays} DAY),
+       SET due_date = DATE_ADD(due_date, INTERVAL ${days} DAY),
            renewal_count = renewal_count + 1
        WHERE id = ? AND school_id = ?`,
       [id, req.school.id]
@@ -766,10 +776,22 @@ router.post('/:id/renew', requireSchoolPermission('circulation.loans', 'edit'), 
       'SELECT due_date, renewal_count FROM loans WHERE id = ? AND school_id = ? LIMIT 1',
       [id, req.school.id]
     );
+    await connection.execute(
+      `INSERT INTO loan_renewal_history
+       (school_id, loan_id, days, previous_due_date, new_due_date, note)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [req.school.id, id, days, loan.due_date, updated[0].due_date, note || null]
+    );
     await connection.commit();
     transactionStarted = false;
     return res.json({
-      loan: { id, dueDate: updated[0].due_date, renewalCount: Number(updated[0].renewal_count) },
+      loan: {
+        id,
+        dueDate: updated[0].due_date,
+        renewalCount: Number(updated[0].renewal_count),
+        days,
+        note: note || null
+      },
       message: 'Masa pinjam berhasil diperpanjang.'
     });
   } catch (error) {

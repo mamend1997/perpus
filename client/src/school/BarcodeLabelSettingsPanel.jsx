@@ -35,7 +35,7 @@ function BarcodeLabelPreview({ settings }) {
       {settings.showBookTitle && <span>Contoh Judul Buku</span>}
       <svg ref={barcodeRef} aria-label={`Pratinjau barcode ${settings.barcodeFormat}`} />
       {settings.showBarcodeValue && <small>Kode Barcode: 1234567890128</small>}
-      {settings.showSerialNumber && <small>Serial: {settings.serialPrefix}0001</small>}
+      {settings.showSerialNumber && <small>Serial: {settings.serialPrefix}01</small>}
       {settings.showRackCode && <small>Rak: RAK-01</small>}
     </div>
   );
@@ -116,7 +116,7 @@ export default function BarcodeLabelSettingsPanel() {
               </label>
               <label>Prefix serial number otomatis
                 <input name="serialPrefix" value={settings.serialPrefix} onChange={update} maxLength={20} pattern="[A-Za-z0-9][A-Za-z0-9._-]{0,19}" disabled={loading || saving} />
-                <small>Hanya berlaku untuk serial eksemplar yang dibuat berikutnya. Contoh: S menghasilkan S00, S01, dan seterusnya.</small>
+                <small>Hanya berlaku untuk serial eksemplar yang dibuat berikutnya. Contoh: S menghasilkan S01, S02, dan seterusnya untuk seluruh judul di sekolah.</small>
               </label>
               <label>Setelah barcode dipindai
                 <select name="scanBehavior" value={settings.scanBehavior} onChange={update} disabled={loading || saving} required>

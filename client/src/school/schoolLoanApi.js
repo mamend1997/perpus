@@ -66,6 +66,10 @@ export function returnLoan(id) {
   return requestLoanApi(`/${encodeURIComponent(id)}/return`, { method: 'POST' });
 }
 
+export function renewLoan(id, { days, note = '' }) {
+  return requestLoanApi(`/${encodeURIComponent(id)}/renew`, { method: 'POST', body: { days, note } });
+}
+
 export function updateLoanFineStatus(id, status, note = '') {
   return requestLoanApi(`/${encodeURIComponent(id)}/fine-status`, { method: 'PATCH', body: { status, note } });
 }

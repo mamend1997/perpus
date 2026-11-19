@@ -282,6 +282,23 @@ CREATE TABLE IF NOT EXISTS loans (
   CONSTRAINT fk_loans_user FOREIGN KEY (school_id, user_id) REFERENCES users (school_id, id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS loan_renewal_history (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  school_id BIGINT UNSIGNED NOT NULL,
+  loan_id BIGINT UNSIGNED NOT NULL,
+  days INT UNSIGNED NOT NULL,
+  previous_due_date DATE NOT NULL,
+  new_due_date DATE NOT NULL,
+  note VARCHAR(1000) NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_loan_renewal_history_school_loan (school_id, loan_id, id),
+  CONSTRAINT fk_loan_renewal_history_school FOREIGN KEY (school_id) REFERENCES tenants_schools (id)
+    ON DELETE CASCADE,
+  CONSTRAINT fk_loan_renewal_history_loan FOREIGN KEY (loan_id) REFERENCES loans (id)
+    ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS loan_fine_payments (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   school_id BIGINT UNSIGNED NOT NULL,
