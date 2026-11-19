@@ -15,6 +15,7 @@ import {
 import { resizeSchoolImage } from './schoolImageUtils.js';
 
 const pageSize = 25;
+const studentPageSize = 100;
 const templateHeaders = ['NIS/NISN', 'Nama Lengkap', 'Kelas/Rombel', 'Jenis Kelamin', 'No. WhatsApp', 'Status'];
 const emptyStudent = { nis_nisn: '', name: '', rombel: '', gender: '', phone: '', status: 'active', photo: null };
 
@@ -455,6 +456,13 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
   const [memberCards, setMemberCards] = useState(null);
   const selectedIds = Object.keys(selected);
   const allVisibleSelected = students.length > 0 && students.every((student) => Boolean(selected[String(student.id)]));
+  const classStudentCount = classes.reduce((total, item) => total + Number(item.studentCount || 0), 0);
+  const loadedStudentCount = (page - 1) * studentPageSize + students.length;
+  const studentCountFallback = search || classFilter || statusFilter
+    ? loadedStudentCount
+    : Math.max(classStudentCount, loadedStudentCount);
+  const studentCount = Math.max(pagination.total, studentCountFallback);
+  const studentTotalPages = Math.max(pagination.totalPages, Math.ceil(studentCount / studentPageSize));
   const managedClasses = classes.filter((item) => item.id && !item.isUnassigned);
   const selectedClassIds = Object.keys(selectedClasses);
   const allClassesSelected = managedClasses.length > 0
@@ -542,7 +550,7 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
     const controller = new AbortController();
     setLoading(true);
     setError('');
-    fetchStudents({ page, limit: pageSize, search, rombel: classFilter, status: statusFilter, signal: controller.signal })
+    fetchStudents({ page, limit: studentPageSize, search, rombel: classFilter, status: statusFilter, signal: controller.signal })
       .then((result) => {
         if (controller.signal.aborted) return;
         setStudents(result.students || []);
@@ -582,6 +590,11 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
     const result = await importStudents(rows);
     setImportOpen(false);
     setNotice(result.message);
+    setQueryInput('');
+    setSearch('');
+    setClassFilter('');
+    setStatusFilter('');
+    setSelected({});
     setPage(1);
     setRefreshKey((value) => value + 1);
   }
@@ -732,7 +745,7 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
       {error && <div className="library-error" role="alert">{error}</div>}
 
       <div className="school-student-tabs" role="tablist" aria-label="Data siswa dan rombel">
-        <button type="button" role="tab" aria-selected={tab === 'students'} className={tab === 'students' ? 'selected' : ''} onClick={() => setTab('students')}><Users size={16} />Data Siswa <span>{pagination.total}</span></button>
+        <button type="button" role="tab" aria-selected={tab === 'students'} className={tab === 'students' ? 'selected' : ''} onClick={() => setTab('students')}><Users size={16} />Data Siswa <span>{studentCount.toLocaleString('id-ID')}</span></button>
         <button type="button" role="tab" aria-selected={tab === 'classes'} className={tab === 'classes' ? 'selected' : ''} onClick={() => setTab('classes')}>Data Rombel / Kelas <span>{classes.length}</span></button>
         <button type="button" role="tab" aria-selected={tab === 'archives'} className={tab === 'archives' ? 'selected' : ''} onClick={() => setTab('archives')}>Arsip Tahun Pelajaran <span>{academicYears.filter((year) => year.hasArchive).length}</span></button>
       </div>
@@ -754,12 +767,13 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
               <button type="button" className="master-button master-button-light" onClick={exportPdf} disabled={exporting}><Printer size={15} />Export PDF</button>
               {canEdit && <button type="button" className="master-button master-button-light" onClick={() => setImportOpen(true)}><FileSpreadsheet size={15} />Import Excel</button>}
               {canEdit && <button type="button" className="master-button master-button-primary" onClick={() => setEditor({ ...emptyStudent })}><Plus size={15} />Tambah Siswa</button>}
-              {canDelete && selectedIds.length > 0 && <button type="button" className="master-button procurement-delete-selected" onClick={() => { setDeleteError(''); setDeleteTarget('selected'); }}><Trash2 size={15} />Hapus Terpilih ({selectedIds.length})</button>}
+              {canDelete && selectedIds.length > 0 && <button type="button" className="master-button master-button-danger" onClick={() => { setDeleteError(''); setDeleteTarget('selected'); }}><Trash2 size={15} />Hapus Terpilih ({selectedIds.length})</button>}
             </div>
           </section>
+          {selectedIds.length > 0 && <div className="student-selection-summary" role="status">{selectedIds.length.toLocaleString('id-ID')} siswa dipilih pada halaman ini.</div>}
 
           <section className="master-data-panel student-table-panel">
-            <div className="school-settings-panel-heading"><div><h2>Daftar Siswa</h2><p>{pagination.total.toLocaleString('id-ID')} siswa</p></div></div>
+            <div className="school-settings-panel-heading"><div><h2>Daftar Siswa</h2><p>{studentCount.toLocaleString('id-ID')} siswa</p></div></div>
             <div className="master-table-scroll">
               <table className="master-table student-table">
                 <thead><tr>{canDelete && <th className="student-checkbox"><input type="checkbox" checked={allVisibleSelected} onChange={(event) => toggleVisibleStudents(event.target.checked)} aria-label="Pilih semua siswa di halaman ini" /></th>}
@@ -775,16 +789,16 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
                           else delete next[String(student.id)];
                           return next;
                         })} aria-label={`Pilih ${student.name}`} /></td>}
-                        <td>{(page - 1) * pageSize + index + 1}</td><td>{student.photo ? <img className="student-table-photo" src={student.photo} alt={`Foto ${student.name}`} /> : <span className="student-table-photo-empty">—</span>}</td><td>{student.nis_nisn}</td><td><b>{student.name}</b></td><td>{student.rombel || 'Belum diatur'}</td>
+                        <td>{(page - 1) * studentPageSize + index + 1}</td><td>{student.photo ? <img className="student-table-photo" src={student.photo} alt={`Foto ${student.name}`} /> : <span className="student-table-photo-empty">—</span>}</td><td>{student.nis_nisn}</td><td><b>{student.name}</b></td><td>{student.rombel || 'Belum diatur'}</td>
                         <td>{genderLabel(student.gender)}</td><td>{student.phone || '—'}</td><td><span className={`master-status ${student.status === 'active' ? 'is-active' : 'is-inactive'}`}>{studentStatusLabel(student.status)}</span></td>
                         <td><div className="student-row-actions"><button type="button" className="master-icon-button" title="Cetak kartu member" onClick={() => setMemberCards([student])}><Printer size={15} /></button>{canEdit && <button type="button" className="master-icon-button" title="Edit siswa" onClick={() => setEditor(student)}><Pencil size={15} /></button>}{canDelete && <button type="button" className="master-icon-button" title="Hapus siswa" onClick={() => { setDeleteError(''); setDeleteTarget(student); }}><Trash2 size={15} /></button>}</div></td>
                       </tr>)}
                 </tbody>
               </table>
             </div>
-            <footer className="catalog-pagination"><span>Halaman {pagination.totalPages ? page : 0} dari {Math.max(1, pagination.totalPages)}</span><div>
+            <footer className="catalog-pagination"><span>Halaman {studentTotalPages ? page : 0} dari {Math.max(1, studentTotalPages)}</span><div>
               <button type="button" className="master-icon-button" disabled={loading || page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))} aria-label="Halaman sebelumnya">‹</button>
-              <button type="button" className="master-icon-button" disabled={loading || page >= pagination.totalPages} onClick={() => setPage((value) => value + 1)} aria-label="Halaman berikutnya">›</button>
+              <button type="button" className="master-icon-button" disabled={loading || page >= studentTotalPages} onClick={() => setPage((value) => value + 1)} aria-label="Halaman berikutnya">›</button>
             </div></footer>
           </section>
         </>
