@@ -32,3 +32,7 @@ export async function searchVisitorMembers(search, signal) {
 export function checkInVisitor(visit) {
   return requestVisitorApi('', { method: 'POST', body: visit });
 }
+
+export function deleteVisitorRecords(ids) {
+  return requestVisitorApi('/bulk', { method: 'DELETE', body: { ids } });
+}

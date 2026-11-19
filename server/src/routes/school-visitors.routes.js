@@ -104,6 +104,30 @@ router.get('/', requireSchoolPermission('visitors', 'view'), async (req, res, ne
   }
 });
 
+router.delete('/bulk', requireSchoolPermission('visitors', 'delete'), async (req, res, next) => {
+  const rawIds = req.body?.ids;
+  if (!Array.isArray(rawIds) || rawIds.length < 1 || rawIds.length > 500) {
+    return res.status(400).json({ message: 'Pilih 1 sampai 500 kunjungan untuk dihapus.' });
+  }
+  const ids = [...new Set(rawIds.map(String))];
+  if (ids.some((id) => !/^[1-9]\d*$/.test(id))) {
+    return res.status(400).json({ message: 'Daftar ID kunjungan tidak valid.' });
+  }
+  try {
+    const placeholders = ids.map(() => '?').join(', ');
+    const [result] = await pool.execute(
+      `DELETE FROM visitors WHERE school_id = ? AND id IN (${placeholders})`,
+      [req.school.id, ...ids]
+    );
+    return res.json({
+      deleted: result.affectedRows,
+      message: `${result.affectedRows} kunjungan berhasil dihapus.`
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 router.post('/', requireSchoolPermission('visitors', 'edit'), async (req, res, next) => {
   const userId = req.school.role === 'member'
     ? String(req.school.userId)

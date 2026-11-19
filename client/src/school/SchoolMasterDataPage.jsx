@@ -76,7 +76,6 @@ function MasterCategoryModal({ type, category, onClose, onSave }) {
   const isAuthor = type === 'pengarang';
   const isAgent = type === 'agen';
   const isCodeLess = type === 'jenis' || type === 'koleksi' || type === 'topik' || type === 'penerbit';
-  const tableColumnCount = (isAgent ? 8 : isAuthor ? 6 : isCodeLess ? 5 : 6) + Number(type === 'rak');
   const [form, setForm] = useState({
     code: isCodeLess ? '' : category?.code || '',
     name: category?.name || '',
@@ -351,6 +350,7 @@ export default function SchoolMasterDataPage({ active, type, rights }) {
   const isAuthor = type === 'pengarang';
   const isAgent = type === 'agen';
   const isCodeLess = type === 'jenis' || type === 'koleksi' || type === 'topik' || type === 'penerbit';
+  const tableColumnCount = (isAgent ? 8 : isAuthor ? 6 : isCodeLess ? 5 : 6) + Number(type === 'rak');
   const canPreview = ['koleksi', 'klasifikasi', 'topik', 'rak', 'pengarang', 'penerbit', 'agen'].includes(type);
   const canEdit = Boolean(rights?.edit);
   const canDelete = Boolean(rights?.delete);

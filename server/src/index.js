@@ -33,8 +33,17 @@ app.use('/api/school', schoolRoutes);
 app.use('/api/super-admin', superAdminRoutes);
 
 const clientDistPath = fileURLToPath(new URL('../../client/dist/', import.meta.url));
-app.use(express.static(clientDistPath));
-app.get(/^\/(?!api\/).*/, (_req, res) => {
+app.use(express.static(clientDistPath, {
+  setHeaders(res, filePath) {
+    if (path.basename(filePath) === 'index.html') {
+      res.setHeader('Cache-Control', 'no-cache');
+    } else if (path.basename(path.dirname(filePath)) === 'assets') {
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    }
+  }
+}));
+app.get(/^\/(?!api(?:\/|$)|assets(?:\/|$)).*/, (_req, res) => {
+  res.setHeader('Cache-Control', 'no-cache');
   res.sendFile(path.join(clientDistPath, 'index.html'));
 });
 

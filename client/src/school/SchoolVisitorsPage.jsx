@@ -2,11 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   CalendarDays, Check, ChevronLeft, ChevronRight, Eye, FileSpreadsheet,
-  LoaderCircle, LogIn, Printer, RefreshCw, Search, Users, X
+  LoaderCircle, LogIn, Printer, RefreshCw, Search, Trash2, Users, X
 } from 'lucide-react';
-import { checkInVisitor, fetchVisitorRecords, searchVisitorMembers } from './schoolVisitorApi.js';
+import { checkInVisitor, deleteVisitorRecords, fetchVisitorRecords, searchVisitorMembers } from './schoolVisitorApi.js';
 import CameraBarcodeScanner from './CameraBarcodeScanner.jsx';
 import SchoolPrintHeader from './SchoolPrintHeader.jsx';
+import SchoolConfirmDialog from './SchoolConfirmDialog.jsx';
 
 const pageSize = 25;
 const visitPurposes = [
@@ -76,6 +77,7 @@ function VisitorPreviewModal({ visit, onClose }) {
 export default function SchoolVisitorsPage({ rights, role, account, schoolName, schoolIdentity }) {
   const canEdit = Boolean(rights?.edit);
   const canViewRecords = Boolean(rights?.view) && role !== 'member';
+  const canDeleteRecords = Boolean(rights?.delete) && role !== 'member';
   const isMember = role === 'member';
   const [activeTab, setActiveTab] = useState('kiosk');
   const [memberSearch, setMemberSearch] = useState('');
@@ -90,6 +92,7 @@ export default function SchoolVisitorsPage({ rights, role, account, schoolName, 
   const [checkInError, setCheckInError] = useState('');
   const [successVisit, setSuccessVisit] = useState(null);
   const [records, setRecords] = useState([]);
+  const [selectedVisitIds, setSelectedVisitIds] = useState(() => new Set());
   const [page, setPage] = useState(1);
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
@@ -97,8 +100,12 @@ export default function SchoolVisitorsPage({ rights, role, account, schoolName, 
   const [pagination, setPagination] = useState({ page: 1, total: 0, totalPages: 0 });
   const [recordsLoading, setRecordsLoading] = useState(false);
   const [recordsError, setRecordsError] = useState('');
+  const [recordsNotice, setRecordsNotice] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
   const [exporting, setExporting] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [previewVisit, setPreviewVisit] = useState(null);
   const [printRows, setPrintRows] = useState(null);
   const memberInputRef = useRef(null);
@@ -295,6 +302,49 @@ export default function SchoolVisitorsPage({ rights, role, account, schoolName, 
   }
 
   const printExporting = exporting === 'pdf';
+  const visibleVisitIds = records.map((visit) => String(visit.id));
+  const allVisibleVisitsSelected = visibleVisitIds.length > 0
+    && visibleVisitIds.every((id) => selectedVisitIds.has(id));
+  const someVisibleVisitsSelected = visibleVisitIds.some((id) => selectedVisitIds.has(id));
+  const recordColumnCount = 6 + Number(canDeleteRecords);
+
+  function toggleVisitSelection(id, checked) {
+    setSelectedVisitIds((current) => {
+      const next = new Set(current);
+      if (checked) next.add(String(id));
+      else next.delete(String(id));
+      return next;
+    });
+  }
+
+  function toggleAllVisibleVisits(checked) {
+    setSelectedVisitIds((current) => {
+      const next = new Set(current);
+      visibleVisitIds.forEach((id) => {
+        if (checked) next.add(id);
+        else next.delete(id);
+      });
+      return next;
+    });
+  }
+
+  async function confirmDeleteVisits() {
+    if (!selectedVisitIds.size) return;
+    setDeleting(true);
+    setDeleteError('');
+    setRecordsNotice('');
+    try {
+      const result = await deleteVisitorRecords([...selectedVisitIds]);
+      setSelectedVisitIds(new Set());
+      setDeleteConfirmOpen(false);
+      setRecordsNotice(result.message || 'Kunjungan terpilih berhasil dihapus.');
+      setRefreshKey((current) => current + 1);
+    } catch (error) {
+      setDeleteError(error.message);
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   return (
     <div className="library-module-page visitors-page">
@@ -402,30 +452,54 @@ export default function SchoolVisitorsPage({ rights, role, account, schoolName, 
           <div className="visitor-records-toolbar">
             <label className="master-search visitor-record-search">
               <Search size={16} />
-              <input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Cari nama, NIS/NISN, kelas, atau keperluan..." aria-label="Cari kunjungan" />
+              <input value={searchInput} onChange={(event) => {
+                setSearchInput(event.target.value);
+                setSelectedVisitIds(new Set());
+                setRecordsNotice('');
+              }} placeholder="Cari nama, NIS/NISN, kelas, atau keperluan..." aria-label="Cari kunjungan" />
             </label>
             <label className="visitor-date-filter"><CalendarDays size={15} />Tanggal
-              <input type="date" value={date} onChange={(event) => { setDate(event.target.value); setPage(1); }} />
+              <input type="date" value={date} onChange={(event) => {
+                setDate(event.target.value);
+                setPage(1);
+                setSelectedVisitIds(new Set());
+                setRecordsNotice('');
+              }} />
             </label>
             <div className="visitor-export-actions">
+              {canDeleteRecords && <button type="button" className="master-button master-button-danger" onClick={() => { setDeleteError(''); setDeleteConfirmOpen(true); }} disabled={!selectedVisitIds.size || recordsLoading || deleting}>
+                <Trash2 size={15} />Hapus Terpilih{selectedVisitIds.size ? ` (${selectedVisitIds.size})` : ''}
+              </button>}
               <button type="button" className="master-button master-button-violet" onClick={exportExcel} disabled={Boolean(exporting)}><FileSpreadsheet size={15} />{exporting === 'excel' ? 'Mengekspor...' : 'Export Excel'}</button>
               <button type="button" className="master-button master-button-light" onClick={printReport} disabled={Boolean(exporting)}><Printer size={15} />{printExporting ? 'Menyiapkan...' : 'Cetak / PDF'}</button>
             </div>
           </div>
 
           {recordsError && <div className="library-error" role="alert"><span>{recordsError}</span><button type="button" onClick={() => setRefreshKey((current) => current + 1)}><RefreshCw size={14} />Coba lagi</button></div>}
+          {recordsNotice && <div className="master-message master-message-success" role="status">{recordsNotice}</div>}
           <div className="catalog-table-heading">
             <div><span className="library-eyebrow">REKAPITULASI</span><h2>Kunjungan {date ? formatDate(date) : 'Semua Tanggal'}</h2></div>
-            <span>{numberFormat.format(pagination.total)} kunjungan</span>
+            <span>{numberFormat.format(pagination.total)} kunjungan{selectedVisitIds.size ? ` · ${selectedVisitIds.size} dipilih` : ''}</span>
           </div>
           <div className="visitor-table-scroll">
             <table className="visitor-table">
-              <thead><tr><th>No</th><th>Waktu Masuk</th><th>Nama Pengunjung</th><th>NIS / Rombel</th><th>Perlunya</th><th>Aksi</th></tr></thead>
+              <thead><tr>
+                {canDeleteRecords && <th className="master-check-cell"><input
+                  type="checkbox"
+                  checked={allVisibleVisitsSelected}
+                  ref={(element) => { if (element) element.indeterminate = someVisibleVisitsSelected && !allVisibleVisitsSelected; }}
+                  onChange={(event) => toggleAllVisibleVisits(event.target.checked)}
+                  disabled={recordsLoading || deleting || !records.length}
+                  aria-label="Pilih semua kunjungan di halaman ini"
+                /></th>}
+                <th>No</th><th>Waktu Masuk</th><th>Nama Pengunjung</th><th>NIS / Rombel</th><th>Perlunya</th><th>Aksi</th>
+              </tr></thead>
               <tbody>
                 {recordsLoading ? (
-                  <tr><td className="loan-table-empty" colSpan={6}><LoaderCircle size={17} className="book-stock-spinner" />Memuat rekap kunjungan...</td></tr>
+                  <tr><td className="loan-table-empty" colSpan={recordColumnCount}><LoaderCircle size={17} className="book-stock-spinner" />Memuat rekap kunjungan...</td></tr>
                 ) : records.length ? records.map((visit, index) => (
                   <tr key={visit.id}>
+                    {canDeleteRecords && <td className="master-check-cell"><input type="checkbox" checked={selectedVisitIds.has(String(visit.id))} disabled={deleting} onChange={(event) => toggleVisitSelection(visit.id, event.target.checked)} aria-label={`Pilih kunjungan ${visit.visitor_name}`} /></td>}
                     <td>{(page - 1) * pageSize + index + 1}</td>
                     <td>{formatVisitTime(visit.visit_date)}</td>
                     <td><b className="visitor-record-name">{visit.visitor_name}</b></td>
@@ -434,7 +508,7 @@ export default function SchoolVisitorsPage({ rights, role, account, schoolName, 
                     <td><button type="button" className="master-row-icon is-preview" title="Pratinjau" aria-label={`Pratinjau kunjungan ${visit.visitor_name}`} onClick={() => setPreviewVisit(visit)}><Eye size={14} /></button></td>
                   </tr>
                 )) : (
-                  <tr><td className="loan-table-empty" colSpan={6}>{search || date ? 'Tidak ada kunjungan yang sesuai dengan filter.' : 'Belum ada data kunjungan.'}</td></tr>
+                  <tr><td className="loan-table-empty" colSpan={recordColumnCount}>{search || date ? 'Tidak ada kunjungan yang sesuai dengan filter.' : 'Belum ada data kunjungan.'}</td></tr>
                 )}
               </tbody>
             </table>
@@ -450,6 +524,15 @@ export default function SchoolVisitorsPage({ rights, role, account, schoolName, 
       )}
 
       {previewVisit && <VisitorPreviewModal visit={previewVisit} onClose={() => setPreviewVisit(null)} />}
+      {deleteConfirmOpen && <SchoolConfirmDialog
+        title="Hapus kunjungan terpilih?"
+        message={`${selectedVisitIds.size} data kunjungan akan dihapus permanen.`}
+        itemName={`${selectedVisitIds.size} kunjungan`}
+        loading={deleting}
+        error={deleteError}
+        onClose={() => { if (!deleting) { setDeleteConfirmOpen(false); setDeleteError(''); } }}
+        onConfirm={confirmDeleteVisits}
+      />}
       {printRows && <section className="visitor-print-report" aria-hidden="true">
         <SchoolPrintHeader
           identity={schoolIdentity || { name: schoolName }}
