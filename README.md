@@ -1,4 +1,4 @@
-# PerpusKita — SaaS e-Perpustakaan
+# MACA — SaaS e-Perpustakaan
 
 Starter multi-tenant untuk panel Super Admin, menggunakan Express, MySQL, React, Vite, dan Tailwind CSS. Data sekolah memakai `tenants_schools` sebagai tabel tenant kanonis; seluruh tabel operasional sekolah mereferensikan `school_id`.
 
@@ -16,7 +16,7 @@ npm install --prefix server
 npm install --prefix client
 ```
 
-Isi konfigurasi database di `.env`. Untuk Railway, salin connection URL MySQL ke `DATABASE_URL`; untuk MySQL lokal, isi `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, dan `DB_PASSWORD`. Buat database lokal `e_perpustakaan` terlebih dahulu.
+Isi konfigurasi database di `.env`. Untuk Railway, salin connection URL MySQL ke `DATABASE_URL`; untuk MySQL lokal, isi `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, dan `DB_PASSWORD`. Buat database lokal `e_perpustakaan` terlebih dahulu. Ganti `SCHOOL_SETTINGS_ENCRYPTION_KEY` dengan secret acak minimal 32 karakter dan pertahankan nilainya; key ini digunakan untuk mengenkripsi token integrasi yang tersimpan.
 
 Set `JWT_SECRET` dengan string acak minimal 32 karakter dan isi `SUPER_ADMIN_NAME`, `SUPER_ADMIN_EMAIL`, serta `SUPER_ADMIN_PASSWORD` (minimal 12 karakter). Lalu jalankan:
 
@@ -36,6 +36,7 @@ Buka `http://localhost:5173` untuk portal sekolah. Perintah seed Master Data men
 3. Tambahkan environment variables layanan aplikasi:
    - Hubungkan variabel MySQL service ke layanan aplikasi. Pilih reference variable `MYSQL_URL` sebagai `DATABASE_URL`, atau reference variabel `MYSQLHOST`, `MYSQLPORT`, `MYSQLUSER`, `MYSQLPASSWORD`, dan `MYSQLDATABASE` secara langsung; backend mendukung keduanya.
    - `JWT_SECRET`: string acak kuat minimal 32 karakter.
+   - `SCHOOL_SETTINGS_ENCRYPTION_KEY`: secret acak minimal 32 karakter untuk enkripsi token WhatsApp dan integrasi lain; pertahankan nilainya agar token tersimpan tetap dapat dibaca.
    - `SUPER_ADMIN_NAME`, `SUPER_ADMIN_EMAIL`, `SUPER_ADMIN_PASSWORD`: kredensial bootstrap admin; password minimal 12 karakter.
    - `CLIENT_ORIGIN`: URL publik layanan aplikasi, misalnya `https://nama-layanan.up.railway.app`.
 4. Deploy. Skema dan migrasi database dijalankan otomatis sebelum API mulai. Jalankan `npm run seed:admin` sekali dari Railway service shell untuk membuat akun admin.

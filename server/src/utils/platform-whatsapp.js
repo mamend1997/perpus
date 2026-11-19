@@ -1,5 +1,6 @@
 import { pool } from '../config/database.js';
 import { decryptSchoolSecret } from './school-settings.js';
+import { readPlatformBranding } from './platform-branding.js';
 
 export const defaultPlatformWhatsAppSettings = {
   enabled: false,
@@ -67,6 +68,7 @@ async function sendDuePaymentReminders() {
 
     const settings = await readPlatformWhatsAppSettings(connection);
     if (!settings.enabled || !settings.paymentRemindersEnabled || !settings.tokenConfigured) return;
+    const branding = await readPlatformBranding(connection);
     const [invoices] = await connection.execute(
       `SELECT i.id, i.amount, DATE_FORMAT(i.due_date, '%Y-%m-%d') AS due_date,
               DATEDIFF(i.due_date, CURRENT_DATE) AS days_until_due,
@@ -110,7 +112,7 @@ async function sendDuePaymentReminders() {
       const timing = reminderKind === 'before_due'
         ? `akan jatuh tempo pada ${dueDate}`
         : `telah melewati jatuh tempo ${dueDate}`;
-      const message = `Halo ${invoice.admin_name}, pengingat tagihan PerpusKita untuk ${invoice.school_name}. Tagihan #${invoice.id} sebesar ${amount} ${timing}. Silakan lakukan pembayaran melalui akun sekolah.`;
+      const message = `Halo ${invoice.admin_name}, pengingat tagihan ${branding.title} untuk ${invoice.school_name}. Tagihan #${invoice.id} sebesar ${amount} ${timing}. Silakan lakukan pembayaran melalui akun sekolah.`;
       try {
         await sendPlatformWhatsAppMessage(invoice.phone, message, connection);
         await connection.execute(

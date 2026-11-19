@@ -100,7 +100,7 @@ export default function BackupRestorePanel({ scope }) {
       const link = document.createElement('a');
       link.href = url;
       link.download = response.headers.get('Content-Disposition')?.match(/filename="([^"]+)"/)?.[1]
-        || `perpuskita-backup-${scope}.json.gz`;
+        || `maca-backup-${scope}.json.gz`;
       document.body.append(link);
       link.click();
       link.remove();

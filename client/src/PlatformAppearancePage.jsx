@@ -17,7 +17,7 @@ async function requestBranding(path, options = {}) {
 }
 
 const defaultBranding = {
-  title: 'PerpusKita',
+  title: 'MACA',
   subtitle: 'PLATFORM ADMIN',
   primaryColor: '#f97316',
   logo: ''
@@ -91,7 +91,7 @@ export default function PlatformAppearancePage({ mode = 'branding', onSaved }) {
   const editingTheme = mode === 'theme';
   return (
     <section className="platform-appearance-page">
-      <header className="management-heading"><div><h1>{editingTheme ? 'Tema Platform' : 'Branding Sistem'}</h1><p>{editingTheme ? 'Pilih warna dasar untuk navigasi dan tombol platform.' : 'Atur judul, subjudul, logo, dan warna aplikasi platform.'}</p></div></header>
+      <header className="management-heading"><div><h1>{editingTheme ? 'Tema Platform' : 'Branding Sistem'}</h1><p>{editingTheme ? 'Pilih warna dasar untuk navigasi dan tombol platform.' : 'Nama aplikasi ditampilkan di halaman login dan pendaftaran, serta menjadi nama awal akun sekolah baru.'}</p></div></header>
       {error && <div className="error-box" role="alert">{error}</div>}
       {notice && <div className="success-box" role="status">{notice}</div>}
       <form className="panel platform-appearance-panel" onSubmit={save}>
@@ -106,7 +106,7 @@ export default function PlatformAppearancePage({ mode = 'branding', onSaved }) {
             <label>Subjudul aplikasi<input value={branding.subtitle} onChange={(event) => setBranding((current) => ({ ...current, subtitle: event.target.value }))} maxLength={100} minLength={2} required /></label>
           </div>
           <div className="platform-appearance-logo-control">
-            <div><b>Logo aplikasi</b><small>JPG, PNG, atau WebP; maksimal 1 MB.</small></div>
+            <div><b>Logo aplikasi dan favicon dasar</b><small>Logo ini otomatis dipakai sebagai favicon aplikasi. JPG, PNG, atau WebP; maksimal 1 MB.</small></div>
             <div>{branding.logo && <button type="button" className="subtle-button" onClick={() => setBranding((current) => ({ ...current, logo: '' }))}><Trash2 size={14} />Hapus Logo</button>}<label className="subtle-button"><ImagePlus size={14} />Pilih Logo<input type="file" accept="image/png,image/jpeg,image/webp" onChange={chooseLogo} /></label></div>
           </div>
         </>}

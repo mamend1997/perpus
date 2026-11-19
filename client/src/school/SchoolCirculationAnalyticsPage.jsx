@@ -50,7 +50,7 @@ async function exportAnalytics(data) {
   const module = await import('exceljs');
   const ExcelJS = module.default || module;
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = 'PerpusKita';
+  workbook.creator = 'MACA';
   workbook.created = new Date();
   const headerStyle = (sheet) => {
     const header = sheet.getRow(1);

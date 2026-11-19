@@ -435,7 +435,7 @@ function ImportStudentsModal({ onClose, onImport }) {
   ), document.body);
 }
 
-export default function SchoolStudentsPage({ rights, schoolIdentity }) {
+export default function SchoolStudentsPage({ rights, schoolIdentity, appName = 'MACA' }) {
   const canEdit = Boolean(rights?.edit);
   const canDelete = Boolean(rights?.delete);
   const [tab, setTab] = useState('students');
@@ -953,7 +953,7 @@ export default function SchoolStudentsPage({ rights, schoolIdentity }) {
         </>
       )}
 
-      <section className="school-student-print-heading"><h1>Data Siswa {selectedClass ? `· ${selectedClass.className}` : ''}</h1><p>PerpusKita · Rekapitulasi siswa</p></section>
+      <section className="school-student-print-heading"><h1>Data Siswa {selectedClass ? `· ${selectedClass.className}` : ''}</h1><p>{appName} · Rekapitulasi siswa</p></section>
       {pdfRows && <section className="school-student-print-sheet">
         <SchoolPrintHeader
           identity={schoolIdentity}

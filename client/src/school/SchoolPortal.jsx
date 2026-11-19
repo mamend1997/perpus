@@ -1,5 +1,5 @@
 import { Component, lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import { BookOpen, ChevronDown, ChevronRight, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Pencil } from 'lucide-react';
+import { ArrowLeft, ArrowRight, BookOpen, ChevronDown, ChevronRight, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Pencil, X } from 'lucide-react';
 import SchoolDashboard from './SchoolDashboard.jsx';
 import SchoolModulePage from './SchoolModulePage.jsx';
 import SchoolMasterDataPage from './SchoolMasterDataPage.jsx';
@@ -39,6 +39,29 @@ const SchoolReportsPage = lazy(() => import('./SchoolReportsPage.jsx'));
 const SchoolStudentsPage = lazy(() => import('./SchoolStudentsPage.jsx'));
 const SchoolMembersPage = lazy(() => import('./SchoolMembersPage.jsx'));
 
+const schoolOnboardingSteps = [
+  {
+    menu: 'Identitas Sekolah',
+    title: 'Lengkapi identitas sekolah',
+    description: 'Periksa nama sekolah, NPSN, jenjang, alamat, dan informasi kontak agar tercantum dengan benar pada layanan perpustakaan.'
+  },
+  {
+    menu: 'Tahun Pelajaran',
+    title: 'Atur tahun pelajaran',
+    description: 'Tambahkan periode tahun pelajaran yang sedang berjalan dan tandai sebagai periode aktif.'
+  },
+  {
+    menu: 'Data Siswa & Rombel',
+    title: 'Masukkan data siswa dan rombel',
+    description: 'Kelola daftar siswa dan kelas agar anggota perpustakaan dapat ditautkan ke data sekolah.'
+  },
+  {
+    menu: 'Jenis',
+    title: 'Siapkan master data koleksi',
+    description: 'Mulai dengan jenis bahan pustaka. Setelah itu, lengkapi referensi lain seperti bahasa, koleksi, klasifikasi, rak, pengarang, dan penerbit melalui bagian Master Data.'
+  }
+];
+
 class SchoolPageErrorBoundary extends Component {
   state = { error: null, retryKey: 0 };
 
@@ -61,6 +84,9 @@ class SchoolPageErrorBoundary extends Component {
 
 export default function SchoolPortal({ account, onLogout, onAccountUpdated }) {
   const [active, setActive] = useState('Dashboard');
+  const [onboardingStep, setOnboardingStep] = useState(() => (
+    localStorage.getItem('school-onboarding-pending') === String(account.id) ? 0 : null
+  ));
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileEditorOpen, setProfileEditorOpen] = useState(false);
@@ -81,7 +107,7 @@ export default function SchoolPortal({ account, onLogout, onAccountUpdated }) {
   const [mobileNavbarError, setMobileNavbarError] = useState('');
   const [appearance, setAppearance] = useState({
     primaryColor: '#f97316',
-    title: 'PerpusKita',
+    title: 'MACA',
     subtitle: 'PORTAL SEKOLAH'
   });
   const [permissions, setPermissions] = useState(null);
@@ -255,6 +281,24 @@ export default function SchoolPortal({ account, onLogout, onAccountUpdated }) {
     setMobileOpen(false);
   }
 
+  function closeOnboarding() {
+    if (localStorage.getItem('school-onboarding-pending') === String(account.id)) {
+      localStorage.removeItem('school-onboarding-pending');
+    }
+    setOnboardingStep(null);
+  }
+
+  function moveOnboardingStep(direction) {
+    const nextStep = onboardingStep + direction;
+    if (nextStep < 0) return;
+    if (nextStep >= schoolOnboardingSteps.length) {
+      closeOnboarding();
+      return;
+    }
+    setOnboardingStep(nextStep);
+    selectMenu(schoolOnboardingSteps[nextStep].menu);
+  }
+
   function handleProfileUpdated(updatedProfile) {
     const updatedAccount = { ...account, ...updatedProfile };
     setProfile(updatedProfile);
@@ -362,6 +406,36 @@ export default function SchoolPortal({ account, onLogout, onAccountUpdated }) {
             <div><b>Mode pemeliharaan Super Admin</b><span>Perubahan di panel ini dicatat pada log aktivitas.</span></div>
             <button type="button" onClick={onLogout}>Akhiri Sesi</button>
           </div>}
+          {onboardingStep !== null && (() => {
+            const step = schoolOnboardingSteps[onboardingStep];
+            return (
+              <section className="school-onboarding-guide" aria-labelledby="school-onboarding-title">
+                <div className="school-onboarding-copy">
+                  <span className="library-eyebrow">PANDUAN AWAL · LANGKAH {onboardingStep + 1} DARI {schoolOnboardingSteps.length}</span>
+                  <h2 id="school-onboarding-title">{step.title}</h2>
+                  <p>{step.description}</p>
+                  <span className="school-onboarding-destination">Menu tujuan: <b>Master Data / {step.menu}</b></span>
+                </div>
+                <div className="school-onboarding-actions">
+                  {onboardingStep > 0 && <button type="button" className="school-onboarding-back" onClick={() => moveOnboardingStep(-1)}><ArrowLeft size={15} /> Sebelumnya</button>}
+                  <button type="button" className="school-onboarding-next" onClick={() => {
+                    if (active !== step.menu) selectMenu(step.menu);
+                    else moveOnboardingStep(1);
+                  }}>
+                    {active !== step.menu
+                      ? `Buka menu ${step.menu}`
+                      : onboardingStep === schoolOnboardingSteps.length - 1
+                        ? 'Selesai'
+                        : 'Sudah, lanjutkan'}
+                    {active !== step.menu || onboardingStep < schoolOnboardingSteps.length - 1
+                      ? <ArrowRight size={15} />
+                      : null}
+                  </button>
+                  <button type="button" className="school-onboarding-skip" onClick={closeOnboarding}><X size={14} /> Lewati panduan</button>
+                </div>
+              </section>
+            );
+          })()}
           {printIdentityError && <p className="school-print-identity-error" role="alert">Kop sekolah belum dapat dimuat untuk cetak: {printIdentityError}</p>}
           <div className="library-page-transition" key={active}>
             {permissionsLoading ? (
@@ -401,7 +475,7 @@ export default function SchoolPortal({ account, onLogout, onAccountUpdated }) {
             ) : active === 'Pengumuman' ? (
               <SchoolAnnouncementsPage rights={activeRights} role={role} />
             ) : active === 'Bantuan & Tiket Kendala' ? (
-              <SchoolSupportPage rights={activeRights} />
+              <SchoolSupportPage rights={activeRights} appName={appearance.title} />
             ) : active === 'Petunjuk Pengguna' ? (
               <SchoolDocumentsPage type="guide" />
             ) : active === 'Syarat & SLA' ? (
@@ -421,7 +495,7 @@ export default function SchoolPortal({ account, onLogout, onAccountUpdated }) {
             ) : active === 'Data Siswa & Rombel' ? (
               <SchoolPageErrorBoundary pageLabel="Halaman Data Siswa">
                 <Suspense fallback={<div className="library-empty-state">Memuat data siswa...</div>}>
-                  <SchoolStudentsPage rights={activeRights} schoolIdentity={printIdentity} />
+                  <SchoolStudentsPage rights={activeRights} schoolIdentity={printIdentity} appName={appearance.title} />
                 </Suspense>
               </SchoolPageErrorBoundary>
             ) : active === 'Member' ? (
@@ -448,7 +522,7 @@ export default function SchoolPortal({ account, onLogout, onAccountUpdated }) {
               <SchoolModulePage active={active} />
             )}
           </div>
-          <footer className="page-footer"><span>© {new Date().getFullYear()} PerpusKita</span><span>{schoolName}</span></footer>
+          <footer className="page-footer"><span>© {new Date().getFullYear()} {appearance.title}</span><span>{schoolName}</span></footer>
         </div>
       </main>
       {mobileNavbarError && <p className="school-mobile-navbar-error" role="alert">Navbar ponsel gagal dimuat: {mobileNavbarError}</p>}

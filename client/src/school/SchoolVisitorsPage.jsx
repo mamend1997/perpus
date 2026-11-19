@@ -261,7 +261,7 @@ export default function SchoolVisitorsPage({ rights, role, account, schoolName, 
       const module = await import('exceljs');
       const ExcelJS = module.default || module;
       const workbook = new ExcelJS.Workbook();
-      workbook.creator = 'PerpusKita';
+      workbook.creator = 'MACA';
       const sheet = workbook.addWorksheet('Kunjungan');
       sheet.columns = [
         { header: 'No', key: 'number', width: 8 },

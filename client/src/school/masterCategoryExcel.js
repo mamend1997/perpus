@@ -7,7 +7,7 @@ async function loadExcelJS() {
 
 function createWorkbookSheet(ExcelJS, title, columns) {
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = 'PerpusKita';
+  workbook.creator = 'MACA';
   workbook.created = new Date();
   const sheet = workbook.addWorksheet(title);
   sheet.columns = columns;

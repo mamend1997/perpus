@@ -17,7 +17,9 @@ export const defaultLibrarySettings = {
 function encryptionKey() {
   const configured = process.env.SCHOOL_SETTINGS_ENCRYPTION_KEY;
   if (!configured || configured.length < 32) {
-    throw new Error('SCHOOL_SETTINGS_ENCRYPTION_KEY harus diatur dengan minimal 32 karakter untuk menyimpan token WhatsApp.');
+    const error = new Error('SCHOOL_SETTINGS_ENCRYPTION_KEY harus diatur dengan minimal 32 karakter untuk menyimpan secret integrasi.');
+    error.code = 'SECRET_ENCRYPTION_KEY_MISSING';
+    throw error;
   }
   return createHash('sha256').update(configured).digest();
 }

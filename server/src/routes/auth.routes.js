@@ -5,6 +5,7 @@ import jwt from 'jsonwebtoken';
 import { pool } from '../config/database.js';
 import { generateSchoolCode } from '../utils/school-code.js';
 import { readPlatformWhatsAppSettings, sendPlatformWhatsAppMessage } from '../utils/platform-whatsapp.js';
+import { readPlatformBranding } from '../utils/platform-branding.js';
 
 const router = Router();
 
@@ -55,9 +56,10 @@ router.post('/school/register-otp', async (req, res, next) => {
       [verificationId, phone, codeHash]
     );
     verificationCreated = true;
+    const branding = await readPlatformBranding();
     await sendPlatformWhatsAppMessage(
       phone.slice(1),
-      `Kode OTP pendaftaran PerpusKita: ${code}. Kode berlaku selama 5 menit dan hanya dapat digunakan sekali. Jangan bagikan kode ini kepada siapa pun.`
+      `Kode OTP pendaftaran ${branding.title}: ${code}. Kode berlaku selama 5 menit dan hanya dapat digunakan sekali. Jangan bagikan kode ini kepada siapa pun.`
     );
     return res.status(201).json({ verificationId, expiresInSeconds: 300, message: 'Kode OTP berhasil dikirim ke WhatsApp.' });
   } catch (error) {
@@ -174,6 +176,7 @@ router.post('/school/register', async (req, res, next) => {
     const passwordHash = await bcrypt.hash(password, 12);
     await connection.beginTransaction();
     transactionStarted = true;
+    const platformBranding = await readPlatformBranding(connection);
 
     if (otpRequired) {
       const [verifications] = await connection.execute(
@@ -229,6 +232,17 @@ router.post('/school/register', async (req, res, next) => {
       error.statusCode = 503;
       throw error;
     }
+
+    const defaultSchoolAppearance = {
+      primaryColor: platformBranding.primaryColor,
+      title: platformBranding.title,
+      subtitle: 'PORTAL SEKOLAH'
+    };
+    await connection.execute(
+      `INSERT INTO school_settings (school_id, \`key\`, \`value\`)
+       VALUES (?, 'appearance', ?)`,
+      [schoolId, JSON.stringify(defaultSchoolAppearance)]
+    );
 
     const [adminResult] = await connection.execute(
       `INSERT INTO users (school_id, role, name, email, phone, password, status)

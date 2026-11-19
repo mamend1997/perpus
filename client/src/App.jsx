@@ -75,7 +75,7 @@ function currentPage() {
   return '/school/login';
 }
 
-function Login({ onLogin }) {
+function Login({ onLogin, appName }) {
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -103,7 +103,7 @@ function Login({ onLogin }) {
     <main className="login-shell">
       <form className="login-card" onSubmit={submit}>
         <div className="brand-mark"><BookOpen size={22} /></div>
-        <p className="eyebrow">PERPUSKITA · PLATFORM OWNER</p>
+        <p className="eyebrow">{appName.toUpperCase()} · PLATFORM OWNER</p>
         <h1>Selamat datang kembali</h1>
         <p className="muted">Masuk untuk mengelola platform dan sekolah.</p>
         <label>Username atau email<input autoComplete="username" required value={identifier} onChange={(e) => setIdentifier(e.target.value)} placeholder="username atau admin@platform.id" /></label>
@@ -121,7 +121,7 @@ function Login({ onLogin }) {
   );
 }
 
-function SchoolAuth({ mode, onNavigate, onLogin }) {
+function SchoolAuth({ mode, onNavigate, onLogin, appName }) {
   const registering = mode === 'register';
   const [schoolName, setSchoolName] = useState('');
   const [adminName, setAdminName] = useState('');
@@ -250,6 +250,7 @@ function SchoolAuth({ mode, onNavigate, onLogin }) {
 
   function enterSchoolDashboard() {
     localStorage.setItem('school-token', registration.token);
+    localStorage.setItem('school-onboarding-pending', String(registration.account.id));
     onLogin(registration.account);
     onNavigate('/school/dashboard');
   }
@@ -286,7 +287,7 @@ function SchoolAuth({ mode, onNavigate, onLogin }) {
     <main className="login-shell">
       <form className={`login-card school-auth-card ${registering ? 'school-register-card' : ''}`} onSubmit={submit}>
         <div className="brand-mark"><BookOpen size={22} /></div>
-        <p className="eyebrow">PERPUSKITA · AKUN SEKOLAH</p>
+        <p className="eyebrow">{appName.toUpperCase()} · AKUN SEKOLAH</p>
         <h1>{registering ? 'Daftarkan sekolah' : 'Login akun sekolah'}</h1>
         {registering && <p className="muted">Buat ruang perpustakaan sekolah Anda. Kode sekolah dibuat otomatis.</p>}
 
@@ -817,7 +818,7 @@ function StatCard({ title, value, note, icon: Icon, tone, trend }) {
   );
 }
 
-function Dashboard({ data, onBillingCheck, billing, toast, onShowSchools, onShowActivityLogs }) {
+function Dashboard({ data, onBillingCheck, billing, toast, onShowSchools, onShowActivityLogs, appName }) {
   const stats = data.stats;
   const lastBillingCheck = billing?.checkedAt ? billing : data.lastBillingCheck;
   const formattedDate = (date) => new Intl.DateTimeFormat('id-ID', {
@@ -874,7 +875,7 @@ function Dashboard({ data, onBillingCheck, billing, toast, onShowSchools, onShow
         <div className="panel-heading"><div><h3>Aktivitas Terakhir Super Admin</h3><p>Jejak audit aktivitas platform</p></div><button className="text-button" onClick={onShowActivityLogs}>Lihat semua <ChevronRight size={16} /></button></div>
         {data.activities.length ? <div className="activity-table"><div className="activity-header"><span>AKTIVITAS</span><span>ADMIN</span><span>ALAMAT IP</span><span>WAKTU</span></div>{data.activities.map((item) => <div className="activity-row" key={item.id}><span><span className="activity-dot" />{item.activity}</span><span>{item.admin_name || 'Platform'}</span><span>{item.ip_address || '—'}</span><span>{formattedDate(item.created_at)}</span></div>)}</div> : <EmptyState text="Aktivitas penting akan tercatat dan muncul di sini." />}
       </section>
-      <footer className="page-footer"><span>© {new Date().getFullYear()} PerpusKita Platform</span><span><span className="live-dot" />Semua sistem beroperasi</span></footer>
+      <footer className="page-footer"><span>© {new Date().getFullYear()} {appName} Platform</span><span><span className="live-dot" />Semua sistem beroperasi</span></footer>
     </>
   );
 }
@@ -1117,7 +1118,7 @@ export default function App() {
   const [billing, setBilling] = useState(null);
   const [toastText, setToastText] = useState('');
   const [branding, setBranding] = useState({
-    title: 'PerpusKita',
+    title: 'MACA',
     subtitle: 'PLATFORM ADMIN',
     primaryColor: '#f97316',
     logo: ''
@@ -1250,7 +1251,28 @@ export default function App() {
   }, [admin]);
 
   useEffect(() => {
-    document.title = branding.title || 'PerpusKita';
+    let activeRequest = true;
+    request('/api/public/library/platform-branding')
+      .then(({ title, logo }) => {
+        if (activeRequest) setBranding((current) => ({ ...current, title: title || 'MACA', logo: logo || '' }));
+      })
+      .catch((brandingError) => {
+        if (activeRequest) console.error('Gagal memuat logo aplikasi:', brandingError);
+      });
+    return () => { activeRequest = false; };
+  }, []);
+
+  useEffect(() => {
+    if (schoolAccount || page.startsWith('/public/')) return;
+    const favicon = document.querySelector('link[rel~="icon"]');
+    if (favicon) {
+      favicon.href = branding.logo || '/favicon.svg';
+      favicon.type = branding.logo ? branding.logo.slice(5, branding.logo.indexOf(';')) : 'image/svg+xml';
+    }
+  }, [branding.logo, page, schoolAccount]);
+
+  useEffect(() => {
+    document.title = branding.title || 'MACA';
   }, [branding.title]);
 
   useEffect(() => {
@@ -1312,12 +1334,12 @@ export default function App() {
     if (schoolAccount) return <SchoolPortal account={schoolAccount} onAccountUpdated={setSchoolAccount} onLogout={schoolLogout} />;
     if (schoolSessionLoading) return <div className="loading-state"><div className="spinner" />Memulihkan sesi sekolah...</div>;
     if (supportExchangeError) return <div className="support-session-error" role="alert"><b>Panel pemeliharaan tidak dapat dibuka</b><span>{supportExchangeError}</span><button type="button" className="primary-button" onClick={() => { setSupportExchangeError(''); navigate('/school/login'); }}>Kembali ke login</button></div>;
-    return <SchoolAuth mode={page === '/school/register' ? 'register' : 'login'} onNavigate={navigate} onLogin={setSchoolAccount} />;
+    return <SchoolAuth mode={page === '/school/register' ? 'register' : 'login'} onNavigate={navigate} onLogin={setSchoolAccount} appName={branding.title} />;
   }
 
   if (!admin) {
     if (adminSessionLoading) return <div className="loading-state"><div className="spinner" />Memulihkan sesi Super Admin...</div>;
-    return <Login onLogin={setAdmin} />;
+    return <Login onLogin={setAdmin} appName={branding.title} />;
   }
 
   return (
@@ -1325,7 +1347,7 @@ export default function App() {
       {mobileOpen && <button className="mobile-scrim" onClick={() => setMobileOpen(false)} aria-label="Tutup menu" />}
       <aside className={`sidebar ${mobileOpen ? 'mobile-open' : ''}`}>
         <div className="sidebar-brand"><div className="brand-mark">{branding.logo ? <img className="platform-brand-logo" src={branding.logo} alt="" /> : <BookOpen size={21} />}</div>{!collapsed && <div className="brand-text"><b>{branding.title}<span>.</span></b><small>{branding.subtitle}</small></div>}<button className="collapse-button" onClick={() => setCollapsed(!collapsed)} aria-label="Ciutkan sidebar">{collapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}</button></div>
-        <div className="workspace-switch"><div className={`workspace-logo ${branding.logo ? 'has-logo' : ''}`}>{branding.logo ? <img src={branding.logo} alt="" /> : 'P'}</div>{!collapsed && <><div><b>{branding.title}</b><span>Platform Owner</span></div><ChevronDown size={15} className="workspace-chevron" /></>}</div>
+        <div className="workspace-switch"><div className={`workspace-logo ${branding.logo ? 'has-logo' : ''}`}>{branding.logo ? <img src={branding.logo} alt="" /> : 'M'}</div>{!collapsed && <><div><b>{branding.title}</b><span>Platform Owner</span></div><ChevronDown size={15} className="workspace-chevron" /></>}</div>
         <nav className="side-nav">{groups.map((group) => <div className="nav-group" key={group.title}><div className="nav-group-title">{!collapsed ? group.title : <span className="nav-divider" />}</div>{group.items.map(({ label, icon: Icon, badge }) => <button key={label} title={collapsed ? label : undefined} onClick={() => { setActive(label); setMobileOpen(false); }} className={`nav-item ${active === label ? 'selected' : ''}`}><Icon size={17} /><span className="nav-label">{!collapsed && label}</span>{!collapsed && badge && data && <span className="nav-badge">{number(data.stats[badge])}</span>}</button>)}</div>)}</nav>
         <div className="sidebar-bottom"><button className="profile-card" onClick={logout} aria-label="Keluar dari akun Super Admin"><div className="profile-avatar" aria-hidden="true">{admin.name?.slice(0, 1).toUpperCase() || 'P'}</div><LogOut size={16} className="logout-icon" aria-hidden="true" /></button></div>
       </aside>
@@ -1346,7 +1368,7 @@ export default function App() {
             : active === 'Branding Sistem' ? <PlatformAppearancePage mode="branding" onSaved={setBranding} />
             : active === 'Tema' ? <PlatformAppearancePage mode="theme" onSaved={setBranding} />
             : active === 'Dashboard' ? error ? <div className="error-panel"><ShieldCheck size={20} /><div><b>Dashboard belum dapat dimuat</b><p>{error}. Pastikan database sudah disiapkan dan tersedia datanya.</p></div><button className="subtle-button" onClick={() => { setError(''); request('/api/super-admin/dashboard').then(setData).catch((err) => setError(err.message)); }}>Coba lagi</button></div>
-              : data ? <Dashboard data={{ ...data, adminName: admin.name }} onBillingCheck={runBillingCheck} billing={billing} toast={toast} onShowSchools={() => setActive('Daftar Sekolah')} onShowActivityLogs={() => setActive('Log Aktivitas')} />
+              : data ? <Dashboard data={{ ...data, adminName: admin.name }} onBillingCheck={runBillingCheck} billing={billing} toast={toast} onShowSchools={() => setActive('Daftar Sekolah')} onShowActivityLogs={() => setActive('Log Aktivitas')} appName={branding.title} />
                 : <div className="loading-state"><div className="spinner" />Memuat ringkasan platform...</div>
             : <AdminModulePage title={active} />}
         </div>

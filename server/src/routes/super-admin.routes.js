@@ -6,6 +6,7 @@ import { requireSuperAdmin } from '../middleware/require-super-admin.js';
 import createBackupRouter from './backup.routes.js';
 import { encryptSchoolSecret } from '../utils/school-settings.js';
 import { readPlatformWhatsAppSettings, sendPlatformWhatsAppMessage } from '../utils/platform-whatsapp.js';
+import { normalizePlatformBranding, readPlatformBranding } from '../utils/platform-branding.js';
 
 const router = Router();
 router.use(requireSuperAdmin);
@@ -326,12 +327,6 @@ const defaultUserGuide = {
   videoUrl: '',
   updatedAt: null
 };
-const defaultPlatformBranding = {
-  title: 'PerpusKita',
-  subtitle: 'PLATFORM ADMIN',
-  primaryColor: '#f97316',
-  logo: ''
-};
 const defaultPlatformPaymentSettings = {
   qrisEnabled: false,
   merchantName: '',
@@ -407,12 +402,7 @@ function isValidPlatformLogo(logo) {
 
 router.get('/branding', async (_req, res, next) => {
   try {
-    const [rows] = await pool.execute(
-      'SELECT value FROM platform_settings WHERE key_name = ? LIMIT 1',
-      ['platform_branding']
-    );
-    const saved = rows[0] ? JSON.parse(rows[0].value) : {};
-    return res.json({ branding: { ...defaultPlatformBranding, ...saved } });
+    return res.json({ branding: await readPlatformBranding() });
   } catch (error) {
     return next(error);
   }
@@ -426,12 +416,12 @@ router.put('/branding', async (req, res, next) => {
       || !isValidPlatformLogo(logo)) {
     return res.status(400).json({ message: 'Judul, subjudul, warna, atau logo aplikasi tidak valid.' });
   }
-  const branding = {
+  const branding = normalizePlatformBranding({
     title: title.trim(),
     subtitle: subtitle.trim(),
     primaryColor: primaryColor.toLowerCase(),
     logo
-  };
+  });
   try {
     await pool.execute(
       `INSERT INTO platform_settings (key_name, value)
@@ -606,6 +596,11 @@ router.put('/whatsapp-gateway', async (req, res, next) => {
       message: 'Pengaturan WhatsApp Gateway berhasil disimpan.'
     });
   } catch (error) {
+    if (error.code === 'SECRET_ENCRYPTION_KEY_MISSING') {
+      return res.status(503).json({
+        message: 'Server belum dikonfigurasi untuk menyimpan token terenkripsi. Atur SCHOOL_SETTINGS_ENCRYPTION_KEY (minimal 32 karakter) pada environment server, lalu restart backend.'
+      });
+    }
     return next(error);
   }
 });
@@ -616,9 +611,10 @@ router.post('/whatsapp-gateway/test', async (req, res, next) => {
     return res.status(400).json({ message: 'Masukkan nomor tujuan dengan kode negara, misalnya +6281234567890.' });
   }
   try {
+    const branding = await readPlatformBranding();
     await sendPlatformWhatsAppMessage(
       target.replace(/^\+/, ''),
-      `Tes koneksi WhatsApp PerpusKita berhasil. Pesan ini dikirim oleh Super Admin ${req.admin.name}.`
+      `Tes koneksi WhatsApp ${branding.title} berhasil. Pesan ini dikirim oleh Super Admin ${req.admin.name}.`
     );
     return res.json({ message: 'Pesan tes berhasil dikirim melalui Fonnte.' });
   } catch (error) {

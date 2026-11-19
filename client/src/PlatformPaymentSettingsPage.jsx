@@ -105,7 +105,7 @@ export default function PlatformPaymentSettingsPage() {
               {settings.qrisImage ? <img src={settings.qrisImage} alt="Pratinjau QRIS pembayaran" /> : <div><ImagePlus size={24} /><span>QRIS belum diunggah</span></div>}
             </div>
             <div className="platform-payment-qris-fields">
-              <label>Nama merchant<input maxLength={120} value={settings.merchantName} onChange={(event) => setSettings((current) => ({ ...current, merchantName: event.target.value }))} placeholder="Contoh: PerpusKita" /></label>
+              <label>Nama merchant<input maxLength={120} value={settings.merchantName} onChange={(event) => setSettings((current) => ({ ...current, merchantName: event.target.value }))} placeholder="Contoh: MACA" /></label>
               <label>Instruksi pembayaran<textarea maxLength={2000} rows={4} value={settings.instructions} onChange={(event) => setSettings((current) => ({ ...current, instructions: event.target.value }))} placeholder="Jelaskan cara membayar dan mengirim bukti pembayaran." /></label>
               <div className="platform-payment-qris-actions">
                 {settings.qrisImage && <button type="button" className="subtle-button" onClick={() => setSettings((current) => ({ ...current, qrisImage: '' }))}><Trash2 size={14} />Hapus QRIS</button>}

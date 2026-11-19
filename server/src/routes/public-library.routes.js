@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { pool } from '../config/database.js';
+import { readPlatformBranding } from '../utils/platform-branding.js';
 
 const router = Router();
 const validSchoolCode = (value) => /^[A-Z0-9]{4}$/.test(value);
@@ -17,6 +18,15 @@ function availabilityQuery() {
       )
   )`;
 }
+
+router.get('/platform-branding', async (_req, res, next) => {
+  try {
+    const branding = await readPlatformBranding();
+    return res.json({ title: branding.title, logo: branding.logo });
+  } catch (error) {
+    return next(error);
+  }
+});
 
 router.get('/:schoolCode', async (req, res, next) => {
   const schoolCode = String(req.params.schoolCode || '').toUpperCase();

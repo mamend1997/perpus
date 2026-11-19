@@ -271,7 +271,7 @@ router.put('/library', canManageSettings, async (req, res, next) => {
 
 const defaultAppearance = {
   primaryColor: '#f97316',
-  title: 'PerpusKita',
+  title: 'MACA',
   subtitle: 'PORTAL SEKOLAH'
 };
 const allowedAppearanceColors = new Set([
@@ -285,6 +285,9 @@ router.get('/appearance', canManageSettings, async (req, res, next) => {
       [req.school.id, 'appearance']
     );
     const appearance = rows[0] ? JSON.parse(rows[0].value) : defaultAppearance;
+    if (typeof appearance.title === 'string' && appearance.title.trim().toLowerCase() === 'perpuskita') {
+      appearance.title = 'MACA';
+    }
     return res.json({ appearance });
   } catch (error) {
     return next(error);

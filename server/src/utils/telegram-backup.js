@@ -3,6 +3,7 @@ import { createBackupArchive } from './backup-archive.js';
 import {
   decryptBackupToken, readBackupSettings, writeBackupSettings
 } from './backup-settings.js';
+import { readPlatformBranding } from './platform-branding.js';
 
 const telegramMaxBytes = 49 * 1024 * 1024;
 const timeZone = 'Asia/Jakarta';
@@ -67,10 +68,11 @@ export async function sendConfiguredBackup(scope, schoolId = null, schoolName = 
   }
   try {
     const archive = await createBackupArchive(scope, schoolId);
-    const fileName = `perpuskita-${scope === 'school' ? `sekolah-${schoolId}` : 'platform'}-${new Date().toISOString().slice(0, 10)}.json.gz`;
+    const fileName = `maca-${scope === 'school' ? `sekolah-${schoolId}` : 'platform'}-${new Date().toISOString().slice(0, 10)}.json.gz`;
+    const branding = scope === 'platform' ? await readPlatformBranding() : null;
     const caption = scope === 'school'
       ? `Backup data sekolah: ${schoolName || `ID ${schoolId}`}`
-      : 'Backup database PerpusKita seluruh platform';
+      : `Backup database ${branding.title} seluruh platform`;
     await sendDocument(decryptBackupToken(settings), settings.chatId, archive, fileName, caption);
     await updateRunStatus(scope, schoolId, 'Berhasil dikirim ke Telegram');
     return { message: 'Backup berhasil dikirim ke Telegram.' };
@@ -87,12 +89,13 @@ export async function sendTelegramTest(scope, schoolId = null) {
     error.status = 400;
     throw error;
   }
+  const branding = await readPlatformBranding();
   await sendDocument(
     decryptBackupToken(settings),
     settings.chatId,
-    Buffer.from('Tes koneksi backup PerpusKita.'),
+    Buffer.from(`Tes koneksi backup ${branding.title}.`),
     `tes-backup-${scope}.txt`,
-    'Tes koneksi bot Telegram PerpusKita.'
+    `Tes koneksi bot Telegram ${branding.title}.`
   );
   return { message: 'Pesan tes berhasil dikirim ke Telegram.' };
 }

@@ -4,7 +4,7 @@ import { fetchSchoolAppearance, saveSchoolAppearance } from './schoolSettingsApi
 
 const defaultAppearance = {
   primaryColor: '#f97316',
-  title: 'PerpusKita',
+  title: 'MACA',
   subtitle: 'PORTAL SEKOLAH'
 };
 const themeColors = [

@@ -15,7 +15,7 @@ const statusLabels = {
   closed: 'Ditutup'
 };
 
-export default function SchoolSupportPage({ rights }) {
+export default function SchoolSupportPage({ rights, appName = 'MACA' }) {
   const [tickets, setTickets] = useState([]);
   const [pagination, setPagination] = useState({ page: 1, totalPages: 1 });
   const [selected, setSelected] = useState(null);
@@ -116,7 +116,7 @@ export default function SchoolSupportPage({ rights }) {
           <div className="school-support-thread">
             {messages.map((item) => (
               <article className={`school-support-message ${item.sender_type}`} key={item.id}>
-                <div><b>{item.sender_type === 'admin' ? 'Tim PerpusKita' : 'Sekolah'}</b><time>{dateLabel(item.created_at)}</time></div>
+                <div><b>{item.sender_type === 'admin' ? `Tim ${appName}` : 'Sekolah'}</b><time>{dateLabel(item.created_at)}</time></div>
                 <p>{item.message}</p>
               </article>
             ))}

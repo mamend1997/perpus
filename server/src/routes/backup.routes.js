@@ -42,7 +42,7 @@ export default function createBackupRouter(scope) {
       const schoolId = schoolIdFor(req);
       const archive = await createBackupArchive(scope, schoolId);
       const date = new Date().toISOString().slice(0, 10);
-      const fileName = `perpuskita-${scope === 'school' ? `sekolah-${schoolId}` : 'platform'}-${date}.json.gz`;
+      const fileName = `maca-${scope === 'school' ? `sekolah-${schoolId}` : 'platform'}-${date}.json.gz`;
       res.setHeader('Content-Type', 'application/gzip');
       res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
       res.setHeader('Cache-Control', 'no-store');
