@@ -122,7 +122,8 @@ export default function SchoolBookStockPage({ rights }) {
   const projectedQuantity = currentQuantity + (Number.isInteger(addedQuantity) ? addedQuantity : 0);
   const remainingCapacity = maximumBookQuantity - currentQuantity;
   const selectedHistoryIds = Object.keys(selectedHistory);
-  const allVisibleHistorySelected = history.length > 0 && history.every((movement) => Boolean(selectedHistory[String(movement.id)]));
+  const deletableHistory = history.filter((movement) => Number(movement.quantity_removed || 0) === 0);
+  const allVisibleHistorySelected = deletableHistory.length > 0 && deletableHistory.every((movement) => Boolean(selectedHistory[String(movement.id)]));
 
   useEffect(() => {
     function closeSearch(event) {
@@ -339,7 +340,7 @@ export default function SchoolBookStockPage({ rights }) {
   function toggleVisibleHistory(checked) {
     setSelectedHistory((current) => {
       const next = { ...current };
-      history.forEach((movement) => {
+      deletableHistory.forEach((movement) => {
         const id = String(movement.id);
         if (checked) next[id] = true;
         else delete next[id];
@@ -572,7 +573,7 @@ export default function SchoolBookStockPage({ rights }) {
 
       <section className="library-panel book-stock-history">
         <div className="library-panel-heading book-stock-history-heading">
-          <div><span className="library-eyebrow">RIWAYAT TRANSAKSI</span><h2>Riwayat Penambahan Stok</h2><p>{Number(historyPagination.total || 0).toLocaleString('id-ID')} transaksi</p></div>
+          <div><span className="library-eyebrow">RIWAYAT TRANSAKSI</span><h2>Riwayat Stok</h2><p>{Number(historyPagination.total || 0).toLocaleString('id-ID')} transaksi</p></div>
           {canDelete && <button
             type="button"
             className="master-button procurement-delete-selected"
@@ -586,15 +587,15 @@ export default function SchoolBookStockPage({ rights }) {
         <div className="master-table-scroll">
           <table className="master-table book-stock-history-table">
             <thead><tr>
-              {canDelete && <th className="book-stock-history-checkbox"><input type="checkbox" checked={allVisibleHistorySelected} onChange={(event) => toggleVisibleHistory(event.target.checked)} aria-label="Pilih semua riwayat di halaman ini" /></th>}
-              <th>No</th><th>Tanggal</th><th>Nama Buku</th><th>Jumlah Tambahan</th><th>Stok Sebelumnya</th><th>Stok Setelah</th><th>Keterangan</th><th>Petugas</th>
+              {canDelete && <th className="book-stock-history-checkbox"><input type="checkbox" checked={allVisibleHistorySelected} onChange={(event) => toggleVisibleHistory(event.target.checked)} aria-label="Pilih semua riwayat penambahan di halaman ini" /></th>}
+              <th>No</th><th>Tanggal</th><th>Nama Buku</th><th>Jumlah Tambahan</th><th>Pengurangan Stok</th><th>Stok Sebelumnya</th><th>Stok Setelah</th><th>Keterangan</th><th>Petugas</th>
               {(canEdit || canDelete) && <th>Aksi</th>}
             </tr></thead>
             <tbody>
-              {historyLoading ? <tr><td className="master-empty-cell" colSpan={8 + (canDelete ? 1 : 0) + (canEdit || canDelete ? 1 : 0)}>Memuat riwayat stok...</td></tr>
-                : history.length === 0 ? <tr><td className="master-empty-cell" colSpan={8 + (canDelete ? 1 : 0) + (canEdit || canDelete ? 1 : 0)}>Belum ada riwayat penambahan stok.</td></tr>
+              {historyLoading ? <tr><td className="master-empty-cell" colSpan={9 + (canDelete ? 1 : 0) + (canEdit || canDelete ? 1 : 0)}>Memuat riwayat stok...</td></tr>
+                : history.length === 0 ? <tr><td className="master-empty-cell" colSpan={9 + (canDelete ? 1 : 0) + (canEdit || canDelete ? 1 : 0)}>Belum ada riwayat stok.</td></tr>
                   : history.map((movement, index) => <tr key={movement.id}>
-                    {canDelete && <td className="book-stock-history-checkbox"><input type="checkbox" checked={Boolean(selectedHistory[String(movement.id)])} onChange={(event) => setSelectedHistory((current) => {
+                    {canDelete && <td className="book-stock-history-checkbox"><input type="checkbox" checked={Boolean(selectedHistory[String(movement.id)])} disabled={Number(movement.quantity_removed || 0) > 0} onChange={(event) => setSelectedHistory((current) => {
                       const next = { ...current };
                       if (event.target.checked) next[String(movement.id)] = true;
                       else delete next[String(movement.id)];
@@ -603,14 +604,15 @@ export default function SchoolBookStockPage({ rights }) {
                     <td>{(historyPage - 1) * stockHistoryPageSize + index + 1}</td>
                     <td>{stockDateLabel(movement.stock_date)}</td>
                     <td><b>{movement.book_title}</b></td>
-                    <td><span className="book-stock-history-added">+{Number(movement.quantity_added || 0).toLocaleString('id-ID')}</span></td>
+                    <td>{Number(movement.quantity_added || 0) ? <span className="book-stock-history-added">+{Number(movement.quantity_added).toLocaleString('id-ID')}</span> : '—'}</td>
+                    <td>{Number(movement.quantity_removed || 0) ? <span className="book-stock-history-removed">−{Number(movement.quantity_removed).toLocaleString('id-ID')}</span> : '—'}</td>
                     <td>{Number(movement.previous_qty || 0).toLocaleString('id-ID')}</td>
                     <td>{Number(movement.resulting_qty || 0).toLocaleString('id-ID')}</td>
                     <td className="book-stock-history-note">{movement.note || '—'}</td>
                     <td>{movement.actor_name || '—'}</td>
                     {(canEdit || canDelete) && <td><div className="student-row-actions">
-                      {canEdit && <button type="button" className="master-icon-button" title="Edit riwayat stok" aria-label={`Edit riwayat ${movement.book_title}`} onClick={() => setEditingMovement(movement)}><Pencil size={15} /></button>}
-                      {canDelete && <button type="button" className="master-icon-button" title="Hapus riwayat stok" aria-label={`Hapus riwayat ${movement.book_title}`} onClick={() => { setDeleteHistoryError(''); setDeleteTarget([String(movement.id)]); }}><Trash2 size={15} /></button>}
+                      {canEdit && Number(movement.quantity_removed || 0) === 0 && <button type="button" className="master-icon-button" title="Edit riwayat stok" aria-label={`Edit riwayat ${movement.book_title}`} onClick={() => setEditingMovement(movement)}><Pencil size={15} /></button>}
+                      {canDelete && Number(movement.quantity_removed || 0) === 0 && <button type="button" className="master-icon-button" title="Hapus riwayat stok" aria-label={`Hapus riwayat ${movement.book_title}`} onClick={() => { setDeleteHistoryError(''); setDeleteTarget([String(movement.id)]); }}><Trash2 size={15} /></button>}
                     </div></td>}
                   </tr>)}
             </tbody>

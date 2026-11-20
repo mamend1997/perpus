@@ -161,6 +161,14 @@ export function updateBookItemCondition(id, condition) {
   });
 }
 
+export function updateBookItemLoss(id, action, date) {
+  const dateField = action === 'found' ? 'foundDate' : 'lostDate';
+  return requestBookApi(`/items/${encodeURIComponent(id)}/loss`, {
+    method: 'PATCH',
+    body: { action, [dateField]: date }
+  });
+}
+
 export function deleteBookItem(id) {
   return requestBookApi(`/items/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }

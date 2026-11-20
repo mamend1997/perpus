@@ -90,7 +90,7 @@ router.get('/:schoolCode/books', async (req, res, next) => {
               ${availabilityQuery()} AS available_count,
               (SELECT COUNT(*) FROM book_items total_items
                WHERE total_items.school_id = b.school_id AND total_items.book_id = b.id
-                 AND total_items.destroyed_at IS NULL) AS total_count
+                 AND total_items.destroyed_at IS NULL AND total_items.status <> 'Hilang') AS total_count
        FROM books b
        JOIN tenants_schools s ON s.id = b.school_id
        LEFT JOIN master_categories a ON a.school_id = b.school_id AND a.id = b.author_id AND a.type = 'pengarang'
@@ -114,7 +114,7 @@ router.get('/:schoolCode/books', async (req, res, next) => {
       const placeholders = books.map(() => '?').join(', ');
       const [rackRows] = await pool.execute(
         `SELECT bi.book_id, bi.rack_id, COALESCE(r.name, 'Belum ditempatkan') AS rack_name,
-                r.code AS rack_code, COUNT(*) AS total_count,
+                r.code AS rack_code, COUNT(CASE WHEN bi.status <> 'Hilang' THEN 1 END) AS total_count,
                 SUM(CASE WHEN bi.status = 'Tersedia' AND NOT EXISTS (
                   SELECT 1 FROM loans l
                   WHERE l.school_id = bi.school_id AND l.book_item_id = bi.id
@@ -130,7 +130,7 @@ router.get('/:schoolCode/books', async (req, res, next) => {
          JOIN tenants_schools s ON s.id = bi.school_id
          LEFT JOIN master_categories r ON r.school_id = bi.school_id AND r.id = bi.rack_id AND r.type = 'rak'
          WHERE s.school_code = ? AND bi.book_id IN (${placeholders})
-           AND bi.destroyed_at IS NULL
+           AND bi.destroyed_at IS NULL AND bi.status <> 'Hilang'
          GROUP BY bi.book_id, bi.rack_id, r.name, r.code
          ORDER BY bi.book_id ASC, r.name ASC`,
         [schoolCode, ...books.map((book) => String(book.id))]

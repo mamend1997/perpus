@@ -47,7 +47,7 @@ export default function SchoolDocumentsPage({ type = 'guide' }) {
 
   return (
     <section className="school-documents-page">
-      <header className="management-heading"><div><h1>{pageTitle}</h1><p>Dokumen informasi layanan yang ditetapkan Super Admin.</p></div></header>
+      <header className="management-heading"><div><h1>{pageTitle}</h1><p>Dokumen informasi layanan perpustakaan sekolah.</p></div></header>
       {error && <div className="library-error" role="alert">{error}</div>}
       {loading ? <div className="library-empty-state">Memuat dokumen...</div> : document && (
         <>
@@ -61,7 +61,7 @@ export default function SchoolDocumentsPage({ type = 'guide' }) {
             <div className="school-document-content">
               {document.content.split(/\r?\n/).filter((line) => line.trim()).map((line, index) => <p key={`${index}-${line.slice(0, 20)}`}>{line}</p>)}
             </div>
-          ) : !pdfEmbedUrl && !videoEmbed ? <div className="school-document-empty">Dokumen belum diisi oleh Super Admin.</div> : null}
+          ) : !pdfEmbedUrl && !videoEmbed ? <div className="school-document-empty">Dokumen belum tersedia.</div> : null}
           {pdfEmbedUrl && (
             <section className="school-document-embed-section">
               <h3>Panduan PDF</h3>

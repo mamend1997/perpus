@@ -200,18 +200,23 @@ router.get('/', requireSchoolPermission('reports.monthly', 'view'), async (req, 
         LEFT JOIN users u ON u.id = m.actor_id`;
       conditions = ['m.school_id = ?', 'm.stock_date BETWEEN ? AND ?'];
       values.push(dateRange.startDate, dateRange.endDate);
+      if (search) {
+        conditions.push('b.title LIKE ?');
+        values.push(`%${search}%`);
+      }
       countSql = `SELECT COUNT(*) AS total ${from} WHERE ${conditions.join(' AND ')}`;
       rowsSql = `SELECT m.id, m.id AS movement_no,
           DATE_FORMAT(m.stock_date, '%Y-%m-%d') AS stock_date, b.title AS book_title,
-          m.quantity_added, m.previous_qty, m.resulting_qty, m.note, u.name AS actor_name
+          m.quantity_added, m.quantity_removed, m.previous_qty, m.resulting_qty, m.note, u.name AS actor_name
         ${from} WHERE ${conditions.join(' AND ')}
         ORDER BY m.stock_date DESC, m.id DESC LIMIT ? OFFSET ?`;
       summarySql = `SELECT COUNT(*) AS total,
-          COALESCE(SUM(m.quantity_added), 0) AS quantity_added
+          COALESCE(SUM(m.quantity_added), 0) AS quantity_added,
+          COALESCE(SUM(m.quantity_removed), 0) AS quantity_removed
         ${from} WHERE ${conditions.join(' AND ')}`;
       columns = [
         ['movement_no', 'No'], ['stock_date', 'Tanggal'], ['book_title', 'Nama Buku'],
-        ['quantity_added', 'Jumlah Tambahan'], ['previous_qty', 'Stok Sebelumnya'],
+        ['quantity_added', 'Jumlah Tambahan'], ['quantity_removed', 'Pengurangan Stok'], ['previous_qty', 'Stok Sebelumnya'],
         ['resulting_qty', 'Stok Setelah'], ['note', 'Keterangan'], ['actor_name', 'Petugas']
       ];
     } else {
@@ -223,25 +228,29 @@ router.get('/', requireSchoolPermission('reports.monthly', 'view'), async (req, 
       countSql = `SELECT COUNT(DISTINCT b.id) AS total ${from} WHERE ${conditions.join(' AND ')}`;
       rowsSql = `SELECT b.id, b.title AS book_title, author.name AS author_name,
           publisher.name AS publisher_name, b.\`year\`, b.nomor_induk,
-          COUNT(bi.id) AS total_items,
+          SUM(bi.status <> 'Hilang') AS total_items,
           SUM(bi.status = 'Tersedia') AS available_items,
           SUM(bi.status = 'Dipinjam') AS borrowed_items,
+          SUM(bi.status = 'Hilang') AS lost_items,
+          GROUP_CONCAT(CASE WHEN bi.status = 'Hilang' THEN DATE_FORMAT(bi.lost_date, '%Y-%m-%d') END
+            ORDER BY bi.lost_date DESC SEPARATOR ', ') AS lost_dates,
           SUM(bi.\`condition\` = 'Rusak Ringan') AS lightly_damaged_items,
           SUM(bi.\`condition\` = 'Rusak Berat') AS heavily_damaged_items
         ${from} WHERE ${conditions.join(' AND ')}
         GROUP BY b.id, b.title, author.name, publisher.name, b.\`year\`, b.nomor_induk
         ORDER BY b.title ASC LIMIT ? OFFSET ?`;
       summarySql = `SELECT COUNT(DISTINCT b.id) AS total_titles,
-          COUNT(bi.id) AS total_items,
+          SUM(bi.status <> 'Hilang') AS total_items,
           SUM(bi.status = 'Tersedia') AS available_items,
           SUM(bi.status = 'Dipinjam') AS borrowed_items,
+          SUM(bi.status = 'Hilang') AS lost_items,
           SUM(bi.\`condition\` = 'Rusak Ringan') AS lightly_damaged_items,
           SUM(bi.\`condition\` = 'Rusak Berat') AS heavily_damaged_items
         ${from} WHERE ${conditions.join(' AND ')}`;
       columns = [
         ['book_title', 'Judul Buku'], ['author_name', 'Pengarang'], ['publisher_name', 'Penerbit'],
         ['year', 'Tahun Terbit'], ['nomor_induk', 'Nomor Induk'], ['total_items', 'Total Eksemplar'],
-        ['available_items', 'Tersedia'], ['borrowed_items', 'Dipinjam'],
+        ['available_items', 'Tersedia'], ['borrowed_items', 'Dipinjam'], ['lost_items', 'Hilang'], ['lost_dates', 'Tanggal Hilang'],
         ['lightly_damaged_items', 'Rusak Ringan'], ['heavily_damaged_items', 'Rusak Berat']
       ];
     }
@@ -273,10 +282,12 @@ router.get('/', requireSchoolPermission('reports.monthly', 'view'), async (req, 
         total_items: row.total_items == null ? undefined : Number(row.total_items),
         available_items: row.available_items == null ? undefined : Number(row.available_items),
         borrowed_items: row.borrowed_items == null ? undefined : Number(row.borrowed_items),
+        lost_items: row.lost_items == null ? undefined : Number(row.lost_items),
         lightly_damaged_items: row.lightly_damaged_items == null ? undefined : Number(row.lightly_damaged_items),
         heavily_damaged_items: row.heavily_damaged_items == null ? undefined : Number(row.heavily_damaged_items),
         days_late: row.days_late == null ? undefined : Number(row.days_late),
         quantity_added: row.quantity_added == null ? undefined : Number(row.quantity_added),
+        quantity_removed: row.quantity_removed == null ? undefined : Number(row.quantity_removed),
         previous_qty: row.previous_qty == null ? undefined : Number(row.previous_qty),
         resulting_qty: row.resulting_qty == null ? undefined : Number(row.resulting_qty)
       })),

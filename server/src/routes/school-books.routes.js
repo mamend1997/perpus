@@ -410,7 +410,7 @@ async function lockBookSerialSequence(connection, schoolId) {
 async function synchronizeBookItems(connection, schoolId, bookId, desiredQuantity, defaultRackId = null) {
   const [items] = await connection.execute(
     `SELECT id, serial_number, status FROM book_items
-     WHERE school_id = ? AND book_id = ? AND destroyed_at IS NULL ORDER BY id FOR UPDATE`,
+     WHERE school_id = ? AND book_id = ? AND destroyed_at IS NULL AND status <> 'Hilang' ORDER BY id FOR UPDATE`,
     [schoolId, bookId]
   );
   const difference = desiredQuantity - items.length;
@@ -781,10 +781,10 @@ router.get('/items/books', requireSchoolPermission('books.items', 'view'), async
   try {
     const [books] = await pool.execute(
       `SELECT CAST(b.id AS CHAR) AS id, b.title, b.nomor_induk, b.kode_buku,
-              COUNT(bi.id) AS item_count
+              COUNT(CASE WHEN bi.status <> 'Hilang' THEN 1 END) AS item_count
        FROM books b
        JOIN book_items bi ON bi.school_id = b.school_id AND bi.book_id = b.id AND bi.destroyed_at IS NULL
-       WHERE b.school_id = ? AND (
+       WHERE b.school_id = ? AND bi.status <> 'Hilang' AND (
          b.title LIKE ? OR b.nomor_induk LIKE ? OR b.kode_buku LIKE ? OR b.isbn LIKE ?
        )
        GROUP BY b.id, b.title, b.nomor_induk, b.kode_buku
@@ -812,7 +812,7 @@ router.get('/items', requireSchoolPermission('books.items', 'view'), async (req,
   if (!['serial', 'title'].includes(sort) || !['asc', 'desc'].includes(direction)) {
     return res.status(400).json({ message: 'Pengurutan eksemplar tidak valid.' });
   }
-  if (status && !['Tersedia', 'Dipinjam', 'Rusak'].includes(status)) {
+  if (status && !['Tersedia', 'Dipinjam', 'Rusak', 'Hilang'].includes(status)) {
     return res.status(400).json({ message: 'Filter status eksemplar tidak valid.' });
   }
 
@@ -845,6 +845,7 @@ router.get('/items', requireSchoolPermission('books.items', 'view'), async (req,
     const offset = (page - 1) * limit;
     const [items] = await pool.execute(
       `SELECT bi.id, bi.book_id, bi.serial_number, bi.barcode_value, bi.status, bi.\`condition\`,
+              DATE_FORMAT(bi.lost_date, '%Y-%m-%d') AS lost_date, DATE_FORMAT(bi.found_date, '%Y-%m-%d') AS found_date,
               b.title AS book_title, b.nomor_induk, b.kode_buku,
               r.name AS rack_name, r.code AS rack_code
        ${from}
@@ -991,6 +992,147 @@ router.patch('/items/:id', requireSchoolPermission('books.items', 'edit'), async
   }
 });
 
+router.patch('/items/:id/loss', requireSchoolPermission('books.items', 'edit'), async (req, res, next) => {
+  const id = String(req.params.id);
+  const action = req.body?.action;
+  const dateField = action === 'found' ? 'foundDate' : 'lostDate';
+  const dateLabel = action === 'found' ? 'Tanggal ditemukan' : 'Tanggal hilang';
+  const dateResult = normalizeDate(req.body || {}, dateField, dateLabel);
+  if (!/^[1-9]\d*$/.test(id)) return res.status(400).json({ message: 'ID eksemplar tidak valid.' });
+  if (!['lost', 'found'].includes(action)) return res.status(400).json({ message: 'Tindakan kondisi eksemplar tidak valid.' });
+  if (dateResult.error) return res.status(400).json({ message: dateResult.error });
+  if (!dateResult.value) return res.status(400).json({ message: `${dateLabel} wajib diisi.` });
+
+  let connection;
+  let transactionStarted = false;
+  try {
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    transactionStarted = true;
+    const [references] = await connection.execute(
+      'SELECT book_id FROM book_items WHERE id = ? AND school_id = ? AND destroyed_at IS NULL LIMIT 1',
+      [id, req.school.id]
+    );
+    if (!references[0]) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(404).json({ message: 'Eksemplar tidak ditemukan.' });
+    }
+    const [books] = await connection.execute(
+      'SELECT id, title, qty FROM books WHERE id = ? AND school_id = ? FOR UPDATE',
+      [references[0].book_id, req.school.id]
+    );
+    const book = books[0];
+    if (!book) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(404).json({ message: 'Buku induk tidak ditemukan.' });
+    }
+    const [items] = await connection.execute(
+      `SELECT id, book_id, serial_number, status,
+              DATE_FORMAT(lost_date, '%Y-%m-%d') AS lost_date, lost_previous_status
+       FROM book_items WHERE id = ? AND school_id = ? AND destroyed_at IS NULL FOR UPDATE`,
+      [id, req.school.id]
+    );
+    const item = items[0];
+    if (!item) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(404).json({ message: 'Eksemplar tidak ditemukan.' });
+    }
+
+    let previousQty = Number(book.qty);
+    let resultingQty;
+    let quantityAdded = 0;
+    let quantityRemoved = 0;
+    let note;
+    if (action === 'lost') {
+      if (item.status === 'Hilang') {
+        await connection.rollback();
+        transactionStarted = false;
+        return res.status(409).json({ message: 'Eksemplar ini sudah tercatat hilang.' });
+      }
+      if (item.status === 'Dipinjam') {
+        await connection.rollback();
+        transactionStarted = false;
+        return res.status(409).json({ message: 'Eksemplar yang sedang dipinjam tidak dapat ditandai hilang.' });
+      }
+      const [activeLoans] = await connection.execute(
+        `SELECT id FROM loans WHERE school_id = ? AND book_item_id = ? AND status IN ('Pending', 'Borrowed') LIMIT 1`,
+        [req.school.id, id]
+      );
+      if (activeLoans.length) {
+        await connection.rollback();
+        transactionStarted = false;
+        return res.status(409).json({ message: 'Eksemplar masih terkait peminjaman aktif.' });
+      }
+      if (previousQty < 1) {
+        await connection.rollback();
+        transactionStarted = false;
+        return res.status(409).json({ message: 'Stok buku tidak cukup untuk mencatat kehilangan.' });
+      }
+      resultingQty = previousQty - 1;
+      quantityRemoved = 1;
+      note = `Buku hilang · ${item.serial_number}`;
+      await connection.execute(
+        `UPDATE book_items SET status = 'Hilang', lost_date = ?, found_date = NULL, lost_previous_status = ?
+         WHERE id = ? AND school_id = ?`,
+        [dateResult.value, item.status, id, req.school.id]
+      );
+    } else {
+      if (item.status !== 'Hilang') {
+        await connection.rollback();
+        transactionStarted = false;
+        return res.status(409).json({ message: 'Eksemplar ini tidak tercatat hilang.' });
+      }
+      if (item.lost_date && dateResult.value < String(item.lost_date).slice(0, 10)) {
+        await connection.rollback();
+        transactionStarted = false;
+        return res.status(400).json({ message: 'Tanggal ditemukan tidak boleh sebelum tanggal hilang.' });
+      }
+      resultingQty = previousQty + 1;
+      if (resultingQty > MAX_BOOK_QUANTITY) {
+        await connection.rollback();
+        transactionStarted = false;
+        return res.status(409).json({ message: `Stok buku maksimal ${MAX_BOOK_QUANTITY} eksemplar.` });
+      }
+      quantityAdded = 1;
+      note = `Buku ditemukan · ${item.serial_number}`;
+      await connection.execute(
+        `UPDATE book_items SET status = ?, found_date = ?, lost_previous_status = NULL
+         WHERE id = ? AND school_id = ?`,
+        [item.lost_previous_status || 'Tersedia', dateResult.value, id, req.school.id]
+      );
+    }
+    await connection.execute('UPDATE books SET qty = ? WHERE id = ? AND school_id = ?', [resultingQty, item.book_id, req.school.id]);
+    await connection.execute(
+      `INSERT INTO book_stock_movements
+       (school_id, book_id, actor_id, quantity_added, quantity_removed, previous_qty, resulting_qty, stock_date, note)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [req.school.id, item.book_id, req.school.userId, quantityAdded, quantityRemoved, previousQty, resultingQty, dateResult.value, note]
+    );
+    await connection.commit();
+    transactionStarted = false;
+    return res.json({
+      item: { id, status: action === 'lost' ? 'Hilang' : item.lost_previous_status || 'Tersedia' },
+      book: { id: String(book.id), qty: resultingQty },
+      message: action === 'lost'
+        ? `Eksemplar ${item.serial_number} dicatat hilang. Stok tersisa ${resultingQty}.`
+        : `Eksemplar ${item.serial_number} dicatat ditemukan. Stok kini ${resultingQty}.`
+    });
+  } catch (error) {
+    if (transactionStarted && connection) {
+      try { await connection.rollback(); } catch (rollbackError) {
+        error.rollbackError = rollbackError;
+        return next(error);
+      }
+    }
+    return next(error);
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
 router.patch('/items/:id/condition', requireSchoolPermission('books.items', 'edit'), async (req, res, next) => {
   const id = String(req.params.id);
   const condition = req.body?.condition;
@@ -1000,7 +1142,7 @@ router.patch('/items/:id/condition', requireSchoolPermission('books.items', 'edi
   }
   try {
     const [result] = await pool.execute(
-      'UPDATE book_items SET `condition` = ? WHERE id = ? AND school_id = ? AND destroyed_at IS NULL',
+      "UPDATE book_items SET `condition` = ? WHERE id = ? AND school_id = ? AND destroyed_at IS NULL AND status <> 'Hilang'",
       [condition, id, req.school.id]
     );
     if (!result.affectedRows) {
@@ -1010,6 +1152,7 @@ router.patch('/items/:id/condition', requireSchoolPermission('books.items', 'edi
       );
       if (!items.length) return res.status(404).json({ message: 'Eksemplar tidak ditemukan.' });
       if (items[0].destroyed_at) return res.status(409).json({ message: 'Eksemplar yang sudah dimusnahkan tidak dapat diubah.' });
+      return res.status(409).json({ message: 'Kondisi eksemplar hilang hanya dapat diubah setelah buku ditemukan.' });
     }
     return res.json({ item: { id, condition } });
   } catch (error) {
@@ -1061,6 +1204,11 @@ router.delete('/items/:id', requireSchoolPermission('books.items', 'delete'), as
       await connection.rollback();
       transactionStarted = false;
       return res.status(409).json({ message: 'Eksemplar yang sedang dipinjam tidak dapat dihapus.' });
+    }
+    if (item.status === 'Hilang') {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(409).json({ message: 'Buku hilang harus ditemukan terlebih dahulu sebelum eksemplarnya dapat dihapus.' });
     }
     const [loanHistory] = await connection.execute(
       'SELECT id FROM loans WHERE school_id = ? AND book_item_id = ? LIMIT 1',
@@ -1170,7 +1318,7 @@ router.get('/destructions/books', requireSchoolPermission('books.stock', 'view')
        JOIN book_items bi ON bi.school_id = b.school_id AND bi.book_id = b.id
        WHERE b.school_id = ? AND bi.destroyed_at IS NULL
          AND bi.\`condition\` IN ('Rusak Ringan', 'Rusak Berat')
-         AND bi.status <> 'Dipinjam'
+         AND bi.status NOT IN ('Dipinjam', 'Hilang')
          AND NOT EXISTS (
            SELECT 1 FROM loans l
            WHERE l.school_id = bi.school_id AND l.book_item_id = bi.id
@@ -1206,7 +1354,7 @@ router.get('/destructions/racks', requireSchoolPermission('books.stock', 'view')
        LEFT JOIN master_categories r ON r.school_id = bi.school_id AND r.id = bi.rack_id AND r.type = 'rak'
        WHERE bi.school_id = ? AND bi.book_id = ? AND bi.destroyed_at IS NULL
          AND bi.\`condition\` IN ('Rusak Ringan', 'Rusak Berat')
-         AND bi.status <> 'Dipinjam'
+         AND bi.status NOT IN ('Dipinjam', 'Hilang')
          AND NOT EXISTS (
            SELECT 1 FROM loans l
            WHERE l.school_id = bi.school_id AND l.book_item_id = bi.id
@@ -1308,7 +1456,7 @@ router.post('/destructions', requireSchoolPermission('books.stock', 'edit'), asy
        WHERE bi.school_id = ? AND bi.book_id = ? AND ${rackCondition}
          AND bi.destroyed_at IS NULL
          AND bi.\`condition\` IN ('Rusak Ringan', 'Rusak Berat')
-         AND bi.status <> 'Dipinjam'
+         AND bi.status NOT IN ('Dipinjam', 'Hilang')
          AND NOT EXISTS (
            SELECT 1 FROM loans l
            WHERE l.school_id = bi.school_id AND l.book_item_id = bi.id
@@ -1357,6 +1505,12 @@ router.post('/destructions', requireSchoolPermission('books.stock', 'edit'), asy
        (school_id, book_id, rack_id, actor_id, quantity, destruction_date, reason)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [req.school.id, bookId, rackId, req.school.userId, quantity, destructionDate, reason]
+    );
+    await connection.execute(
+      `INSERT INTO book_stock_movements
+       (school_id, book_id, actor_id, quantity_added, quantity_removed, previous_qty, resulting_qty, stock_date, note)
+       VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?)`,
+      [req.school.id, bookId, req.school.userId, quantity, Number(book.qty), resultingQty, destructionDate, `Pemusnahan buku · ${reason}`]
     );
     await connection.commit();
     transactionStarted = false;
@@ -1514,7 +1668,7 @@ router.get('/stock/history', requireSchoolPermission('books.stock', 'view'), asy
       pool.execute('SELECT COUNT(*) AS total FROM book_stock_movements WHERE school_id = ?', [req.school.id]),
       pool.execute(
         `SELECT m.id, m.book_id, b.title AS book_title, m.actor_id, u.name AS actor_name,
-                m.quantity_added, m.previous_qty, m.resulting_qty,
+                m.quantity_added, m.quantity_removed, m.previous_qty, m.resulting_qty,
                 DATE_FORMAT(m.stock_date, '%Y-%m-%d') AS stock_date, m.note, m.created_at
          FROM book_stock_movements m
          JOIN books b ON b.school_id = m.school_id AND b.id = m.book_id
@@ -1532,6 +1686,7 @@ router.get('/stock/history', requireSchoolPermission('books.stock', 'view'), asy
         id: String(movement.id),
         book_id: String(movement.book_id),
         quantity_added: Number(movement.quantity_added),
+        quantity_removed: Number(movement.quantity_removed),
         previous_qty: Number(movement.previous_qty),
         resulting_qty: Number(movement.resulting_qty)
       })),
@@ -1654,7 +1809,7 @@ router.patch('/stock/history/:id', requireSchoolPermission('books.stock', 'edit'
     await connection.beginTransaction();
     transactionStarted = true;
     const [movements] = await connection.execute(
-      `SELECT id, book_id, quantity_added, previous_qty
+      `SELECT id, book_id, quantity_added, quantity_removed, previous_qty
        FROM book_stock_movements
        WHERE id = ? AND school_id = ? FOR UPDATE`,
       [id, req.school.id]
@@ -1664,6 +1819,11 @@ router.patch('/stock/history/:id', requireSchoolPermission('books.stock', 'edit'
       await connection.rollback();
       transactionStarted = false;
       return res.status(404).json({ message: 'Riwayat penambahan stok tidak ditemukan.' });
+    }
+    if (Number(movement.quantity_removed) > 0) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(409).json({ message: 'Riwayat pengurangan stok tidak dapat diedit.' });
     }
     const [books] = await connection.execute(
       'SELECT id, qty, rack_id FROM books WHERE id = ? AND school_id = ? FOR UPDATE',
@@ -1740,7 +1900,7 @@ router.delete('/stock/history', requireSchoolPermission('books.stock', 'delete')
     transactionStarted = true;
     const placeholders = ids.map(() => '?').join(', ');
     const [movements] = await connection.execute(
-      `SELECT id, book_id, quantity_added
+      `SELECT id, book_id, quantity_added, quantity_removed
        FROM book_stock_movements
        WHERE school_id = ? AND id IN (${placeholders})
        ORDER BY book_id, id FOR UPDATE`,
@@ -1750,6 +1910,11 @@ router.delete('/stock/history', requireSchoolPermission('books.stock', 'delete')
       await connection.rollback();
       transactionStarted = false;
       return res.status(409).json({ message: 'Sebagian riwayat sudah tidak tersedia. Segarkan daftar lalu coba lagi.' });
+    }
+    if (movements.some((movement) => Number(movement.quantity_removed) > 0)) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(409).json({ message: 'Riwayat pengurangan stok tidak dapat dihapus dari daftar stok.' });
     }
 
     const groups = new Map();

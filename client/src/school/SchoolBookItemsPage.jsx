@@ -3,16 +3,21 @@ import { createPortal } from 'react-dom';
 import JsBarcode from 'jsbarcode';
 import {
   BookOpen, Check, ChevronLeft, ChevronRight, ClipboardCheck, Download, LoaderCircle,
-  Pencil, Printer, Search, Trash2, X
+  PackageX, Pencil, Printer, Search, Trash2, X
 } from 'lucide-react';
 import {
-  deleteBookItem, fetchBookItems, searchBookItemsBooks, updateBookItem, updateBookItemCondition
+  deleteBookItem, fetchBookItems, searchBookItemsBooks, updateBookItem, updateBookItemCondition, updateBookItemLoss
 } from './schoolBookApi.js';
 import { downloadBookItemsExcel } from './schoolBookItemsExcel.js';
 import { fetchBarcodeLabelSettings } from './schoolSettingsApi.js';
 import SchoolConfirmDialog from './SchoolConfirmDialog.jsx';
 
 const pageSize = 25;
+
+function todayDate() {
+  const date = new Date();
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
 
 function EditBookItemModal({ item, onClose, onSave }) {
   const [serialNumber, setSerialNumber] = useState(item.serial_number);
@@ -84,8 +89,10 @@ function EditBookItemModal({ item, onClose, onSave }) {
   );
 }
 
-function BookItemConditionModal({ item, onClose, onSave }) {
+function BookItemConditionModal({ item, onClose, onSave, onLossChange }) {
   const [condition, setCondition] = useState(item.condition || 'Baik');
+  const [lossDate, setLossDate] = useState(todayDate);
+  const [foundDate, setFoundDate] = useState(todayDate);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -122,20 +129,55 @@ function BookItemConditionModal({ item, onClose, onSave }) {
         <p className="book-item-condition-summary">{item.book_title} · {item.serial_number}</p>
         {error && <div className="library-error" role="alert">{error}</div>}
         <form className="book-item-edit-form" onSubmit={submit}>
-          <label>Kondisi Buku
-            <select value={condition} onChange={(event) => setCondition(event.target.value)} required>
-              <option value="Baik">Baik</option>
-              <option value="Rusak Ringan">Rusak Ringan</option>
-              <option value="Rusak Berat">Rusak Berat</option>
-            </select>
-          </label>
-          <footer className="book-item-edit-actions">
-            <button type="button" className="master-button master-button-light" onClick={onClose} disabled={saving}>Batal</button>
-            <button type="submit" className="master-button master-button-primary" disabled={saving}>
-              {saving ? <LoaderCircle size={15} className="book-stock-spinner" /> : <Check size={15} />}
-              {saving ? 'Menyimpan...' : 'Simpan Kondisi'}
-            </button>
-          </footer>
+          {item.status === 'Hilang' ? (
+            <>
+              <p className="book-item-loss-summary">Tanggal hilang: {item.lost_date
+                ? new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium' }).format(new Date(`${item.lost_date.slice(0, 10)}T00:00:00`))
+                : '—'}</p>
+              <label>Tanggal Ditemukan
+                <input type="date" value={foundDate} onChange={(event) => setFoundDate(event.target.value)} required />
+              </label>
+              <footer className="book-item-edit-actions">
+                <button type="button" className="master-button master-button-light" onClick={onClose} disabled={saving}>Tutup</button>
+                <button type="button" className="master-button master-button-primary" disabled={saving || !foundDate} onClick={async () => {
+                  setSaving(true);
+                  setError('');
+                  try { await onLossChange('found', foundDate); } catch (saveError) { setError(saveError.message); } finally { setSaving(false); }
+                }}>
+                  {saving ? <LoaderCircle size={15} className="book-stock-spinner" /> : <Check size={15} />}
+                  {saving ? 'Menyimpan...' : 'Buku Ditemukan'}
+                </button>
+              </footer>
+            </>
+          ) : (
+            <>
+              <label>Kondisi Buku
+                <select value={condition} onChange={(event) => setCondition(event.target.value)} required>
+                  <option value="Baik">Baik</option>
+                  <option value="Rusak Ringan">Rusak Ringan</option>
+                  <option value="Rusak Berat">Rusak Berat</option>
+                </select>
+              </label>
+              <label>Tanggal Hilang
+                <input type="date" value={lossDate} onChange={(event) => setLossDate(event.target.value)} required />
+              </label>
+              <footer className="book-item-edit-actions">
+                <button type="button" className="master-button master-button-light" onClick={onClose} disabled={saving}>Batal</button>
+                <button type="button" className="master-button master-button-danger" disabled={saving || !lossDate} onClick={async () => {
+                  setSaving(true);
+                  setError('');
+                  try { await onLossChange('lost', lossDate); } catch (saveError) { setError(saveError.message); } finally { setSaving(false); }
+                }}>
+                  {saving ? <LoaderCircle size={15} className="book-stock-spinner" /> : <PackageX size={15} />}
+                  {saving ? 'Menyimpan...' : 'Tandai Buku Hilang'}
+                </button>
+                <button type="submit" className="master-button master-button-primary" disabled={saving}>
+                  {saving ? <LoaderCircle size={15} className="book-stock-spinner" /> : <Check size={15} />}
+                  {saving ? 'Menyimpan...' : 'Simpan Kondisi'}
+                </button>
+              </footer>
+            </>
+          )}
         </form>
       </section>
     </div>,
@@ -332,6 +374,13 @@ export default function SchoolBookItemsPage({ rights, schoolName }) {
     setRefreshKey((key) => key + 1);
   }
 
+  async function saveItemLoss(action, date) {
+    const result = await updateBookItemLoss(conditionEditingItem.id, action, date);
+    setNotice(result.message);
+    setConditionEditingItem(null);
+    setRefreshKey((key) => key + 1);
+  }
+
   function removeItem(item) {
     setError('');
     setDeleteRequest(item);
@@ -465,6 +514,7 @@ export default function SchoolBookItemsPage({ rights, schoolName }) {
                 <option value="Tersedia">Tersedia</option>
                 <option value="Dipinjam">Dipinjam</option>
                 <option value="Rusak">Rusak</option>
+                <option value="Hilang">Hilang</option>
               </select>
             </label>
             <button type="button" className="master-button master-button-light" onClick={exportItems} disabled={exporting || loading || pagination.total === 0}>
@@ -517,13 +567,13 @@ export default function SchoolBookItemsPage({ rights, schoolName }) {
                   </td>
                   <td><span className="book-items-serial">{item.serial_number}</span></td>
                   <td><div className="book-items-title"><b>{item.book_title}</b><small>{item.kode_buku || item.nomor_induk || 'Kode buku belum tersedia'}</small></div></td>
-                  <td><span className={`book-item-status ${item.status === 'Tersedia' ? 'is-available' : item.status === 'Dipinjam' ? 'is-loaned' : 'is-damaged'}`}>{item.status}</span></td>
+                  <td><span className={`book-item-status ${item.status === 'Tersedia' ? 'is-available' : item.status === 'Dipinjam' ? 'is-loaned' : item.status === 'Hilang' ? 'is-lost' : 'is-damaged'}`}>{item.status}</span></td>
                   <td><span className={`book-item-condition ${item.condition === 'Rusak Berat' ? 'is-heavily-damaged' : item.condition === 'Rusak Ringan' ? 'is-lightly-damaged' : 'is-good'}`}>{item.condition || 'Baik'}</span></td>
                   {(canEdit || canDelete) && <td>
                     <div className="book-items-row-actions">
                       {canEdit && <button type="button" className="book-item-condition-action" onClick={() => setConditionEditingItem(item)} aria-label={`Ubah kondisi ${item.serial_number}`} title="Kondisi buku"><ClipboardCheck size={14} /></button>}
-                      {canEdit && <button type="button" className="master-row-edit" onClick={() => setEditingItem(item)} aria-label={`Edit ${item.serial_number}`}><Pencil size={14} /></button>}
-                      {canDelete && <button type="button" className="book-items-delete" onClick={() => removeItem(item)} aria-label={`Hapus ${item.serial_number}`}><Trash2 size={14} /></button>}
+                      {canEdit && item.status !== 'Hilang' && <button type="button" className="master-row-edit" onClick={() => setEditingItem(item)} aria-label={`Edit ${item.serial_number}`}><Pencil size={14} /></button>}
+                      {canDelete && item.status !== 'Hilang' && <button type="button" className="book-items-delete" onClick={() => removeItem(item)} aria-label={`Hapus ${item.serial_number}`}><Trash2 size={14} /></button>}
                     </div>
                   </td>}
                 </tr>
@@ -543,7 +593,7 @@ export default function SchoolBookItemsPage({ rights, schoolName }) {
       </section>
 
       {editingItem && <EditBookItemModal item={editingItem} onClose={() => setEditingItem(null)} onSave={saveItem} />}
-      {conditionEditingItem && <BookItemConditionModal item={conditionEditingItem} onClose={() => setConditionEditingItem(null)} onSave={saveItemCondition} />}
+      {conditionEditingItem && <BookItemConditionModal item={conditionEditingItem} onClose={() => setConditionEditingItem(null)} onSave={saveItemCondition} onLossChange={saveItemLoss} />}
       {printItems && barcodeSettings && <BookItemBarcodePrint items={printItems} schoolName={schoolName || 'Perpustakaan Sekolah'} settings={barcodeSettings} onClose={() => setPrintItems(null)} />}
       {deleteRequest && <SchoolConfirmDialog
         title="Hapus Eksemplar?"

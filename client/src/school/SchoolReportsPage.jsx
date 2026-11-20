@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Download, FileBarChart2, LoaderCircle, Printer, Search } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Download, FileBarChart2, LoaderCircle, Printer, Search, X } from 'lucide-react';
 import ExcelJS from 'exceljs';
 import { fetchAcademicYears } from './schoolAcademicYearApi.js';
+import { searchStockBooks } from './schoolBookApi.js';
 import { fetchSchoolReport, fetchSchoolReportClasses } from './schoolReportApi.js';
 import { schoolMonthOptions } from './schoolMonthOptions.js';
 
@@ -50,6 +51,17 @@ function formatValue(value, key) {
     const date = new Date(`${String(value).slice(0, 10)}T00:00:00`);
     return Number.isNaN(date.getTime()) ? '—' : new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium' }).format(date);
   }
+  if (key === 'lost_dates') {
+    return String(value).split(', ').map((dateValue) => {
+      const date = new Date(`${dateValue.slice(0, 10)}T00:00:00`);
+      return Number.isNaN(date.getTime()) ? dateValue : new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium' }).format(date);
+    }).join(', ');
+  }
+  if (['quantity_added', 'quantity_removed', 'previous_qty', 'resulting_qty'].includes(key)) {
+    return Number(value) === 0 && ['quantity_added', 'quantity_removed'].includes(key)
+      ? '—'
+      : Number(value).toLocaleString('id-ID');
+  }
   if (['fine_amount', 'total_fine', 'collected', 'outstanding'].includes(key)) {
     return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(Number(value));
   }
@@ -77,13 +89,15 @@ function summaryCards(type, summary) {
   ];
   if (type === 'stock') return [
     ['Total Transaksi', summary.total],
-    ['Jumlah Tambahan', Number(summary.quantity_added || 0).toLocaleString('id-ID')]
+    ['Jumlah Tambahan', Number(summary.quantity_added || 0).toLocaleString('id-ID')],
+    ['Pengurangan Stok', Number(summary.quantity_removed || 0).toLocaleString('id-ID')]
   ];
   return [
     ['Judul Buku', summary.total_titles],
     ['Total Eksemplar', summary.total_items],
     ['Tersedia', summary.available_items],
     ['Dipinjam', summary.borrowed_items],
+    ['Hilang', summary.lost_items],
     ['Rusak Ringan', summary.lightly_damaged_items],
     ['Rusak Berat', summary.heavily_damaged_items]
   ];
@@ -98,6 +112,10 @@ export default function SchoolReportsPage({ rights }) {
   const [className, setClassName] = useState('');
   const [printOrientation, setPrintOrientation] = useState('landscape');
   const [queryInput, setQueryInput] = useState('');
+  const [bookMatches, setBookMatches] = useState([]);
+  const [bookSearchLoading, setBookSearchLoading] = useState(false);
+  const [bookSearchError, setBookSearchError] = useState('');
+  const [bookSearchOpen, setBookSearchOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [report, setReport] = useState(null);
@@ -106,8 +124,10 @@ export default function SchoolReportsPage({ rights }) {
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState('');
+  const bookSearchRef = useRef(null);
   const monthlyTypes = ['loans', 'fines', 'visitors', 'stock'];
   const classAndSearchTypes = ['loans', 'fines'];
+  const supportsBookSearch = type === 'stock';
   const supportsMonth = monthlyTypes.includes(type);
   const supportsClassAndSearch = classAndSearchTypes.includes(type);
   const supportsDateRange = type !== 'inventory';
@@ -121,7 +141,7 @@ export default function SchoolReportsPage({ rights }) {
       academicYearId: !supportsDateRange || selectedMonth ? '' : academicYearId,
       periodMonth: selectedMonth,
       className: supportsClassAndSearch ? className.trim() : '',
-      search: supportsClassAndSearch ? search : '',
+      search: supportsClassAndSearch || supportsBookSearch ? search : '',
       page: pageNumber,
       limit
     };
@@ -148,6 +168,41 @@ export default function SchoolReportsPage({ rights }) {
     }, 250);
     return () => window.clearTimeout(timer);
   }, [queryInput]);
+
+  useEffect(() => {
+    if (!supportsBookSearch || queryInput.trim().length < 3) {
+      setBookMatches([]);
+      setBookSearchLoading(false);
+      setBookSearchError('');
+      return undefined;
+    }
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => {
+      setBookSearchLoading(true);
+      setBookSearchError('');
+      searchStockBooks(queryInput.trim(), controller.signal)
+        .then((result) => { if (!controller.signal.aborted) setBookMatches(result.books || []); })
+        .catch((searchError) => {
+          if (!controller.signal.aborted) {
+            setBookMatches([]);
+            setBookSearchError(searchError.message);
+          }
+        })
+        .finally(() => { if (!controller.signal.aborted) setBookSearchLoading(false); });
+    }, 250);
+    return () => {
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [supportsBookSearch, queryInput]);
+
+  useEffect(() => {
+    function closeBookSearch(event) {
+      if (!bookSearchRef.current?.contains(event.target)) setBookSearchOpen(false);
+    }
+    document.addEventListener('pointerdown', closeBookSearch);
+    return () => document.removeEventListener('pointerdown', closeBookSearch);
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -290,6 +345,35 @@ export default function SchoolReportsPage({ rights }) {
           </select>
         </label>}
         {supportsClassAndSearch && <label className="school-report-search"><span>Cari data</span><span className="master-search"><Search size={15} /><input value={queryInput} onChange={(event) => setQueryInput(event.target.value)} placeholder="Kata kunci..." maxLength={100} /></span></label>}
+        {supportsBookSearch && <label className="school-report-search school-report-book-search" ref={bookSearchRef}>
+          <span>Cari judul buku</span>
+          <span className="master-search">
+            <Search size={15} />
+            <input value={queryInput} onFocus={() => setBookSearchOpen(true)} onChange={(event) => {
+              setQueryInput(event.target.value);
+              setBookSearchOpen(true);
+            }} placeholder="Ketik judul buku..." maxLength={100} autoComplete="off" />
+            {queryInput && <button type="button" onClick={() => {
+              setQueryInput('');
+              setSearch('');
+              setBookMatches([]);
+              setBookSearchOpen(false);
+              setPage(1);
+            }} aria-label="Hapus pencarian judul"><X size={14} /></button>}
+          </span>
+          {bookSearchOpen && queryInput.trim().length >= 3 && <div className="school-report-book-options" role="listbox" aria-label="Judul buku">
+            {bookSearchLoading ? <span><LoaderCircle size={14} className="book-stock-spinner" />Mencari judul buku...</span>
+              : bookSearchError ? <span className="is-error">{bookSearchError}</span>
+                : bookMatches.length ? bookMatches.map((book) => <button type="button" role="option" key={book.id} onMouseDown={(event) => event.preventDefault()} onClick={() => {
+                  setQueryInput(book.title);
+                  setSearch(book.title);
+                  setBookSearchOpen(false);
+                  setPage(1);
+                }}>
+                  <b>{book.title}</b><small>{book.kode_buku || book.nomor_induk || 'Kode belum tersedia'}</small>
+                </button>) : <span>Tidak ada judul buku yang cocok.</span>}
+          </div>}
+        </label>}
         <div className="school-report-actions">
           <label className="school-report-orientation">Orientasi Cetak
             <select value={printOrientation} onChange={(event) => setPrintOrientation(event.target.value)}>

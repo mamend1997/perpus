@@ -101,6 +101,22 @@ try {
   if (!bookItemColumns.some((column) => column.COLUMN_NAME === 'destroyed_at')) {
     await connection.query('ALTER TABLE book_items ADD COLUMN destroyed_at DATETIME NULL AFTER `condition`');
   }
+  if (!bookItemColumns.some((column) => column.COLUMN_NAME === 'lost_date')) {
+    await connection.query('ALTER TABLE book_items ADD COLUMN lost_date DATE NULL AFTER destroyed_at');
+  }
+  if (!bookItemColumns.some((column) => column.COLUMN_NAME === 'found_date')) {
+    await connection.query('ALTER TABLE book_items ADD COLUMN found_date DATE NULL AFTER lost_date');
+  }
+  if (!bookItemColumns.some((column) => column.COLUMN_NAME === 'lost_previous_status')) {
+    await connection.query("ALTER TABLE book_items ADD COLUMN lost_previous_status ENUM('Tersedia', 'Rusak') NULL AFTER found_date");
+  }
+  const [bookItemStatusColumns] = await connection.execute(
+    `SELECT COLUMN_TYPE FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'book_items' AND COLUMN_NAME = 'status'`
+  );
+  if (bookItemStatusColumns[0] && !bookItemStatusColumns[0].COLUMN_TYPE.includes("'Hilang'")) {
+    await connection.query("ALTER TABLE book_items MODIFY status ENUM('Tersedia', 'Dipinjam', 'Rusak', 'Hilang') NOT NULL DEFAULT 'Tersedia'");
+  }
   const [bookItemRackIndexes] = await connection.execute(
     `SELECT INDEX_NAME FROM information_schema.STATISTICS
      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'book_items'
@@ -219,6 +235,9 @@ try {
     await connection.query(
       'ALTER TABLE book_stock_movements MODIFY stock_date DATE NOT NULL'
     );
+  }
+  if (!stockMovementColumns.some((column) => column.COLUMN_NAME === 'quantity_removed')) {
+    await connection.query('ALTER TABLE book_stock_movements ADD COLUMN quantity_removed INT UNSIGNED NOT NULL DEFAULT 0 AFTER quantity_added');
   }
 
   const [procurementColumns] = await connection.execute(

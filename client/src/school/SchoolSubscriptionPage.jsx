@@ -175,8 +175,11 @@ export default function SchoolSubscriptionPage({ mode, onNavigate }) {
                       )}
                       {!availablePeriods.length && <p className="school-subscription-empty">Belum ada harga aktif untuk paket ini.</p>}
                       <div className="school-renewal-submit-row">
-                        <span>Layanan diperpanjang setelah pembayaran terkonfirmasi oleh Kasera.</span>
-                        <button type="submit" className="primary-button" disabled={busy || !data.kaseraEnabled || !selectedPackage || !period}>
+                        <span>{data.kaseraEnabled
+                          ? 'Layanan diperpanjang setelah pembayaran terkonfirmasi oleh Kasera.'
+                          : 'Pembayaran QRIS belum tersedia. Silakan hubungi admin sekolah.'}</span>
+                        <button type="submit" className="primary-button" disabled={busy || !data.kaseraEnabled || !selectedPackage || !period}
+                          title={!data.kaseraEnabled ? 'Pembayaran QRIS belum aktif.' : undefined}>
                           <CreditCard size={15} />{busy ? 'Membuat tagihan...' : 'Buat pembayaran QRIS'}
                         </button>
                       </div>

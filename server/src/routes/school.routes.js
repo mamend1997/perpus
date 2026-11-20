@@ -978,7 +978,7 @@ router.get('/dashboard', requireSchoolPermission('dashboard', 'view'), async (re
     );
     const [availabilityByCategory] = await pool.execute(
       `SELECT mc.id, mc.name,
-              COUNT(bi.id) AS total_items,
+              COUNT(CASE WHEN bi.status <> 'Hilang' THEN 1 END) AS total_items,
               SUM(CASE WHEN bi.status = 'Tersedia' THEN 1 ELSE 0 END) AS available_items
        FROM master_categories mc
        LEFT JOIN books b ON b.school_id = mc.school_id AND b.collection_id = mc.id
