@@ -1601,7 +1601,7 @@ router.get('/activity-logs', requireSchoolPermission('books.stock', 'view'), asy
              a.id AS sort_id
       FROM school_activity_logs a
       LEFT JOIN users u ON u.id = a.user_id
-      WHERE a.school_id = ?
+      WHERE a.school_id = ? AND a.created_at >= DATE_SUB(CURRENT_TIMESTAMP, INTERVAL 30 DAY)
       UNION ALL
       SELECT CONCAT('stock-', m.id), m.stock_date, 'change',
              CONCAT('Penambahan stok ', b.title, ' (+', m.quantity_added, ')'),
@@ -1609,7 +1609,7 @@ router.get('/activity-logs', requireSchoolPermission('books.stock', 'view'), asy
       FROM book_stock_movements m
       JOIN books b ON b.school_id = m.school_id AND b.id = m.book_id
       LEFT JOIN users u ON u.id = m.actor_id
-      WHERE m.school_id = ?
+      WHERE m.school_id = ? AND m.stock_date >= DATE_SUB(CURRENT_DATE, INTERVAL 30 DAY)
       UNION ALL
       SELECT CONCAT('rack-', t.id), t.moved_at, 'change',
              CONCAT('Pemindahan rak ', b.title, ' (', t.quantity, ')'),
@@ -1617,7 +1617,7 @@ router.get('/activity-logs', requireSchoolPermission('books.stock', 'view'), asy
       FROM book_rack_transfers t
       JOIN books b ON b.school_id = t.school_id AND b.id = t.book_id
       LEFT JOIN users u ON u.id = t.moved_by
-      WHERE t.school_id = ?
+      WHERE t.school_id = ? AND t.moved_at >= DATE_SUB(CURRENT_TIMESTAMP, INTERVAL 30 DAY)
       UNION ALL
       SELECT CONCAT('destroy-', d.id), d.destruction_date, 'change',
              CONCAT('Pemusnahan buku ', b.title, ' (', d.quantity, ') · ', d.reason),
@@ -1625,7 +1625,7 @@ router.get('/activity-logs', requireSchoolPermission('books.stock', 'view'), asy
       FROM book_destructions d
       JOIN books b ON b.school_id = d.school_id AND b.id = d.book_id
       LEFT JOIN users u ON u.id = d.actor_id
-      WHERE d.school_id = ?
+      WHERE d.school_id = ? AND d.destruction_date >= DATE_SUB(CURRENT_DATE, INTERVAL 30 DAY)
     ) activity_history`;
     const [[count], [logs]] = await Promise.all([
       pool.execute(`SELECT COUNT(*) AS total FROM ${union}`, [schoolId, schoolId, schoolId, schoolId]),

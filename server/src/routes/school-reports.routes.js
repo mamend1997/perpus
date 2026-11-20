@@ -130,7 +130,7 @@ router.get('/', requireSchoolPermission('reports.monthly', 'view'), async (req, 
           l.fine_amount,
           CASE WHEN l.status = 'Borrowed' THEN 'none' ELSE l.fine_status END AS fine_status
         ${from} WHERE ${conditions.join(' AND ')}
-        ORDER BY l.borrow_date DESC, l.id DESC LIMIT ? OFFSET ?`;
+        ORDER BY l.borrow_date ASC, l.id ASC LIMIT ? OFFSET ?`;
       summarySql = `SELECT COUNT(*) AS total,
           SUM(l.status IN ('Pending', 'Borrowed')) AS active,
           SUM(l.status = 'Returned') AS returned,
@@ -167,7 +167,7 @@ router.get('/', requireSchoolPermission('reports.monthly', 'view'), async (req, 
           l.return_date, GREATEST(DATEDIFF(l.return_date, l.due_date), 0) AS days_late,
           l.fine_amount, l.fine_status
         ${from} WHERE ${conditions.join(' AND ')}
-        ORDER BY l.return_date DESC, l.id DESC LIMIT ? OFFSET ?`;
+        ORDER BY l.return_date ASC, l.id ASC LIMIT ? OFFSET ?`;
       summarySql = `SELECT COUNT(*) AS total,
           COALESCE(SUM(l.fine_amount), 0) AS total_fine,
           COALESCE(SUM(CASE WHEN l.fine_status = 'paid' THEN l.fine_amount ELSE 0 END), 0) AS collected,
@@ -187,7 +187,7 @@ router.get('/', requireSchoolPermission('reports.monthly', 'view'), async (req, 
       rowsSql = `SELECT v.id, v.visit_date, COALESCE(u.name, 'Pengunjung') AS member_name,
           u.nis_nisn, u.rombel, v.purpose
         ${from} WHERE ${conditions.join(' AND ')}
-        ORDER BY v.visit_date DESC, v.id DESC LIMIT ? OFFSET ?`;
+        ORDER BY v.visit_date ASC, v.id ASC LIMIT ? OFFSET ?`;
       summarySql = `SELECT COUNT(*) AS total, COUNT(DISTINCT v.user_id) AS unique_visitors
         ${from} WHERE ${conditions.join(' AND ')}`;
       columns = [
@@ -209,7 +209,7 @@ router.get('/', requireSchoolPermission('reports.monthly', 'view'), async (req, 
           DATE_FORMAT(m.stock_date, '%Y-%m-%d') AS stock_date, b.title AS book_title,
           m.quantity_added, m.quantity_removed, m.previous_qty, m.resulting_qty, m.note, u.name AS actor_name
         ${from} WHERE ${conditions.join(' AND ')}
-        ORDER BY m.stock_date DESC, m.id DESC LIMIT ? OFFSET ?`;
+        ORDER BY m.stock_date ASC, m.id ASC LIMIT ? OFFSET ?`;
       summarySql = `SELECT COUNT(*) AS total,
           COALESCE(SUM(m.quantity_added), 0) AS quantity_added,
           COALESCE(SUM(m.quantity_removed), 0) AS quantity_removed
@@ -223,35 +223,35 @@ router.get('/', requireSchoolPermission('reports.monthly', 'view'), async (req, 
       from = `FROM books b
         LEFT JOIN master_categories author ON author.school_id = b.school_id AND author.id = b.author_id
         LEFT JOIN master_categories publisher ON publisher.school_id = b.school_id AND publisher.id = b.publisher_id
-        LEFT JOIN book_items bi ON bi.school_id = b.school_id AND bi.book_id = b.id AND bi.destroyed_at IS NULL`;
+        LEFT JOIN book_items bi ON bi.school_id = b.school_id AND bi.book_id = b.id`;
       conditions = ['b.school_id = ?'];
       countSql = `SELECT COUNT(DISTINCT b.id) AS total ${from} WHERE ${conditions.join(' AND ')}`;
       rowsSql = `SELECT b.id, b.title AS book_title, author.name AS author_name,
           publisher.name AS publisher_name, b.\`year\`, b.nomor_induk,
-          SUM(bi.status <> 'Hilang') AS total_items,
-          SUM(bi.status = 'Tersedia') AS available_items,
-          SUM(bi.status = 'Dipinjam') AS borrowed_items,
-          SUM(bi.status = 'Hilang') AS lost_items,
-          GROUP_CONCAT(CASE WHEN bi.status = 'Hilang' THEN DATE_FORMAT(bi.lost_date, '%Y-%m-%d') END
-            ORDER BY bi.lost_date DESC SEPARATOR ', ') AS lost_dates,
-          SUM(bi.\`condition\` = 'Rusak Ringan') AS lightly_damaged_items,
-          SUM(bi.\`condition\` = 'Rusak Berat') AS heavily_damaged_items
+          SUM(bi.destroyed_at IS NULL AND bi.status <> 'Hilang') AS total_items,
+          SUM(bi.destroyed_at IS NULL AND bi.status = 'Tersedia') AS available_items,
+          SUM(bi.destroyed_at IS NULL AND bi.status = 'Dipinjam') AS borrowed_items,
+          SUM(bi.destroyed_at IS NULL AND bi.status = 'Hilang') AS lost_items,
+          COUNT(CASE WHEN bi.destroyed_at IS NOT NULL THEN 1 END) AS destroyed_items,
+          SUM(bi.destroyed_at IS NULL AND bi.\`condition\` = 'Rusak Ringan') AS lightly_damaged_items,
+          SUM(bi.destroyed_at IS NULL AND bi.\`condition\` = 'Rusak Berat') AS heavily_damaged_items
         ${from} WHERE ${conditions.join(' AND ')}
         GROUP BY b.id, b.title, author.name, publisher.name, b.\`year\`, b.nomor_induk
         ORDER BY b.title ASC LIMIT ? OFFSET ?`;
       summarySql = `SELECT COUNT(DISTINCT b.id) AS total_titles,
-          SUM(bi.status <> 'Hilang') AS total_items,
-          SUM(bi.status = 'Tersedia') AS available_items,
-          SUM(bi.status = 'Dipinjam') AS borrowed_items,
-          SUM(bi.status = 'Hilang') AS lost_items,
-          SUM(bi.\`condition\` = 'Rusak Ringan') AS lightly_damaged_items,
-          SUM(bi.\`condition\` = 'Rusak Berat') AS heavily_damaged_items
+          SUM(bi.destroyed_at IS NULL AND bi.status <> 'Hilang') AS total_items,
+          SUM(bi.destroyed_at IS NULL AND bi.status = 'Tersedia') AS available_items,
+          SUM(bi.destroyed_at IS NULL AND bi.status = 'Dipinjam') AS borrowed_items,
+          SUM(bi.destroyed_at IS NULL AND bi.status = 'Hilang') AS lost_items,
+          SUM(bi.destroyed_at IS NULL AND bi.\`condition\` = 'Rusak Ringan') AS lightly_damaged_items,
+          SUM(bi.destroyed_at IS NULL AND bi.\`condition\` = 'Rusak Berat') AS heavily_damaged_items
         ${from} WHERE ${conditions.join(' AND ')}`;
       columns = [
         ['book_title', 'Judul Buku'], ['author_name', 'Pengarang'], ['publisher_name', 'Penerbit'],
         ['year', 'Tahun Terbit'], ['nomor_induk', 'Nomor Induk'], ['total_items', 'Total Eksemplar'],
-        ['available_items', 'Tersedia'], ['borrowed_items', 'Dipinjam'], ['lost_items', 'Hilang'], ['lost_dates', 'Tanggal Hilang'],
-        ['lightly_damaged_items', 'Rusak Ringan'], ['heavily_damaged_items', 'Rusak Berat']
+        ['borrowed_items', 'Dipinjam'], ['lost_items', 'Hilang'],
+        ['lightly_damaged_items', 'Rusak Ringan'], ['heavily_damaged_items', 'Rusak Berat'],
+        ['destroyed_items', 'Dimusnahkan'], ['available_items', 'Tersedia']
       ];
     }
 
@@ -283,6 +283,7 @@ router.get('/', requireSchoolPermission('reports.monthly', 'view'), async (req, 
         available_items: row.available_items == null ? undefined : Number(row.available_items),
         borrowed_items: row.borrowed_items == null ? undefined : Number(row.borrowed_items),
         lost_items: row.lost_items == null ? undefined : Number(row.lost_items),
+        destroyed_items: row.destroyed_items == null ? undefined : Number(row.destroyed_items),
         lightly_damaged_items: row.lightly_damaged_items == null ? undefined : Number(row.lightly_damaged_items),
         heavily_damaged_items: row.heavily_damaged_items == null ? undefined : Number(row.heavily_damaged_items),
         days_late: row.days_late == null ? undefined : Number(row.days_late),
