@@ -228,7 +228,7 @@ router.get('/', requireSchoolPermission('reports.monthly', 'view'), async (req, 
       countSql = `SELECT COUNT(DISTINCT b.id) AS total ${from} WHERE ${conditions.join(' AND ')}`;
       rowsSql = `SELECT b.id, b.title AS book_title, author.name AS author_name,
           publisher.name AS publisher_name, b.\`year\`, b.nomor_induk,
-          SUM(bi.destroyed_at IS NULL AND bi.status <> 'Hilang') AS total_items,
+          COUNT(CASE WHEN bi.destroyed_at IS NULL THEN 1 END) AS total_items,
           SUM(bi.destroyed_at IS NULL AND bi.status = 'Tersedia') AS available_items,
           SUM(bi.destroyed_at IS NULL AND bi.status = 'Dipinjam') AS borrowed_items,
           SUM(bi.destroyed_at IS NULL AND bi.status = 'Hilang') AS lost_items,
@@ -239,7 +239,7 @@ router.get('/', requireSchoolPermission('reports.monthly', 'view'), async (req, 
         GROUP BY b.id, b.title, author.name, publisher.name, b.\`year\`, b.nomor_induk
         ORDER BY b.title ASC LIMIT ? OFFSET ?`;
       summarySql = `SELECT COUNT(DISTINCT b.id) AS total_titles,
-          SUM(bi.destroyed_at IS NULL AND bi.status <> 'Hilang') AS total_items,
+          COUNT(CASE WHEN bi.destroyed_at IS NULL THEN 1 END) AS total_items,
           SUM(bi.destroyed_at IS NULL AND bi.status = 'Tersedia') AS available_items,
           SUM(bi.destroyed_at IS NULL AND bi.status = 'Dipinjam') AS borrowed_items,
           SUM(bi.destroyed_at IS NULL AND bi.status = 'Hilang') AS lost_items,
