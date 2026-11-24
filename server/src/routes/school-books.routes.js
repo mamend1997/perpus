@@ -1,16 +1,15 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, open, unlink } from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { Router } from 'express';
 import multer from 'multer';
-import { pool } from '../config/database.js';
+import { databasePath, pool } from '../config/database.js';
 import { requireSchoolPermission } from '../middleware/require-school-permission.js';
 import { barcodeValueFromItemId, readBarcodeLabelSettings } from '../utils/barcode-label-settings.js';
 
 const router = Router();
 const MAX_BOOK_QUANTITY = 10000;
-const bookStorageRoot = fileURLToPath(new URL('../../storage/books/', import.meta.url));
+const bookStorageRoot = path.join(path.dirname(databasePath), 'books');
 const categoryFields = {
   author_id: 'pengarang',
   publisher_id: 'penerbit',

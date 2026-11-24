@@ -1,13 +1,12 @@
 import { readdir, readFile, mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { gzip, gunzip } from 'node:zlib';
 import { promisify } from 'node:util';
-import { pool } from '../config/database.js';
+import { databasePath, pool } from '../config/database.js';
 
 const gzipAsync = promisify(gzip);
 const gunzipAsync = promisify(gunzip);
-const storageRoot = fileURLToPath(new URL('../../storage/books/', import.meta.url));
+const storageRoot = path.join(path.dirname(databasePath), 'books');
 const maxArchiveBytes = 250 * 1024 * 1024;
 const maxUploadBytes = 100 * 1024 * 1024;
 const schoolExcludedTables = new Set([
@@ -44,16 +43,14 @@ function decodeValue(value) {
 
 async function loadTableMetadata(connection) {
   const [tables] = await connection.execute(
-    `SELECT TABLE_NAME FROM information_schema.TABLES
-     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = 'BASE TABLE'
-     ORDER BY TABLE_NAME`
+    `SELECT name AS TABLE_NAME FROM sqlite_master
+     WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+     ORDER BY name`
   );
   const metadata = new Map();
   for (const { TABLE_NAME: tableName } of tables) {
     const [columns] = await connection.execute(
-      `SELECT COLUMN_NAME FROM information_schema.COLUMNS
-       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?
-       ORDER BY ORDINAL_POSITION`,
+      'SELECT name AS COLUMN_NAME FROM pragma_table_info(?) ORDER BY cid',
       [tableName]
     );
     metadata.set(tableName, columns.map((column) => column.COLUMN_NAME));
@@ -99,8 +96,7 @@ export async function createBackupArchive(scope, schoolId = null, database = poo
   }
   const connection = await database.getConnection();
   try {
-    await connection.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
-    await connection.query('START TRANSACTION WITH CONSISTENT SNAPSHOT, READ ONLY');
+    await connection.beginTransaction();
     const metadata = await loadTableMetadata(connection);
     const tables = {};
     for (const [tableName, columns] of metadata) {
@@ -252,10 +248,10 @@ export async function restoreBackupArchive(buffer, scope, schoolId = null, datab
         throw error;
       }
     }
+    await connection.query('PRAGMA foreign_keys = OFF');
+    foreignKeyChecksDisabled = true;
     await connection.beginTransaction();
     transactionStarted = true;
-    await connection.query('SET FOREIGN_KEY_CHECKS = 0');
-    foreignKeyChecksDisabled = true;
     if (scope === 'platform') {
       for (const tableName of metadata.keys()) {
         await connection.query(`DELETE FROM ${quoteIdentifier(tableName)}`);
@@ -284,10 +280,10 @@ export async function restoreBackupArchive(buffer, scope, schoolId = null, datab
       const columns = metadata.get(tableName);
       await insertRows(connection, tableName, rows);
     }
-    await connection.query('SET FOREIGN_KEY_CHECKS = 1');
-    foreignKeyChecksDisabled = false;
     await connection.commit();
     transactionStarted = false;
+    await connection.query('PRAGMA foreign_keys = ON');
+    foreignKeyChecksDisabled = false;
     for (const asset of archive.assets) {
       const destination = path.join(storageRoot, String(asset.schoolId));
       await mkdir(destination, { recursive: true });
@@ -299,7 +295,7 @@ export async function restoreBackupArchive(buffer, scope, schoolId = null, datab
       try { await connection.rollback(); } catch (rollbackError) { error.rollbackError = rollbackError; }
     }
     if (foreignKeyChecksDisabled) {
-      try { await connection.query('SET FOREIGN_KEY_CHECKS = 1'); } catch (restoreError) { error.restoreError = restoreError; }
+      try { await connection.query('PRAGMA foreign_keys = ON'); } catch (restoreError) { error.restoreError = restoreError; }
     }
     throw error;
   } finally {

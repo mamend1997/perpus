@@ -58,18 +58,16 @@ export async function sendPlatformWhatsAppMessage(target, message, connection = 
   }
 }
 
-async function sendDuePaymentReminders() {
-  const connection = await pool.getConnection();
-  let lockAcquired = false;
-  try {
-    const [[lock]] = await connection.query("SELECT GET_LOCK('perpuskita_payment_reminder_scheduler', 0) AS acquired");
-    lockAcquired = Number(lock.acquired) === 1;
-    if (!lockAcquired) return;
+let paymentRemindersInProgress = false;
 
-    const settings = await readPlatformWhatsAppSettings(connection);
+async function sendDuePaymentReminders() {
+  if (paymentRemindersInProgress) return;
+  paymentRemindersInProgress = true;
+  try {
+    const settings = await readPlatformWhatsAppSettings();
     if (!settings.enabled || !settings.paymentRemindersEnabled || !settings.tokenConfigured) return;
-    const branding = await readPlatformBranding(connection);
-    const [invoices] = await connection.execute(
+    const branding = await readPlatformBranding();
+    const [invoices] = await pool.execute(
       `SELECT i.id, i.amount, DATE_FORMAT(i.due_date, '%Y-%m-%d') AS due_date,
               DATEDIFF(i.due_date, CURRENT_DATE) AS days_until_due,
               s.name AS school_name, u.phone, u.name AS admin_name
@@ -114,8 +112,8 @@ async function sendDuePaymentReminders() {
         : `telah melewati jatuh tempo ${dueDate}`;
       const message = `Halo ${invoice.admin_name}, pengingat tagihan ${branding.title} untuk ${invoice.school_name}. Tagihan #${invoice.id} sebesar ${amount} ${timing}. Silakan lakukan pembayaran melalui akun sekolah.`;
       try {
-        await sendPlatformWhatsAppMessage(invoice.phone, message, connection);
-        await connection.execute(
+        await sendPlatformWhatsAppMessage(invoice.phone, message);
+        await pool.execute(
           `INSERT IGNORE INTO platform_payment_reminder_logs (invoice_id, reminder_kind, recipient)
            VALUES (?, ?, ?)`,
           [invoice.id, reminderKind, invoice.phone]
@@ -125,10 +123,7 @@ async function sendDuePaymentReminders() {
       }
     }
   } finally {
-    if (lockAcquired) {
-      await connection.query("SELECT RELEASE_LOCK('perpuskita_payment_reminder_scheduler')").catch(() => {});
-    }
-    connection.release();
+    paymentRemindersInProgress = false;
   }
 }
 

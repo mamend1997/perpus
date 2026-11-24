@@ -1,11 +1,10 @@
 # MACA — SaaS e-Perpustakaan
 
-Starter multi-tenant untuk panel Super Admin, menggunakan Express, MySQL, React, Vite, dan Tailwind CSS. Data sekolah memakai `tenants_schools` sebagai tabel tenant kanonis; seluruh tabel operasional sekolah mereferensikan `school_id`.
+Starter multi-tenant untuk panel Super Admin, menggunakan Express, SQLite, React, Vite, dan Tailwind CSS. Data sekolah memakai `tenants_schools` sebagai tabel tenant kanonis; seluruh tabel operasional sekolah mereferensikan `school_id`.
 
 ## Prasyarat
 
 - Node.js 20+
-- MySQL 8+ (Railway MySQL juga didukung)
 
 ## Menjalankan lokal
 
@@ -16,7 +15,7 @@ npm install --prefix server
 npm install --prefix client
 ```
 
-Isi konfigurasi database di `.env`. Untuk Railway, salin connection URL MySQL ke `DATABASE_URL`; untuk MySQL lokal, isi `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, dan `DB_PASSWORD`. Buat database lokal `e_perpustakaan` terlebih dahulu. Ganti `SCHOOL_SETTINGS_ENCRYPTION_KEY` dengan secret acak minimal 32 karakter dan pertahankan nilainya; key ini digunakan untuk mengenkripsi token integrasi yang tersimpan.
+Database SQLite dibuat otomatis di `server/storage/database.sqlite`; atur `DB_PATH` untuk memilih lokasi lain. Ganti `SCHOOL_SETTINGS_ENCRYPTION_KEY` dengan secret acak minimal 32 karakter dan pertahankan nilainya; key ini digunakan untuk mengenkripsi token integrasi yang tersimpan.
 
 Untuk mengaktifkan pembayaran langganan Kasera Pay, pastikan `SCHOOL_SETTINGS_ENCRYPTION_KEY` sudah diatur, lalu masukkan API key (`kp_test_...` untuk Sandbox atau `kp_live_...` untuk Live) dan webhook secret dari mode yang sama pada menu Super Admin → QRIS & Harga. Kredensial disimpan terenkripsi di database dan tidak dikirim kembali ke browser. Atur `PUBLIC_API_URL` ke URL publik API, lalu tambahkan `${PUBLIC_API_URL}/api/payments/kasera/webhook` di Developer → Webhook Kasera dan pilih event `payment.paid`, `payment.expired`, serta `payment.failed`. Kredensial `KASERA_API_KEY` dan `KASERA_WEBHOOK_SECRET` di environment tetap didukung sebagai fallback. Checkout sekolah menggunakan QRIS dengan masa berlaku 60 menit; tarif transaksi mengikuti akun Kasera dan dipotong dari penerimaan merchant. Referensi: [Dokumentasi API Kasera Pay](https://pay.kasera.id/docs/api).
 
@@ -33,22 +32,33 @@ Buka `http://localhost:5173` untuk portal sekolah. Perintah seed Master Data men
 
 ## Deploy ke Railway
 
-1. Buat project Railway dan tambahkan layanan **MySQL**.
+1. Tambahkan persistent volume ke layanan aplikasi dan mount pada `/data`. SQLite menyimpan database dan lampiran buku di volume tersebut; tanpa volume, data dapat hilang saat deploy atau restart. Gunakan satu replica aplikasi karena SQLite tidak cocok untuk beberapa instance yang menulis file database yang sama.
 2. Tambahkan layanan dari repo GitHub ini (`mamend1997/perpus`, branch `main`). Konfigurasi build, start, dan health check dibaca dari `railway.json`; frontend dan API berjalan di satu layanan/domain.
 3. Tambahkan environment variables layanan aplikasi:
-   - Hubungkan variabel MySQL service ke layanan aplikasi. Pilih reference variable `MYSQL_URL` sebagai `DATABASE_URL`, atau reference variabel `MYSQLHOST`, `MYSQLPORT`, `MYSQLUSER`, `MYSQLPASSWORD`, dan `MYSQLDATABASE` secara langsung; backend mendukung keduanya.
+   - `DB_PATH=/data/database.sqlite`.
    - `JWT_SECRET`: string acak kuat minimal 32 karakter.
    - `SCHOOL_SETTINGS_ENCRYPTION_KEY`: secret acak minimal 32 karakter untuk enkripsi token WhatsApp dan integrasi lain; pertahankan nilainya agar token tersimpan tetap dapat dibaca.
    - `SUPER_ADMIN_NAME`, `SUPER_ADMIN_EMAIL`, `SUPER_ADMIN_PASSWORD`: kredensial bootstrap admin; password minimal 12 karakter.
    - `CLIENT_ORIGIN`: URL publik layanan aplikasi, misalnya `https://nama-layanan.up.railway.app`.
    - `PUBLIC_API_URL`: URL publik API (umumnya sama dengan `CLIENT_ORIGIN` saat frontend dan API satu domain).
    - `KASERA_API_KEY` dan `KASERA_WEBHOOK_SECRET`: opsional, sebagai fallback kredensial Kasera mode Sandbox/Live yang sama. Kredensial juga dapat diatur di menu Super Admin → QRIS & Harga; jangan masukkan kredensial live ke repo.
-4. Deploy. Skema dan migrasi database dijalankan otomatis sebelum API mulai. Jalankan `npm run seed:admin` sekali dari Railway service shell untuk membuat akun admin.
+4. Deploy. Skema database SQLite dijalankan otomatis sebelum API mulai. Jalankan `npm run seed:admin` sekali dari Railway service shell untuk membuat akun admin.
 5. Generate domain publik Railway, lalu buka domain tersebut. `/api/health` adalah health check deployment.
 
 Build command root `npm run build` memasang dependency server/client dengan devDependencies sebelum membangun Vite, sehingga berhasil walaupun Railway memakai mode production untuk instalasi awal.
 
 Jangan simpan kredensial produksi di GitHub atau di `railway.json`; atur semuanya melalui Railway Variables.
+
+### Memindahkan data dari MySQL lama
+
+1. Buat dan mount volume Railway di `/data`, lalu atur `DB_PATH=/data/database.sqlite`. Pastikan file SQLite tujuan belum berisi data.
+2. Sediakan URL MySQL lama sebagai `MYSQL_URL` sementara (atau variabel `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`).
+3. Hentikan aplikasi agar data sumber tidak berubah, lalu jalankan sekali dari direktori repo:
+   ```powershell
+   npm run db:migrate:mysql --prefix server
+   ```
+   Migrasi berhenti tanpa commit jika file SQLite berisi data, ada tabel MySQL yang tidak dikenal, atau validasi foreign key gagal.
+4. Setelah jumlah data diperiksa, salin aset lama di `server/storage/books/` ke `/data/books/` (jika ada), hapus variabel koneksi MySQL, lalu deploy/start kembali aplikasi. Jangan hapus layanan MySQL sampai validasi selesai dan file database serta aset lama sudah diamankan.
 
 ## Struktur
 
@@ -59,7 +69,7 @@ client/
   src/styles.css              # Tema responsif oranye-biru
   vite.config.js              # Proxy API lokal
 server/
-  sql/schema.sql              # Skema MySQL multi-tenant
+  sql/schema.sql              # Skema SQLite multi-tenant
   scripts/                    # Setup skema dan seed admin
   src/config/                 # Pool koneksi database
   src/middleware/             # Proteksi akses Super Admin dan sekolah
@@ -70,7 +80,7 @@ server/
 ## Catatan keamanan dan batas starter
 
 - API Super Admin dan akun sekolah menggunakan JWT berumur 8 jam; pendaftaran sekolah membuat tenant trial aktif dan administrator pertamanya dalam satu transaksi.
-- Kode sekolah berisi 4 huruf/angka uppercase, dibuat secara acak oleh server, dan dijaga indeks unik di MySQL. Admin sekolah memerlukan kode sekolah, email, serta kata sandi untuk login.
+- Kode sekolah berisi 4 huruf/angka uppercase, dibuat secara acak oleh server, dan dijaga indeks unik di SQLite. Admin sekolah memerlukan kode sekolah, email, serta kata sandi untuk login.
 - Endpoint pemeriksaan billing bersifat **read-only** terhadap invoice dan tenant; setiap pemeriksaan disimpan pada `billing_check_runs` dan dicatat di audit log. Admin sekolah dapat membuat tagihan perpanjangan Kasera; cron H-7, suspend tenant, dan notifikasi WhatsApp otomatis belum aktif.
 - Dashboard sekolah mengambil statistik pengunjung, eksemplar aktif, peminjaman, pengajuan, pengadaan terbaru, dan ketersediaan koleksi dari API ber-tenant.
 - Skema operasional mencakup katalog, eksemplar, peminjaman, pengadaan, kunjungan, ulasan, reservasi, dan pengumuman. Tabel `tenants_schools` adalah tabel sekolah/tenant kanonis agar kompatibel dengan data SaaS yang sudah ada.

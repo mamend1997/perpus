@@ -108,19 +108,20 @@ function isScheduleDue(settings, now) {
   return lastRun.date !== now.date;
 }
 
+let backupRunInProgress = false;
+
 async function runDueBackups() {
-  const connection = await pool.getConnection();
+  if (backupRunInProgress) return;
+  backupRunInProgress = true;
   try {
-    const [[lock]] = await connection.query("SELECT GET_LOCK('perpuskita_backup_scheduler', 0) AS acquired");
-    if (Number(lock.acquired) !== 1) return;
     const now = localScheduleParts();
-    const [platformRows] = await connection.execute(
+    const [platformRows] = await pool.execute(
       'SELECT value FROM platform_settings WHERE key_name = ? LIMIT 1',
       ['backup_telegram_settings']
     );
     if (platformRows[0]) {
       const { readBackupSettings: readSettings } = await import('./backup-settings.js');
-      const settings = await readSettings('platform', null, connection);
+      const settings = await readSettings('platform');
       if (isScheduleDue(settings, now)) {
         await sendConfiguredBackup('platform').catch((error) => {
           console.error('Platform Telegram backup failed:', error.message);
@@ -128,7 +129,7 @@ async function runDueBackups() {
       }
     }
 
-    const [schoolRows] = await connection.execute(
+    const [schoolRows] = await pool.execute(
       'SELECT school_id, `value` FROM school_settings WHERE `key` = ?',
       ['backup_telegram_settings']
     );
@@ -141,7 +142,7 @@ async function runDueBackups() {
         continue;
       }
       if (!isScheduleDue(settings, now)) continue;
-      const [[school]] = await connection.execute(
+      const [[school]] = await pool.execute(
         'SELECT name FROM tenants_schools WHERE id = ? LIMIT 1',
         [row.school_id]
       );
@@ -150,8 +151,7 @@ async function runDueBackups() {
       });
     }
   } finally {
-    await connection.query("SELECT RELEASE_LOCK('perpuskita_backup_scheduler')").catch(() => {});
-    connection.release();
+    backupRunInProgress = false;
   }
 }
 
