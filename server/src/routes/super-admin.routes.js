@@ -804,7 +804,7 @@ router.get('/dashboard', async (req, res, next) => {
       FROM platform_tickets t
       JOIN tenants_schools s ON s.id = t.school_id
       WHERE t.status = 'open'
-      ORDER BY created_at DESC
+      ORDER BY 5 DESC
       LIMIT 6
     `);
     const [activities] = await pool.query(`

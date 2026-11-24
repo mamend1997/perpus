@@ -49,16 +49,9 @@ Build command root `npm run build` memasang dependency server/client dengan devD
 
 Jangan simpan kredensial produksi di GitHub atau di `railway.json`; atur semuanya melalui Railway Variables.
 
-### Memindahkan data dari MySQL lama
+### Mulai ulang penyimpanan dari kosong
 
-1. Buat dan mount volume Railway di `/data`, lalu atur `DB_PATH=/data/database.sqlite`. Pastikan file SQLite tujuan belum berisi data.
-2. Sediakan URL MySQL lama sebagai `MYSQL_URL` sementara (atau variabel `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`).
-3. Hentikan aplikasi agar data sumber tidak berubah, lalu jalankan sekali dari direktori repo:
-   ```powershell
-   npm run db:migrate:mysql --prefix server
-   ```
-   Migrasi berhenti tanpa commit jika file SQLite berisi data, ada tabel MySQL yang tidak dikenal, atau validasi foreign key gagal.
-4. Setelah jumlah data diperiksa, salin aset lama di `server/storage/books/` ke `/data/books/` (jika ada), hapus variabel koneksi MySQL, lalu deploy/start kembali aplikasi. Jangan hapus layanan MySQL sampai validasi selesai dan file database serta aset lama sudah diamankan.
+Deployment SQLite membuat skema baru secara otomatis saat startup, tetapi seluruh akun, sekolah, transaksi, dan data MySQL lama tidak ikut dipindahkan. Di Railway, gunakan persistent volume pada `/data`, atur `DB_PATH=/data/database.sqlite`, dan pastikan variabel MySQL tidak lagi dipakai oleh layanan aplikasi. Jangan hapus layanan MySQL sampai aplikasi SQLite baru berhasil dicek; layanan itu dapat dihentikan atau dihapus setelah Anda yakin data lama memang tidak diperlukan.
 
 ## Struktur
 
