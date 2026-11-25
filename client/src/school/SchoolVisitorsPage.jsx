@@ -53,9 +53,7 @@ function VisitorPreviewModal({ visit, onClose }) {
   }, [onClose]);
 
   return createPortal(
-    <div className="master-modal-backdrop" onMouseDown={(event) => {
-      if (event.target === event.currentTarget) onClose();
-    }}>
+    <div className="master-modal-backdrop">
       <section className="master-modal visitor-preview-modal" role="dialog" aria-modal="true" aria-labelledby="visitor-preview-title">
         <header className="master-modal-heading">
           <div><span className="library-eyebrow">DETAIL KUNJUNGAN</span><h2 id="visitor-preview-title">{visit.visitor_name}</h2></div>

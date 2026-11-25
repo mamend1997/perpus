@@ -566,8 +566,8 @@ function SchoolListPage() {
         )}
       </section>
       {selectedSchool && (
-        <div className="school-detail-backdrop" onClick={() => { setSelectedSchool(null); setResetResult(null); }}>
-          <section className="panel school-detail-modal" role="dialog" aria-modal="true" aria-labelledby="school-detail-title" onClick={(event) => event.stopPropagation()}>
+        <div className="school-detail-backdrop">
+          <section className="panel school-detail-modal" role="dialog" aria-modal="true" aria-labelledby="school-detail-title">
             <div className="school-detail-heading">
               <div><h2 id="school-detail-title">Detail Sekolah</h2><p>{schoolDetail?.school.name || selectedSchool.name}</p></div>
               <div className="school-detail-heading-actions">
@@ -666,14 +666,8 @@ function SchoolListPage() {
               </>
             )}
             {resetTarget && (
-              <div className="school-password-reset-backdrop" onClick={(event) => {
-                event.stopPropagation();
-                if (event.target === event.currentTarget && !resettingPassword) {
-                  setResetTarget(null);
-                  setResetError('');
-                }
-              }}>
-                <section className="school-password-reset-dialog" role="alertdialog" aria-modal="true" aria-labelledby="school-password-reset-title" onClick={(event) => event.stopPropagation()}>
+              <div className="school-password-reset-backdrop">
+                <section className="school-password-reset-dialog" role="alertdialog" aria-modal="true" aria-labelledby="school-password-reset-title">
                   <ShieldCheck size={25} />
                   <h3 id="school-password-reset-title">Reset kata sandi admin?</h3>
                   <p>Kata sandi untuk <b>{resetTarget.name}</b> akan diganti dengan kata sandi sementara yang baru.</p>

@@ -47,9 +47,7 @@ function EditBookItemModal({ item, onClose, onSave }) {
   }
 
   return createPortal(
-    <div className="master-modal-backdrop catalog-modal-backdrop" onMouseDown={(event) => {
-      if (event.target === event.currentTarget && !saving) onClose();
-    }}>
+    <div className="master-modal-backdrop catalog-modal-backdrop">
       <section className="master-modal book-item-edit-modal" role="dialog" aria-modal="true" aria-labelledby="book-item-edit-title">
         <header className="master-modal-heading">
           <div><span className="library-eyebrow">MANAJEMEN EKSEMPLAR</span><h2 id="book-item-edit-title">Edit Eksemplar</h2></div>
@@ -118,9 +116,7 @@ function BookItemConditionModal({ item, onClose, onSave, onLossChange }) {
   }
 
   return createPortal(
-    <div className="master-modal-backdrop catalog-modal-backdrop" onMouseDown={(event) => {
-      if (event.target === event.currentTarget && !saving) onClose();
-    }}>
+    <div className="master-modal-backdrop catalog-modal-backdrop">
       <section className="master-modal book-item-edit-modal" role="dialog" aria-modal="true" aria-labelledby="book-item-condition-title">
         <header className="master-modal-heading">
           <div><span className="library-eyebrow">MANAJEMEN EKSEMPLAR</span><h2 id="book-item-condition-title">Kondisi Buku</h2></div>

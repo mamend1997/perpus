@@ -85,9 +85,7 @@ export default function CameraBarcodeScanner({ onScan, label = 'Scan barcode den
       <button type="button" className="master-button master-button-light camera-scan-trigger" onClick={() => setOpen(true)}>
         <Camera size={15} />{label}
       </button>
-      {open && <div className="master-modal-backdrop camera-scan-backdrop" onMouseDown={(event) => {
-        if (event.target === event.currentTarget) setOpen(false);
-      }}>
+      {open && <div className="master-modal-backdrop camera-scan-backdrop">
         <section className="master-modal camera-scan-modal" role="dialog" aria-modal="true" aria-labelledby="camera-scan-title">
           <header className="master-modal-heading">
             <div><span className="library-eyebrow">PEMINDAIAN BARCODE</span><h2 id="camera-scan-title">Arahkan kamera ke barcode</h2></div>

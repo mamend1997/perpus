@@ -132,9 +132,7 @@ function RequestFormModal({ type, requester, onClose, onSave }) {
   }
 
   return createPortal(
-    <div className="master-modal-backdrop catalog-modal-backdrop" onMouseDown={(event) => {
-      if (event.target === event.currentTarget && !saving) onClose();
-    }}>
+    <div className="master-modal-backdrop catalog-modal-backdrop">
       <section className="master-modal procurement-modal" role="dialog" aria-modal="true" aria-labelledby="procurement-create-title">
         <header className="master-modal-heading">
           <div><span className="library-eyebrow">USULAN KOLEKSI</span><h2 id="procurement-create-title">{isExistingBook ? 'Usulkan Buku' : 'Usulkan Buku Baru'}</h2></div>
@@ -267,9 +265,7 @@ function ReviewRequestModal({ request, onClose, onSave }) {
   }
 
   return createPortal(
-    <div className="master-modal-backdrop catalog-modal-backdrop" onMouseDown={(event) => {
-      if (event.target === event.currentTarget && !saving) onClose();
-    }}>
+    <div className="master-modal-backdrop catalog-modal-backdrop">
       <section className="master-modal procurement-modal" role="dialog" aria-modal="true" aria-labelledby="procurement-review-title">
         <header className="master-modal-heading">
           <div><span className="library-eyebrow">TINJAUAN PENGADAAN</span><h2 id="procurement-review-title">Validasi Usulan</h2></div>

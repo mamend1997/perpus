@@ -86,9 +86,7 @@ function AnnouncementEditor({ initial, onClose, onSave }) {
   }
 
   return createPortal(
-    <div className="master-modal-backdrop catalog-modal-backdrop" onMouseDown={(event) => {
-      if (event.target === event.currentTarget && !saving) onClose();
-    }}>
+    <div className="master-modal-backdrop catalog-modal-backdrop">
       <section className="master-modal announcement-editor-modal" role="dialog" aria-modal="true" aria-labelledby="announcement-editor-title">
         <header className="master-modal-heading">
           <div><span className="library-eyebrow">PENGUMUMAN SEKOLAH</span><h2 id="announcement-editor-title">{initial?.id ? 'Edit Pengumuman' : 'Buat Pengumuman'}</h2></div>
@@ -151,7 +149,7 @@ function AnnouncementEditor({ initial, onClose, onSave }) {
 
 function AnnouncementPreview({ item, onClose }) {
   return createPortal(
-    <div className="master-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <div className="master-modal-backdrop">
       <section className="master-modal announcement-preview-modal" role="dialog" aria-modal="true" aria-labelledby="announcement-preview-title">
         <header className="master-modal-heading">
           <div><span className="library-eyebrow">PRATINJAU PENGUMUMAN</span><h2 id="announcement-preview-title">{item.title}</h2></div>

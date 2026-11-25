@@ -230,9 +230,7 @@ function BookFormModal({ book, categories, onClose, onSave }) {
   }
 
   return createPortal(
-    <div className="master-modal-backdrop catalog-modal-backdrop" onMouseDown={(event) => {
-      if (event.target === event.currentTarget && !saving) onClose();
-    }}>
+    <div className="master-modal-backdrop catalog-modal-backdrop">
       <section className="master-modal catalog-book-modal" role="dialog" aria-modal="true" aria-labelledby="book-form-title">
         <header className="master-modal-heading">
           <div>
@@ -361,9 +359,7 @@ function BookImportModal({ onClose, onImport }) {
   }
 
   return createPortal(
-    <div className="master-modal-backdrop catalog-modal-backdrop" onMouseDown={(event) => {
-      if (event.target === event.currentTarget && !saving) onClose();
-    }}>
+    <div className="master-modal-backdrop catalog-modal-backdrop">
       <section className="master-modal catalog-import-modal" role="dialog" aria-modal="true" aria-labelledby="book-import-title">
         <header className="master-modal-heading">
           <div><span className="library-eyebrow">IMPOR DATA</span><h2 id="book-import-title">Impor Katalog Excel</h2></div>
@@ -513,9 +509,7 @@ function BookDetailModal({ bookId, onClose, role }) {
   }, [onClose]);
 
   return createPortal(
-    <div className="master-modal-backdrop catalog-modal-backdrop" onMouseDown={(event) => {
-      if (event.target === event.currentTarget) onClose();
-    }}>
+    <div className="master-modal-backdrop catalog-modal-backdrop">
       <section className="master-modal catalog-detail-modal" role="dialog" aria-modal="true" aria-labelledby="book-detail-title">
         <header className="master-modal-heading">
           <div><span className="library-eyebrow">DETAIL KATALOG</span><h2 id="book-detail-title">{book?.title || 'Memuat buku...'}</h2></div>

@@ -23,9 +23,7 @@ export default function SchoolConfirmDialog({
   }, [loading, onClose]);
 
   return createPortal(
-    <div className="school-confirm-backdrop" onMouseDown={(event) => {
-      if (event.target === event.currentTarget && !loading) onClose();
-    }}>
+    <div className="school-confirm-backdrop">
       <section className="school-confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="school-confirm-title">
         <button type="button" className="school-confirm-close" onClick={onClose} disabled={loading} aria-label="Tutup dialog"><X size={17} /></button>
         <span className="school-confirm-icon"><AlertTriangle size={23} /></span>

@@ -39,9 +39,7 @@ function StockMovementForm({ movement, onClose, onSave }) {
   }
 
   return createPortal(
-    <div className="master-modal-backdrop" onMouseDown={(event) => {
-      if (event.target === event.currentTarget && !saving) onClose();
-    }}>
+    <div className="master-modal-backdrop">
       <section className="master-modal stock-history-edit-modal" role="dialog" aria-modal="true" aria-labelledby="stock-history-edit-title">
         <header className="master-modal-heading">
           <div><span className="library-eyebrow">RIWAYAT STOK</span><h2 id="stock-history-edit-title">Edit Penambahan Stok</h2></div>

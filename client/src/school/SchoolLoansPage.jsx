@@ -234,7 +234,7 @@ function NewLoanModal({ account, role, durationDays, scanBehavior, onClose, onSa
   }
 
   return createPortal(
-    <div className="master-modal-backdrop loan-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) onClose(); }}>
+    <div className="master-modal-backdrop loan-modal-backdrop">
       <section className="master-modal loan-modal" role="dialog" aria-modal="true" aria-labelledby="loan-modal-title">
         <header className="master-modal-heading">
           <div><span className="library-eyebrow">TRANSAKSI BARU</span><h2 id="loan-modal-title">Peminjaman Buku</h2></div>
@@ -337,9 +337,7 @@ function ReturnConfirmDialog({ loan, loading, error, onClose, onConfirm }) {
   }, [loading, onClose]);
 
   return createPortal(
-    <div className="loan-return-backdrop" onMouseDown={(event) => {
-      if (event.target === event.currentTarget && !loading) onClose();
-    }}>
+    <div className="loan-return-backdrop">
       <section className="loan-return-dialog" role="alertdialog" aria-modal="true" aria-labelledby="loan-return-title">
         <button type="button" className="loan-return-close" onClick={onClose} disabled={loading} aria-label="Tutup konfirmasi"><X size={17} /></button>
         <span className="loan-return-icon"><RotateCcw size={22} /></span>
@@ -383,9 +381,7 @@ function RenewLoanDialog({ loan, defaultDays, loading, error, onClose, onConfirm
   }
 
   return createPortal(
-    <div className="loan-return-backdrop" onMouseDown={(event) => {
-      if (event.target === event.currentTarget && !loading) onClose();
-    }}>
+    <div className="loan-return-backdrop">
       <section className="loan-return-dialog loan-renewal-dialog" role="dialog" aria-modal="true" aria-labelledby="loan-renewal-title">
         <button type="button" className="loan-return-close" onClick={onClose} disabled={loading} aria-label="Tutup form perpanjangan"><X size={17} /></button>
         <span className="loan-return-icon"><Clock3 size={22} /></span>

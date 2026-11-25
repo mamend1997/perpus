@@ -64,9 +64,7 @@ function FinePaymentModal({ fine, saving, onClose, onConfirm }) {
   }
 
   return createPortal(
-    <div className="master-modal-backdrop loan-modal-backdrop" onMouseDown={(event) => {
-      if (event.target === event.currentTarget && !saving) onClose();
-    }}>
+    <div className="master-modal-backdrop loan-modal-backdrop">
       <section className="master-modal fine-modal" role="dialog" aria-modal="true" aria-labelledby="fine-payment-title">
         <header className="master-modal-heading">
           <div><span className="library-eyebrow">KONFIRMASI PEMBAYARAN</span><h2 id="fine-payment-title">Catat Pelunasan Denda</h2></div>
@@ -99,9 +97,7 @@ function FinePaymentModal({ fine, saving, onClose, onConfirm }) {
 
 function FinePaymentHistoryModal({ fine, onClose }) {
   return createPortal(
-    <div className="master-modal-backdrop loan-modal-backdrop" onMouseDown={(event) => {
-      if (event.target === event.currentTarget) onClose();
-    }}>
+    <div className="master-modal-backdrop loan-modal-backdrop">
       <section className="master-modal fine-modal" role="dialog" aria-modal="true" aria-labelledby="fine-history-title">
         <header className="master-modal-heading">
           <div><span className="library-eyebrow">RIWAYAT KAS</span><h2 id="fine-history-title">Pembayaran Denda</h2></div>

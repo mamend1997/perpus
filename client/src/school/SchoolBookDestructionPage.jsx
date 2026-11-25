@@ -112,9 +112,7 @@ function DestructionModal({ onClose, onSaved }) {
   }
 
   return createPortal(
-    <div className="master-modal-backdrop" onMouseDown={(event) => {
-      if (event.target === event.currentTarget && !saving) onClose();
-    }}>
+    <div className="master-modal-backdrop">
       <section className="master-modal book-destruction-modal" role="dialog" aria-modal="true" aria-labelledby="book-destruction-title">
         <header className="master-modal-heading">
           <div className="book-destruction-heading-copy">

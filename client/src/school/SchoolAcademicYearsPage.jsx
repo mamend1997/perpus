@@ -244,9 +244,7 @@ export default function SchoolAcademicYearsPage({ rights }) {
         </div>
       </section>
 
-      {formOpen && createPortal(<div className="master-modal-backdrop academic-year-form-backdrop" onMouseDown={(event) => {
-        if (event.target === event.currentTarget) closeForm();
-      }}>
+      {formOpen && createPortal(<div className="master-modal-backdrop academic-year-form-backdrop">
         <section className="master-modal academic-year-form-modal" role="dialog" aria-modal="true" aria-labelledby="academic-year-form-title">
           <header className="master-modal-heading">
             <div><span className="library-eyebrow">MASTER DATA</span><h2 id="academic-year-form-title">{editingYear ? 'Edit Tahun Pelajaran' : 'Tambah Tahun Pelajaran'}</h2></div>
@@ -297,9 +295,7 @@ export default function SchoolAcademicYearsPage({ rights }) {
         </section>
       </div>, document.body)}
 
-      {promotionPreviewOpen && promotionPreview && createPortal(<div className="master-modal-backdrop academic-year-form-backdrop" onMouseDown={(event) => {
-        if (event.target === event.currentTarget && !saving) setPromotionPreviewOpen(false);
-      }}>
+      {promotionPreviewOpen && promotionPreview && createPortal(<div className="master-modal-backdrop academic-year-form-backdrop">
         <section className="master-modal academic-year-promotion-modal" role="dialog" aria-modal="true" aria-labelledby="academic-year-promotion-title">
           <header className="master-modal-heading">
             <div><span className="library-eyebrow">ARSIP &amp; KENAIKAN KELAS</span><h2 id="academic-year-promotion-title">Pratinjau {form.label || 'Tahun Pelajaran Baru'}</h2></div>

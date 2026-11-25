@@ -24,9 +24,7 @@ function normalizePagination(value) {
 
 function MemberDialog({ children, onClose, className = '' }) {
   return createPortal(
-    <div className="master-modal-backdrop member-modal-backdrop" onMouseDown={(event) => {
-      if (event.target === event.currentTarget) onClose();
-    }}>
+    <div className="master-modal-backdrop member-modal-backdrop">
       <section className={`master-modal member-modal ${className}`} role="dialog" aria-modal="true">
         {children}
       </section>

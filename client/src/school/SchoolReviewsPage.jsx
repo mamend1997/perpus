@@ -395,7 +395,7 @@ export default function SchoolReviewsPage({ rights, role }) {
       </section>
 
       {deleteTarget && (
-        <div className="master-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !deleting) setDeleteTarget(null); }}>
+        <div className="master-modal-backdrop">
           <section className="master-modal" role="dialog" aria-modal="true" aria-labelledby="review-delete-title">
             <header className="master-modal-heading">
               <div><span className="library-eyebrow">KONFIRMASI MODERASI</span><h2 id="review-delete-title">Hapus ulasan?</h2></div>

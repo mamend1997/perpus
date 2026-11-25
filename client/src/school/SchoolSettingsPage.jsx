@@ -56,9 +56,7 @@ function AccountModal({ account, onClose, onSaved }) {
   }
 
   return createPortal(
-    <div className="master-modal-backdrop" onMouseDown={(event) => {
-      if (event.target === event.currentTarget && !saving) onClose();
-    }}>
+    <div className="master-modal-backdrop">
       <section className="master-modal school-account-modal" role="dialog" aria-modal="true" aria-labelledby="school-account-title">
         <header className="master-modal-heading">
           <div><span className="library-eyebrow">AKUN SEKOLAH</span><h2 id="school-account-title">{account ? 'Edit Akun' : 'Tambah Akun'}</h2></div>

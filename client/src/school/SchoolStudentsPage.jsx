@@ -81,7 +81,7 @@ function StudentForm({ student, classes, classesLoading, classesError, onRetryCl
   }
 
   return createPortal((
-    <div className="master-modal-backdrop student-form-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) onClose(); }}>
+    <div className="master-modal-backdrop student-form-backdrop">
       <section className="master-modal student-form-modal" role="dialog" aria-modal="true" aria-labelledby="student-form-title">
         <header className="master-modal-heading"><div><span className="library-eyebrow">DATA ANGGOTA</span><h2 id="student-form-title">{student ? 'Edit Data Siswa' : 'Tambah Siswa'}</h2></div><button type="button" className="master-icon-button" onClick={onClose} disabled={saving} aria-label="Tutup form">×</button></header>
         {error && <div className="library-error" role="alert">{error}</div>}
@@ -148,7 +148,7 @@ function SchoolClassForm({ schoolClass, gradeLevels, onClose, onSave }) {
   }
 
   return createPortal((
-    <div className="master-modal-backdrop student-form-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) onClose(); }}>
+    <div className="master-modal-backdrop student-form-backdrop">
       <section className="master-modal school-class-modal" role="dialog" aria-modal="true" aria-labelledby="school-class-title">
         <header className="master-modal-heading">
           <div><span className="library-eyebrow">MASTER KELAS</span><h2 id="school-class-title">{schoolClass ? 'Edit Kelas' : 'Tambah Kelas'}</h2></div>
@@ -286,7 +286,7 @@ function ClassStudentsModal({ schoolClass, onClose, onSave }) {
   }
 
   return createPortal((
-    <div className="master-modal-backdrop student-form-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) onClose(); }}>
+    <div className="master-modal-backdrop student-form-backdrop">
       <section className="master-modal class-students-modal" role="dialog" aria-modal="true" aria-labelledby="class-students-title">
         <header className="master-modal-heading">
           <div><span className="library-eyebrow">PENETAPAN SISWA</span><h2 id="class-students-title">{schoolClass.className}</h2><p>Siswa yang sudah masuk rombel lain tidak dapat dipilih. Lepaskan penetapan kelas sebelumnya terlebih dahulu.</p></div>
@@ -408,7 +408,7 @@ function ImportStudentsModal({ onClose, onImport }) {
   }
 
   return createPortal((
-    <div className="master-modal-backdrop student-form-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) onClose(); }}>
+    <div className="master-modal-backdrop student-form-backdrop">
       <section className="master-modal student-import-modal" role="dialog" aria-modal="true" aria-labelledby="student-import-title">
         <header className="master-modal-heading"><div><span className="library-eyebrow">IMPORT SISWA</span><h2 id="student-import-title">Import Data Siswa</h2></div><button type="button" className="master-icon-button" onClick={onClose} disabled={busy} aria-label="Tutup import">×</button></header>
         <div className="student-import-content">

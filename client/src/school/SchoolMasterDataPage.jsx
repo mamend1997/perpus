@@ -45,9 +45,7 @@ function MasterCategoryPreviewModal({ type, category, onClose }) {
   }, [onClose]);
 
   return createPortal(
-    <div className="master-modal-backdrop" onMouseDown={(event) => {
-      if (event.target === event.currentTarget) onClose();
-    }}>
+    <div className="master-modal-backdrop">
       <section className="master-modal master-preview-modal" role="dialog" aria-modal="true" aria-labelledby="master-preview-title">
         <header className="master-modal-heading">
           <div><span className="library-eyebrow">PRATINJAU MASTER DATA</span><h2 id="master-preview-title">{category.name}</h2></div>
@@ -115,7 +113,7 @@ function MasterCategoryModal({ type, category, onClose, onSave }) {
   }
 
   return createPortal(
-    <div className="master-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) onClose(); }}>
+    <div className="master-modal-backdrop">
       <section className="master-modal" role="dialog" aria-modal="true" aria-labelledby="master-modal-title">
         <header className="master-modal-heading">
           <div>
@@ -269,9 +267,7 @@ function MasterImportModal({ type, onClose, onImported }) {
   }
 
   return createPortal(
-    <div className="master-modal-backdrop master-import-backdrop" onMouseDown={(event) => {
-      if (event.target === event.currentTarget && !processing) onClose();
-    }}>
+    <div className="master-modal-backdrop master-import-backdrop">
       <section className="master-modal master-import-modal" role="dialog" aria-modal="true" aria-labelledby="master-import-title">
         <header className="master-modal-heading">
           <div><span className="library-eyebrow">IMPOR MASTER DATA</span><h2 id="master-import-title">Impor {isAgent ? 'Agen' : isAuthor ? 'Pengarang' : type}</h2></div>
