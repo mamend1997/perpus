@@ -16,6 +16,7 @@ import PlatformAppearancePage from './PlatformAppearancePage.jsx';
 import PlatformPaymentSettingsPage from './PlatformPaymentSettingsPage.jsx';
 import PlatformSubscriptionPackagesPage from './PlatformSubscriptionPackagesPage.jsx';
 import PlatformWhatsAppGatewayPage from './PlatformWhatsAppGatewayPage.jsx';
+import PlatformAIAssistantPage from './PlatformAIAssistantPage.jsx';
 import './super-admin.css';
 
 const groups = [
@@ -36,6 +37,7 @@ const groups = [
     { label: 'Pusat Tiket', icon: Ticket, badge: 'newTickets' },
     { label: 'Pengumuman & Maintenance', icon: Bell },
     { label: 'Petunjuk Pengguna', icon: CircleHelp },
+    { label: 'Asisten AI', icon: Sparkles },
     { label: 'Log Aktivitas', icon: Activity }
   ] },
   { title: 'INTEGRASI', items: [
@@ -1361,6 +1363,7 @@ export default function App() {
             : active === 'Log Aktivitas' ? <PlatformAuditLogsPage />
             : active === 'Pusat Tiket' ? <PlatformTicketsPage />
             : active === 'Petunjuk Pengguna' ? <PlatformUserGuidePage />
+            : active === 'Asisten AI' ? <PlatformAIAssistantPage />
             : active === 'Branding Sistem' ? <PlatformAppearancePage mode="branding" onSaved={setBranding} />
             : active === 'Tema' ? <PlatformAppearancePage mode="theme" onSaved={setBranding} />
             : active === 'Dashboard' ? error ? <div className="error-panel"><ShieldCheck size={20} /><div><b>Dashboard belum dapat dimuat</b><p>{error}. Pastikan database sudah disiapkan dan tersedia datanya.</p></div><button className="subtle-button" onClick={() => { setError(''); request('/api/super-admin/dashboard').then(setData).catch((err) => setError(err.message)); }}>Coba lagi</button></div>

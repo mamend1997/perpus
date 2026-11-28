@@ -25,6 +25,7 @@ import {
   parseSchoolLetterhead, validateSchoolLetterhead
 } from '../utils/school-letterhead.js';
 import { classDetailsFromRombel } from '../utils/school-year-promotion.js';
+import { readPlatformAiAssistantSettings } from '../utils/platform-ai-assistant.js';
 
 const router = Router();
 const masterCategoryTypes = new Set([
@@ -65,6 +66,14 @@ router.use('/reviews', schoolReviewsRoutes);
 router.use('/students', schoolStudentsRoutes);
 router.use('/support', schoolSupportRoutes);
 router.use('/subscription', schoolSubscriptionRoutes);
+
+router.get('/ai-assistant', async (_req, res, next) => {
+  try {
+    return res.json({ settings: await readPlatformAiAssistantSettings() });
+  } catch (error) {
+    return next(error);
+  }
+});
 
 router.get('/platform-documents', async (_req, res, next) => {
   try {

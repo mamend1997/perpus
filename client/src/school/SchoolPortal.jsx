@@ -25,6 +25,7 @@ import SchoolSupportPage from './SchoolSupportPage.jsx';
 import SchoolDocumentsPage from './SchoolDocumentsPage.jsx';
 import SchoolAppearancePage from './SchoolAppearancePage.jsx';
 import SchoolAnnouncementPopup from './SchoolAnnouncementPopup.jsx';
+import SchoolAIAssistant from './SchoolAIAssistant.jsx';
 import SchoolAcademicYearsPage from './SchoolAcademicYearsPage.jsx';
 import { fetchSchoolIdentity, fetchSchoolProfile } from './schoolAccountApi.js';
 import { fetchMobileNavbarSettings, fetchMySchoolPermissions, fetchSchoolAppearance } from './schoolSettingsApi.js';
@@ -106,6 +107,13 @@ export default function SchoolPortal({ account, onLogout, onAccountUpdated }) {
     highlight: defaultMobileNavbarSettings.highlight
   }));
   const [mobileNavbarError, setMobileNavbarError] = useState('');
+  const [aiAssistantSettings, setAiAssistantSettings] = useState({
+    enabled: true,
+    title: 'Asisten AI Perpustakaan',
+    welcomeMessage: 'Halo! Saya bisa membantu menemukan menu yang Anda butuhkan. Apa yang ingin Anda lakukan?',
+    suggestions: ['Saya ingin mencari buku', 'Bagaimana mencatat peminjaman?', 'Saya ingin mengelola data siswa']
+  });
+  const [guideTarget, setGuideTarget] = useState('');
   const [appearance, setAppearance] = useState({
     primaryColor: '#f97316',
     title: 'MACA',
@@ -126,6 +134,26 @@ export default function SchoolPortal({ account, onLogout, onAccountUpdated }) {
   const schoolName = school.name || 'Sekolah';
   const role = account.role || 'admin';
   const activeMasterType = masterCategoryTypes[active];
+
+  useEffect(() => {
+    let activeRequest = true;
+    fetch('/api/school/ai-assistant', {
+      headers: { Authorization: `Bearer ${localStorage.getItem('school-token') || ''}` }
+    })
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error('Pengaturan asisten tidak dapat dimuat.')))
+      .then(({ settings }) => { if (activeRequest) setAiAssistantSettings((current) => ({ ...current, ...settings })); })
+      .catch((error) => console.error(error.message));
+    return () => { activeRequest = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!guideTarget || guideTarget !== active) return undefined;
+    const target = Array.from(document.querySelectorAll('[data-guide-menu]'))
+      .find((element) => element.dataset.guideMenu === guideTarget);
+    target?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    const timer = window.setTimeout(() => setGuideTarget(''), 5500);
+    return () => window.clearTimeout(timer);
+  }, [active, guideTarget]);
 
   function canView(feature) {
     return role === 'admin' || Boolean(permissions?.[feature]?.view);
@@ -282,6 +310,17 @@ export default function SchoolPortal({ account, onLogout, onAccountUpdated }) {
     setMobileOpen(false);
   }
 
+  function navigateFromAssistant(label) {
+    const menuItems = visibleNavigation.flatMap((section) => section.items.flatMap((item) => (
+      item.children ? item.children.map((child) => ({ ...child, parent: item.label })) : [item]
+    )));
+    const destination = menuItems.find((item) => item.label === label);
+    if (!destination) return;
+    if (destination.parent) setExpandedSections((sections) => ({ ...sections, [destination.parent]: true }));
+    setGuideTarget(label);
+    selectMenu(label);
+  }
+
   function closeOnboarding() {
     if (localStorage.getItem('school-onboarding-pending') === String(account.id)) {
       localStorage.removeItem('school-onboarding-pending');
@@ -361,14 +400,14 @@ export default function SchoolPortal({ account, onLogout, onAccountUpdated }) {
                   </button>
                   {expandedSections[label] && <div className="school-nav-children">
                     {children.map(({ label: childLabel, icon: ChildIcon }) => (
-                      <button type="button" key={childLabel} title={collapsed && !hoverExpanded ? childLabel : undefined} onClick={() => selectMenu(childLabel)} className={`school-nav-item school-nav-child ${active === childLabel ? 'selected' : ''}`}>
+                      <button type="button" key={childLabel} data-guide-menu={childLabel} title={collapsed && !hoverExpanded ? childLabel : undefined} onClick={() => selectMenu(childLabel)} className={`school-nav-item school-nav-child ${active === childLabel ? 'selected' : ''} ${guideTarget === childLabel ? 'ai-guide-highlight' : ''}`}>
                         <ChildIcon size={15} /><span>{childLabel}</span>
                       </button>
                     ))}
                   </div>}
                 </div>
               ) : (
-                <button type="button" key={label} title={collapsed && !hoverExpanded ? label : undefined} onClick={() => selectMenu(label)} className={`school-nav-item ${active === label ? 'selected' : ''}`}>
+                <button type="button" key={label} data-guide-menu={label} title={collapsed && !hoverExpanded ? label : undefined} onClick={() => selectMenu(label)} className={`school-nav-item ${active === label ? 'selected' : ''} ${guideTarget === label ? 'ai-guide-highlight' : ''}`}>
                   <Icon size={17} /><span>{label}</span>
                 </button>
               ))}
@@ -530,6 +569,7 @@ export default function SchoolPortal({ account, onLogout, onAccountUpdated }) {
           <footer className="page-footer"><span>© {new Date().getFullYear()} {appearance.title}</span><span>{schoolName}</span></footer>
         </div>
       </main>
+      {aiAssistantSettings.enabled && <SchoolAIAssistant settings={aiAssistantSettings} navigation={visibleNavigation} onNavigate={navigateFromAssistant} />}
       {mobileNavbarError && <p className="school-mobile-navbar-error" role="alert">Navbar ponsel gagal dimuat: {mobileNavbarError}</p>}
       {mobileNavbarItems.length > 0 && <nav className="school-mobile-navbar" aria-label="Navigasi cepat">
         {mobileNavbarItems.map(({ label, icon: Icon }) => (

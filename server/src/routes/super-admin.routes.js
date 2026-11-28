@@ -9,6 +9,9 @@ import { readPlatformWhatsAppSettings, sendPlatformWhatsAppMessage } from '../ut
 import { normalizePlatformBranding, readPlatformBranding } from '../utils/platform-branding.js';
 import { defaultSubscriptionPackages } from '../utils/platform-subscription-packages.js';
 import {
+  normalizePlatformAiAssistantSettings, readPlatformAiAssistantSettings
+} from '../utils/platform-ai-assistant.js';
+import {
   isPlatformKaseraConfigured, platformKaseraMode, readPlatformKaseraCredentials,
   savePlatformKaseraCredentials
 } from '../utils/platform-kasera.js';
@@ -687,6 +690,30 @@ router.get('/user-guide', async (_req, res, next) => {
       ['user_guide']
     );
     return res.json({ guide: rows[0] ? JSON.parse(rows[0].value) : defaultUserGuide });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/ai-assistant', async (_req, res, next) => {
+  try {
+    return res.json({ settings: await readPlatformAiAssistantSettings() });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.put('/ai-assistant', async (req, res, next) => {
+  const settings = normalizePlatformAiAssistantSettings(req.body);
+  if (!settings) return res.status(400).json({ message: 'Pengaturan asisten AI tidak valid.' });
+  try {
+    await pool.execute(
+      `INSERT INTO platform_settings (key_name, value)
+       VALUES (?, ?)
+       ON DUPLICATE KEY UPDATE value = VALUES(value)`,
+      ['ai_assistant', JSON.stringify(settings)]
+    );
+    return res.json({ settings, message: 'Pengaturan Asisten AI berhasil disimpan.' });
   } catch (error) {
     return next(error);
   }
